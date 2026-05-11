@@ -1,0 +1,20 @@
+{
+  "name": "somnia-riskguard-agent",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.23.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:agent": "pnpm --dir agent dev",
+    "dev:frontend": "pnpm --dir frontend dev",
+    "build": "pnpm -r build",
+    "build:agent": "pnpm --dir agent build",
+    "build:frontend": "pnpm --dir frontend build",
+    "build:contracts": "pnpm --dir contracts build",
+    "test": "pnpm -r test",
+    "test:agent": "pnpm --dir agent test",
+    "test:contracts": "pnpm --dir contracts test",
+    "lint": "pnpm -r lint",
+    "format:contracts": "pnpm --dir contracts format"
+  }
+}

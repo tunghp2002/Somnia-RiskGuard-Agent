@@ -1,0 +1,4 @@
+packages:
+  - "agent"
+  - "frontend"
+  - "contracts"

@@ -1,0 +1,93 @@
+# generated: 2026-05-11
+# last_updated: 2026-05-11
+# project: Somnia RiskGuard Agent
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: C:\Users\T\Subwallet\Somnia\_bmad-output\implementation-artifacts
+#
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-05-11
+last_updated: 2026-05-11
+project: Somnia RiskGuard Agent
+project_key: NOKEY
+tracking_system: file-system
+story_location: C:\Users\T\Subwallet\Somnia\_bmad-output\implementation-artifacts
+
+development_status:
+  epic-1: in-progress
+  1-1-set-up-initial-project-from-starter-template: done
+  1-2-configure-secure-agent-runtime-startup: done
+  1-3-add-structured-logging-and-audit-event-foundation: backlog
+  1-4-implement-json-persistence-repositories: backlog
+  1-5-implement-wallet-separation-and-setup-api: backlog
+  1-6-create-somnia-agent-kit-integration-boundary: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-monitor-portfolio-state-for-configured-wallets: backlog
+  2-2-detect-portfolio-and-risk-signal-changes: backlog
+  2-3-generate-ai-risk-score-with-groq-and-deepseek-fallback: backlog
+  2-4-enforce-advisory-risk-explanation-boundaries: backlog
+  2-5-persist-risk-snapshots-and-threshold-results: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-configure-and-link-telegram-notifications: backlog
+  3-2-send-risk-alerts-with-explanation-and-buttons: backlog
+  3-3-sign-and-validate-telegram-callback-payloads: backlog
+  3-4-support-acknowledge-and-refresh-risk-actions: backlog
+  3-5-route-safe-action-approvals-through-policy-gates: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-implement-foundry-dead-man-s-switch-contract-baseline: backlog
+  4-2-configure-heartbeat-settings-and-check-ins: backlog
+  4-3-send-heartbeat-reminders-before-expiry: backlog
+  4-4-enforce-expiry-and-timelock-contract-behavior: backlog
+  4-5-expose-beneficiary-safe-status: backlog
+  4-6-prevent-premature-dead-man-s-switch-execution: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-detect-claimable-rewards: backlog
+  5-2-apply-reward-claim-value-and-gas-policies: backlog
+  5-3-execute-eligible-reward-claims-through-agent-wallet: backlog
+  5-4-record-and-notify-reward-claim-outcomes: backlog
+  5-5-block-unsupported-autonomous-actions: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-build-dashboard-shell-and-wallet-connection: backlog
+  6-2-add-configuration-forms-for-mvp-settings: backlog
+  6-3-display-portfolio-risk-heartbeat-and-recent-actions: backlog
+  6-4-add-deterministic-demo-scenario-controls: backlog
+  6-5-show-operator-health-and-secret-safe-logs: backlog
+  epic-6-retrospective: optional
