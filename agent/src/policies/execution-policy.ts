@@ -38,3 +38,40 @@ export function denyExecution(input: CreatePolicyDecisionInput): PolicyDecision 
     calldataSummary: input.calldataSummary
   };
 }
+
+export interface EvaluateTelegramSafeActionInput {
+  safeAction: string;
+  signerAddress: string;
+  chainId: number;
+}
+
+const supportedTelegramSafeActions = new Set([
+  "claim_small_reward",
+  "deadman_check_in"
+]);
+
+export function evaluateTelegramSafeActionApproval(
+  input: EvaluateTelegramSafeActionInput
+): PolicyDecision {
+  if (!supportedTelegramSafeActions.has(input.safeAction)) {
+    return denyExecution({
+      policyId: "telegram.safe-action.unsupported",
+      reason: "Unsupported action is outside MVP scope.",
+      toolName: `telegram.${input.safeAction}`,
+      signerAddress: input.signerAddress,
+      chainId: input.chainId,
+      calldataSummary: "No calldata generated because the requested action is unsupported."
+    });
+  }
+
+  return {
+    allowed: true,
+    reason: "Action is supported by the Telegram approval policy. Execution still requires the downstream domain policy before signing.",
+    policyId: "telegram.safe-action.supported",
+    createdAt: new Date().toISOString(),
+    toolName: `telegram.${input.safeAction}`,
+    signerAddress: input.signerAddress,
+    chainId: input.chainId,
+    calldataSummary: "Telegram approval routed to domain policy gate; no transaction signed by this policy."
+  };
+}

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { PortfolioMonitorJob } from "./portfolio-monitor.job.js";
 import type { PortfolioChangeResult, PortfolioService } from "../services/portfolio.service.js";
 import type { RiskScoreService } from "../services/risk-score.service.js";
+import type { TelegramAlertService } from "../services/telegram-alert.service.js";
 
 const change = (shouldAnalyzeRisk: boolean): PortfolioChangeResult => ({
   shouldAnalyzeRisk,
@@ -66,5 +67,37 @@ describe("portfolio monitor job", () => {
     expect(riskScoreService.analyze).toHaveBeenCalledTimes(2);
     expect(result.failedAnalysisWallets).toEqual([first.currentSnapshot.walletAddress]);
     expect(result.analyzedWallets).toEqual([second.currentSnapshot.walletAddress]);
+  });
+
+  it("sends Telegram alerts for risk snapshots created during analysis", async () => {
+    const riskSnapshot = {
+      riskSnapshotId: "33333333-3333-4333-8333-333333333333",
+      walletAddress: "0x1111111111111111111111111111111111111111",
+      status: "succeeded",
+      score: 88,
+      explanation: "Threshold crossed.",
+      provider: "groq",
+      threshold: { alertThreshold: 70, exceeded: true },
+      safeNextSteps: [],
+      createdAt: new Date().toISOString()
+    };
+    const portfolioService = {
+      collectForConfiguredWallets: vi.fn().mockResolvedValue([change(true)])
+    } as unknown as PortfolioService;
+    const riskScoreService = {
+      analyze: vi.fn().mockResolvedValue(riskSnapshot)
+    } as unknown as RiskScoreService;
+    const telegramAlerts = {
+      sendRiskAlert: vi.fn().mockResolvedValue(undefined)
+    } as unknown as TelegramAlertService;
+    const job = new PortfolioMonitorJob(
+      portfolioService,
+      riskScoreService,
+      telegramAlerts
+    );
+
+    await job.runOnce();
+
+    expect(telegramAlerts.sendRiskAlert).toHaveBeenCalledWith(riskSnapshot);
   });
 });

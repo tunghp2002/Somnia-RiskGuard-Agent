@@ -1,5 +1,5 @@
 # generated: 2026-05-11
-# last_updated: 2026-05-12
+# last_updated: 2026-05-13
 # project: Somnia RiskGuard Agent
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11
-last_updated: 2026-05-12
+last_updated: 2026-05-13
 project: Somnia RiskGuard Agent
 project_key: NOKEY
 tracking_system: file-system
@@ -59,12 +59,12 @@ development_status:
   2-5-persist-risk-snapshots-and-threshold-results: done
   epic-2-retrospective: optional
 
-  epic-3: backlog
-  3-1-configure-and-link-telegram-notifications: backlog
-  3-2-send-risk-alerts-with-explanation-and-buttons: backlog
-  3-3-sign-and-validate-telegram-callback-payloads: backlog
-  3-4-support-acknowledge-and-refresh-risk-actions: backlog
-  3-5-route-safe-action-approvals-through-policy-gates: backlog
+  epic-3: done
+  3-1-configure-and-link-telegram-notifications: done
+  3-2-send-risk-alerts-with-explanation-and-buttons: done
+  3-3-sign-and-validate-telegram-callback-payloads: done
+  3-4-support-acknowledge-and-refresh-risk-actions: done
+  3-5-route-safe-action-approvals-through-policy-gates: done
   epic-3-retrospective: optional
 
   epic-4: backlog

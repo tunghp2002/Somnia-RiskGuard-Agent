@@ -1,5 +1,6 @@
 import type { PortfolioService, PortfolioChangeResult } from "../services/portfolio.service.js";
 import type { RiskScoreService } from "../services/risk-score.service.js";
+import type { TelegramAlertService } from "../services/telegram-alert.service.js";
 
 export interface PortfolioMonitorResult {
   changes: PortfolioChangeResult[];
@@ -10,7 +11,8 @@ export interface PortfolioMonitorResult {
 export class PortfolioMonitorJob {
   public constructor(
     private readonly portfolioService: PortfolioService,
-    private readonly riskScoreService: RiskScoreService
+    private readonly riskScoreService: RiskScoreService,
+    private readonly telegramAlerts?: TelegramAlertService
   ) {}
 
   public async runOnce(): Promise<PortfolioMonitorResult> {
@@ -21,7 +23,8 @@ export class PortfolioMonitorJob {
     for (const change of changes) {
       if (change.shouldAnalyzeRisk) {
         try {
-          await this.riskScoreService.analyze(change.currentSnapshot);
+          const riskSnapshot = await this.riskScoreService.analyze(change.currentSnapshot);
+          await this.telegramAlerts?.sendRiskAlert(riskSnapshot);
           analyzedWallets.push(change.currentSnapshot.walletAddress);
         } catch {
           failedAnalysisWallets.push(change.currentSnapshot.walletAddress);

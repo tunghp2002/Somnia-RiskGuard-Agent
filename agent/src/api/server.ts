@@ -9,6 +9,12 @@ import type { SetupService } from "../services/setup.service.js";
 import { setupWalletRequestSchema } from "../services/setup.service.js";
 import type { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
 import type { RiskSnapshotsRepository } from "../persistence/risk-snapshots.repository.js";
+import {
+  telegramBindingRequestSchema,
+  telegramCallbackRequestSchema,
+  TelegramAlertServiceError,
+  type TelegramAlertService
+} from "../services/telegram-alert.service.js";
 
 const defaultMaxBodyBytes = 1_048_576;
 
@@ -74,6 +80,7 @@ export interface AgentApiDependencies {
   setupService: SetupService;
   portfolioSnapshots?: PortfolioSnapshotsRepository;
   riskSnapshots?: RiskSnapshotsRepository;
+  telegramAlerts?: TelegramAlertService;
   health?: () => Promise<unknown> | unknown;
 }
 
@@ -127,6 +134,53 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/telegram/health") {
+        if (!dependencies.telegramAlerts) {
+          throw new ServerDependencyError("Telegram alert service is not configured");
+        }
+        sendJson(response, 200, success(await dependencies.telegramAlerts.health(), requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/telegram/bindings") {
+        if (!dependencies.telegramAlerts) {
+          throw new ServerDependencyError("Telegram alert service is not configured");
+        }
+        const body = telegramBindingRequestSchema.parse(await readJsonBody(request));
+        const binding = await dependencies.telegramAlerts.linkChat(body);
+        sendJson(response, 201, success(binding, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/telegram/callback") {
+        if (!dependencies.telegramAlerts) {
+          throw new ServerDependencyError("Telegram alert service is not configured");
+        }
+        const body = telegramCallbackRequestSchema.parse(await readJsonBody(request));
+        const result = await dependencies.telegramAlerts.processCallback(body);
+        sendJson(response, result.ok ? 200 : 400, success(result, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/telegram/test-alert") {
+        if (!dependencies.telegramAlerts || !dependencies.riskSnapshots) {
+          throw new ServerDependencyError("Telegram alert dependencies are not configured");
+        }
+        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
+        const riskSnapshot = walletAddress
+          ? await dependencies.riskSnapshots.latestForWallet(walletAddress)
+          : await dependencies.riskSnapshots.latest();
+
+        if (!riskSnapshot) {
+          sendJson(response, 404, failure("not_found", "No risk snapshot is available"));
+          return;
+        }
+
+        const alert = await dependencies.telegramAlerts.sendRiskAlert(riskSnapshot);
+        sendJson(response, 200, success(alert ?? null, requestId));
+        return;
+      }
+
       sendJson(response, 404, failure("not_found", "Route not found"));
     } catch (error) {
       if (error instanceof ZodError) {
@@ -155,6 +209,11 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
 
       if (error instanceof ServerDependencyError) {
         sendJson(response, 500, failure("server_misconfigured", error.message));
+        return;
+      }
+
+      if (error instanceof TelegramAlertServiceError) {
+        sendJson(response, error.statusCode, failure(error.code, error.message));
         return;
       }
 
