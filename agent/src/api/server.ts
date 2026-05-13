@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 
+import { getAddress } from "ethers";
 import { ZodError } from "zod";
 
 import { failure, sendJson, success } from "./response.js";
 import type { SetupService } from "../services/setup.service.js";
 import { setupWalletRequestSchema } from "../services/setup.service.js";
+import type { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
+import type { RiskSnapshotsRepository } from "../persistence/risk-snapshots.repository.js";
 
 const defaultMaxBodyBytes = 1_048_576;
 
@@ -13,6 +16,25 @@ class PayloadTooLargeError extends Error {
   public constructor() {
     super("Request body is too large");
     this.name = "PayloadTooLargeError";
+  }
+}
+
+class AddressValidationError extends Error {
+  public constructor() {
+    super("Wallet address is invalid");
+    this.name = "AddressValidationError";
+  }
+}
+
+function parseOptionalWalletAddress(value: string | null): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return getAddress(value);
+  } catch {
+    throw new AddressValidationError();
   }
 }
 
@@ -43,6 +65,8 @@ async function readJsonBody(
 
 export interface AgentApiDependencies {
   setupService: SetupService;
+  portfolioSnapshots?: PortfolioSnapshotsRepository;
+  riskSnapshots?: RiskSnapshotsRepository;
   health?: () => Promise<unknown> | unknown;
 }
 
@@ -61,6 +85,24 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         const body = setupWalletRequestSchema.parse(await readJsonBody(request));
         const user = await dependencies.setupService.registerMonitoredWallet(body);
         sendJson(response, 201, success(user, requestId));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/portfolios/latest") {
+        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
+        const data = walletAddress
+          ? await dependencies.portfolioSnapshots?.latestForWallet(walletAddress)
+          : (await dependencies.portfolioSnapshots?.list())?.at(-1);
+        sendJson(response, 200, success(data ?? null, requestId));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/risk-snapshots/latest") {
+        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
+        const data = walletAddress
+          ? await dependencies.riskSnapshots?.latestForWallet(walletAddress)
+          : (await dependencies.riskSnapshots?.list())?.at(-1);
+        sendJson(response, 200, success(data ?? null, requestId));
         return;
       }
 
@@ -90,6 +132,11 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
 
       if (error instanceof PayloadTooLargeError) {
         sendJson(response, 413, failure("payload_too_large", "Request body is too large"));
+        return;
+      }
+
+      if (error instanceof AddressValidationError) {
+        sendJson(response, 400, failure("validation_failed", "Request validation failed"));
         return;
       }
 
