@@ -51,12 +51,12 @@ development_status:
   1-6-create-somnia-agent-kit-integration-boundary: done
   epic-1-retrospective: optional
 
-  epic-2: in-progress
-  2-1-monitor-portfolio-state-for-configured-wallets: review
-  2-2-detect-portfolio-and-risk-signal-changes: review
-  2-3-generate-ai-risk-score-with-groq-and-deepseek-fallback: review
-  2-4-enforce-advisory-risk-explanation-boundaries: review
-  2-5-persist-risk-snapshots-and-threshold-results: review
+  epic-2: done
+  2-1-monitor-portfolio-state-for-configured-wallets: done
+  2-2-detect-portfolio-and-risk-signal-changes: done
+  2-3-generate-ai-risk-score-with-groq-and-deepseek-fallback: done
+  2-4-enforce-advisory-risk-explanation-boundaries: done
+  2-5-persist-risk-snapshots-and-threshold-results: done
   epic-2-retrospective: optional
 
   epic-3: backlog

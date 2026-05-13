@@ -73,6 +73,19 @@ context:
 - Given generated risk text contains advice-like or action-like wording, when it is processed, then persisted output remains informational and contains no executable action authorization.
 - Given a score is generated, when it is persisted, then wallet, score, explanation, provider, threshold result, safe next steps, and timestamp are available through repository/API reads.
 
+### Review Findings
+
+- [x] [Review][Patch] Monitoring can silently use demo data when no Somnia client is wired instead of making demo mode explicit or failing closed [agent/src/services/portfolio.service.ts:127]
+- [x] [Review][Patch] Somnia portfolio reads do not check integration health before collecting a snapshot [agent/src/services/portfolio.service.ts:132]
+- [x] [Review][Patch] One wallet portfolio-read failure aborts monitoring for all remaining configured wallets [agent/src/services/portfolio.service.ts:52]
+- [x] [Review][Patch] One risk-analysis failure aborts analysis for later changed wallets [agent/src/jobs/portfolio-monitor.job.ts:19]
+- [x] [Review][Patch] Change detection is order-sensitive for assets, rewards, and risk signals [agent/src/services/portfolio.service.ts:108]
+- [x] [Review][Patch] Portfolio snapshots do not persist change decision metadata required by the spec [agent/src/persistence/portfolio-snapshots.repository.ts:25]
+- [x] [Review][Patch] Advisory filtering misses inflected and common executable financial verbs [agent/src/services/risk-score.service.ts:11]
+- [x] [Review][Patch] Total provider failure is audited but not persisted as safe risk failure state for consumers [agent/src/services/risk-score.service.ts:46]
+- [x] [Review][Patch] Latest-state API can return stale data when snapshots are backfilled or out of insertion order [agent/src/api/server.ts:93]
+- [x] [Review][Patch] Latest-state API silently returns null when snapshot repositories are not configured [agent/src/api/server.ts:68]
+
 ## Spec Change Log
 
 ## Design Notes

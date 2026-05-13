@@ -26,6 +26,13 @@ class AddressValidationError extends Error {
   }
 }
 
+class ServerDependencyError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "ServerDependencyError";
+  }
+}
+
 function parseOptionalWalletAddress(value: string | null): string | undefined {
   if (!value) {
     return undefined;
@@ -89,19 +96,25 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
       }
 
       if (request.method === "GET" && url.pathname === "/api/portfolios/latest") {
+        if (!dependencies.portfolioSnapshots) {
+          throw new ServerDependencyError("Portfolio snapshots repository is not configured");
+        }
         const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
         const data = walletAddress
-          ? await dependencies.portfolioSnapshots?.latestForWallet(walletAddress)
-          : (await dependencies.portfolioSnapshots?.list())?.at(-1);
+          ? await dependencies.portfolioSnapshots.latestForWallet(walletAddress)
+          : await dependencies.portfolioSnapshots.latest();
         sendJson(response, 200, success(data ?? null, requestId));
         return;
       }
 
       if (request.method === "GET" && url.pathname === "/api/risk-snapshots/latest") {
+        if (!dependencies.riskSnapshots) {
+          throw new ServerDependencyError("Risk snapshots repository is not configured");
+        }
         const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
         const data = walletAddress
-          ? await dependencies.riskSnapshots?.latestForWallet(walletAddress)
-          : (await dependencies.riskSnapshots?.list())?.at(-1);
+          ? await dependencies.riskSnapshots.latestForWallet(walletAddress)
+          : await dependencies.riskSnapshots.latest();
         sendJson(response, 200, success(data ?? null, requestId));
         return;
       }
@@ -137,6 +150,11 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
 
       if (error instanceof AddressValidationError) {
         sendJson(response, 400, failure("validation_failed", "Request validation failed"));
+        return;
+      }
+
+      if (error instanceof ServerDependencyError) {
+        sendJson(response, 500, failure("server_misconfigured", error.message));
         return;
       }
 

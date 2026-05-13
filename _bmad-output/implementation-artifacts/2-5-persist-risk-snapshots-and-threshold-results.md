@@ -1,6 +1,6 @@
 # Story 2.5: Persist Risk Snapshots And Threshold Results
 
-Status: review
+Status: done
 
 ## Story
 
@@ -26,6 +26,7 @@ so that the dashboard and Telegram flows can display consistent risk state.
 
 - Implemented as part of `spec-full-epic-2.md`.
 - Verification passed: `pnpm --dir agent lint`, `pnpm --dir agent build`, `pnpm --dir agent test` with 10 test files and 51 tests.
+- Code review patch validation passed: `pnpm --dir agent lint`, `pnpm --dir agent build`, and `pnpm --dir agent test` with 10 test files and 61 tests.
 
 ### File List
 
@@ -37,3 +38,4 @@ so that the dashboard and Telegram flows can display consistent risk state.
 ### Change Log
 
 - 2026-05-13: Implemented Story 2.5 and moved to review.
+- 2026-05-13: Applied code review patches and marked Story 2.5 done.

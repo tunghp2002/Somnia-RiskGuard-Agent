@@ -10,9 +10,10 @@ export const riskSnapshotSchema = z.object({
     .string()
     .regex(/^0x[a-fA-F0-9]{40}$/)
     .transform((value) => getAddress(value)),
+  status: z.enum(["succeeded", "failed"]),
   score: z.number().int().min(0).max(100),
   explanation: z.string(),
-  provider: z.enum(["groq", "deepseek"]),
+  provider: z.enum(["groq", "deepseek", "none"]),
   threshold: z.object({
     alertThreshold: z.number().int().min(0).max(100),
     exceeded: z.boolean()
@@ -24,8 +25,9 @@ export const riskSnapshotSchema = z.object({
 export type RiskSnapshotRecord = z.infer<typeof riskSnapshotSchema>;
 export type CreateRiskSnapshotInput = Omit<
   RiskSnapshotRecord,
-  "riskSnapshotId" | "createdAt"
+  "riskSnapshotId" | "createdAt" | "status"
 > & {
+  status?: RiskSnapshotRecord["status"];
   riskSnapshotId?: string;
   createdAt?: string;
 };
@@ -54,10 +56,16 @@ export class RiskSnapshotsRepository {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   }
 
+  public async latest(): Promise<RiskSnapshotRecord | undefined> {
+    const snapshots = await this.store.read();
+    return [...snapshots].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  }
+
   public async append(input: CreateRiskSnapshotInput): Promise<RiskSnapshotRecord> {
     const snapshot = riskSnapshotSchema.parse({
       ...input,
       walletAddress: getAddress(input.walletAddress),
+      status: input.status ?? "succeeded",
       riskSnapshotId: input.riskSnapshotId ?? randomUUID(),
       createdAt: input.createdAt ?? new Date().toISOString()
     });

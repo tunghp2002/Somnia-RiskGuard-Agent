@@ -4,6 +4,7 @@ import type { RiskScoreService } from "../services/risk-score.service.js";
 export interface PortfolioMonitorResult {
   changes: PortfolioChangeResult[];
   analyzedWallets: string[];
+  failedAnalysisWallets: string[];
 }
 
 export class PortfolioMonitorJob {
@@ -15,17 +16,23 @@ export class PortfolioMonitorJob {
   public async runOnce(): Promise<PortfolioMonitorResult> {
     const changes = await this.portfolioService.collectForConfiguredWallets();
     const analyzedWallets: string[] = [];
+    const failedAnalysisWallets: string[] = [];
 
     for (const change of changes) {
       if (change.shouldAnalyzeRisk) {
-        await this.riskScoreService.analyze(change.currentSnapshot);
-        analyzedWallets.push(change.currentSnapshot.walletAddress);
+        try {
+          await this.riskScoreService.analyze(change.currentSnapshot);
+          analyzedWallets.push(change.currentSnapshot.walletAddress);
+        } catch {
+          failedAnalysisWallets.push(change.currentSnapshot.walletAddress);
+        }
       }
     }
 
     return {
       changes,
-      analyzedWallets
+      analyzedWallets,
+      failedAnalysisWallets
     };
   }
 }

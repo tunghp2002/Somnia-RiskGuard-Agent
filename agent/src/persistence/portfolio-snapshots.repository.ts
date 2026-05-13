@@ -33,6 +33,13 @@ export const portfolioSnapshotSchema = z.object({
   assets: z.array(portfolioAssetSchema),
   rewards: z.array(rewardSignalSchema),
   riskSignals: z.array(riskSignalSchema),
+  change: z
+    .object({
+      previousPortfolioSnapshotId: z.string().uuid().optional(),
+      changedFields: z.array(z.string()),
+      shouldAnalyzeRisk: z.boolean()
+    })
+    .optional(),
   createdAt: z.string().datetime()
 });
 
@@ -73,6 +80,11 @@ export class PortfolioSnapshotsRepository {
     return snapshots
       .filter((snapshot) => snapshot.walletAddress === checksumAddress)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  }
+
+  public async latest(): Promise<PortfolioSnapshot | undefined> {
+    const snapshots = await this.store.read();
+    return [...snapshots].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   }
 
   public async append(input: CreatePortfolioSnapshotInput): Promise<PortfolioSnapshot> {

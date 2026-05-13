@@ -1,4 +1,5 @@
 import { getAddress } from "ethers";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import type { SomniaAgentKitClient } from "../integrations/somnia/somnia-agent-kit.client.js";
@@ -27,12 +28,17 @@ export interface PortfolioChangeResult {
   shouldAnalyzeRisk: boolean;
 }
 
+export interface PortfolioServiceOptions {
+  demoMode?: boolean;
+}
+
 export class PortfolioService {
   public constructor(
     private readonly users: UsersRepository,
     private readonly snapshots: PortfolioSnapshotsRepository,
     private readonly audit: AuditService,
-    private readonly somnia?: SomniaAgentKitClient
+    private readonly somnia?: SomniaAgentKitClient,
+    private readonly options: PortfolioServiceOptions = {}
   ) {}
 
   public async collectForConfiguredWallets(): Promise<PortfolioChangeResult[]> {
@@ -50,7 +56,18 @@ export class PortfolioService {
     const results: PortfolioChangeResult[] = [];
 
     for (const user of users) {
-      results.push(await this.collectForWallet(user.walletAddress));
+      try {
+        results.push(await this.collectForWallet(user.walletAddress));
+      } catch (error) {
+        await this.audit.record({
+          eventType: "portfolio.monitor.failed",
+          status: "failed",
+          metadata: {
+            walletAddress: user.walletAddress,
+            reason: error instanceof Error ? error.message : "portfolio monitor failed"
+          }
+        });
+      }
     }
 
     return results;
@@ -59,9 +76,25 @@ export class PortfolioService {
   public async collectForWallet(walletAddress: string): Promise<PortfolioChangeResult> {
     const checksumAddress = getAddress(walletAddress);
     const previousSnapshot = await this.snapshots.latestForWallet(checksumAddress);
-    const input = await this.readPortfolio(checksumAddress);
-    const currentSnapshot = await this.snapshots.append(input);
-    const change = this.detectChanges(previousSnapshot, currentSnapshot);
+    const input = {
+      ...(await this.readPortfolio(checksumAddress)),
+      portfolioSnapshotId: randomUUID(),
+      createdAt: new Date().toISOString()
+    };
+    const candidateSnapshot = {
+      ...input,
+      walletAddress: checksumAddress
+    } as PortfolioSnapshot;
+    const change = this.detectChanges(previousSnapshot, candidateSnapshot);
+    const currentSnapshot = await this.snapshots.append({
+      ...input,
+      change: {
+        previousPortfolioSnapshotId: previousSnapshot?.portfolioSnapshotId,
+        changedFields: change.changedFields,
+        shouldAnalyzeRisk: change.shouldAnalyzeRisk
+      }
+    });
+    const persistedChange = { ...change, currentSnapshot };
 
     await this.audit.record({
       eventType: "portfolio.snapshot.collected",
@@ -70,12 +103,12 @@ export class PortfolioService {
         walletAddress: checksumAddress,
         portfolioSnapshotId: currentSnapshot.portfolioSnapshotId,
         source: currentSnapshot.source,
-        shouldAnalyzeRisk: change.shouldAnalyzeRisk,
-        changedFields: change.changedFields
+        shouldAnalyzeRisk: persistedChange.shouldAnalyzeRisk,
+        changedFields: persistedChange.changedFields
       }
     });
 
-    if (!change.shouldAnalyzeRisk) {
+    if (!persistedChange.shouldAnalyzeRisk) {
       await this.audit.record({
         eventType: "risk.analysis.skipped",
         status: "skipped",
@@ -86,7 +119,7 @@ export class PortfolioService {
       });
     }
 
-    return change;
+    return persistedChange;
   }
 
   public detectChanges(
@@ -105,13 +138,16 @@ export class PortfolioService {
       previousSnapshot.totalValueUsd !== currentSnapshot.totalValueUsd
         ? "totalValueUsd"
         : undefined,
-      JSON.stringify(previousSnapshot.assets) !== JSON.stringify(currentSnapshot.assets)
+      JSON.stringify(normalizeAssets(previousSnapshot.assets)) !==
+      JSON.stringify(normalizeAssets(currentSnapshot.assets))
         ? "assets"
         : undefined,
-      JSON.stringify(previousSnapshot.rewards) !== JSON.stringify(currentSnapshot.rewards)
+      JSON.stringify(normalizeRewards(previousSnapshot.rewards)) !==
+      JSON.stringify(normalizeRewards(currentSnapshot.rewards))
         ? "rewards"
         : undefined,
-      JSON.stringify(previousSnapshot.riskSignals) !== JSON.stringify(currentSnapshot.riskSignals)
+      JSON.stringify(normalizeRiskSignals(previousSnapshot.riskSignals)) !==
+      JSON.stringify(normalizeRiskSignals(currentSnapshot.riskSignals))
         ? "riskSignals"
         : undefined
     ].filter((field): field is string => Boolean(field));
@@ -126,10 +162,19 @@ export class PortfolioService {
 
   private async readPortfolio(walletAddress: string): Promise<CreatePortfolioSnapshotInput> {
     if (!this.somnia) {
-      return this.createDemoPortfolio(walletAddress);
+      if (this.options.demoMode) {
+        return this.createDemoPortfolio(walletAddress);
+      }
+
+      throw new Error("Somnia client is not configured and demo mode is disabled");
     }
 
     try {
+      const health = await this.somnia.health();
+      if (!health.ok || !health.executionEnabled) {
+        throw new Error("Somnia integration health check failed");
+      }
+
       const result = await this.somnia.callTool({
         toolName: "getPortfolio",
         stateChanging: false,
@@ -187,4 +232,20 @@ export class PortfolioService {
       ]
     };
   }
+}
+
+function normalizeAssets(assets: PortfolioSnapshot["assets"]) {
+  return [...assets].sort((a, b) => a.symbol.localeCompare(b.symbol));
+}
+
+function normalizeRewards(rewards: PortfolioSnapshot["rewards"]) {
+  return [...rewards].sort((a, b) => a.protocol.localeCompare(b.protocol));
+}
+
+function normalizeRiskSignals(riskSignals: PortfolioSnapshot["riskSignals"]) {
+  return [...riskSignals].sort((a, b) =>
+    `${a.signalType}:${a.severity}:${a.description}`.localeCompare(
+      `${b.signalType}:${b.severity}:${b.description}`
+    )
+  );
 }

@@ -122,4 +122,44 @@ describe("risk score service", () => {
     expect(result.explanation).toContain("Informational risk analysis only");
     expect(result.safeNextSteps).toEqual(["Review risk factors manually"]);
   });
+
+  it("filters inflected and common executable financial verbs", async () => {
+    const service = new RiskScoreService(
+      createTestConfig(),
+      riskSnapshots,
+      new AuditService(auditEvents, { info: vi.fn() }),
+      {
+        primary: provider("groq", vi.fn().mockResolvedValue({
+          score: 50,
+          explanation: "Consider bridging funds and staking now.",
+          safeNextSteps: ["Approving this contract", "Review exposure manually"]
+        })),
+        fallback: provider("deepseek", vi.fn())
+      }
+    );
+
+    const result = await service.analyze(portfolioSnapshot);
+
+    expect(result.explanation).toContain("Informational risk analysis only");
+    expect(result.safeNextSteps).toEqual(["Review exposure manually"]);
+  });
+
+  it("persists a failed-closed risk snapshot when both providers fail", async () => {
+    const service = new RiskScoreService(
+      createTestConfig(),
+      riskSnapshots,
+      new AuditService(auditEvents, { info: vi.fn() }),
+      {
+        primary: provider("groq", vi.fn().mockRejectedValue(new Error("timeout"))),
+        fallback: provider("deepseek", vi.fn().mockRejectedValue(new Error("down")))
+      }
+    );
+
+    await expect(service.analyze(portfolioSnapshot)).rejects.toThrow();
+    await expect(riskSnapshots.latestForWallet(portfolioSnapshot.walletAddress)).resolves.toMatchObject({
+      status: "failed",
+      provider: "none",
+      explanation: expect.stringContaining("failed closed")
+    });
+  });
 });

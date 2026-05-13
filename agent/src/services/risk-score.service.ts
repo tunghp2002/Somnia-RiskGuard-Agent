@@ -9,7 +9,7 @@ import {
 import type { AuditService } from "./audit.service.js";
 
 const unsafeActionPattern =
-  /\b(buy|sell|swap|trade|transfer|send|withdraw|rebalance|liquidate)\b/i;
+  /\b(buy(?:ing)?|sell(?:ing)?|swap(?:ping)?|trad(?:e|ing)|transfer(?:ring)?|send(?:ing)?|withdraw(?:ing|al)?|rebalance|rebalancing|liquidate|liquidating|approve|approving|stake|staking|bridge|bridging|borrow|borrowing|lend|lending|claim|claiming|deposit|depositing|repay|repaying)\b/i;
 
 export interface RiskScoreServiceOptions {
   primary: RiskProvider;
@@ -44,6 +44,18 @@ export class RiskScoreService {
     }
 
     if (!result) {
+      await this.riskSnapshots.append({
+        walletAddress: snapshot.walletAddress,
+        status: "failed",
+        score: 0,
+        explanation: "Risk analysis failed closed because all configured providers failed.",
+        provider: "none",
+        threshold: {
+          alertThreshold: this.config.riskScore.alertThreshold,
+          exceeded: false
+        },
+        safeNextSteps: ["Retry risk analysis after provider health is restored."]
+      });
       await this.audit.record({
         eventType: "risk.analysis.failed",
         status: "failed",

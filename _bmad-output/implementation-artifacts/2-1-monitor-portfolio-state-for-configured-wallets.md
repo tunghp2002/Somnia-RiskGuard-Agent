@@ -1,6 +1,6 @@
 # Story 2.1: Monitor Portfolio State For Configured Wallets
 
-Status: review
+Status: done
 
 ## Story
 
@@ -26,6 +26,7 @@ so that risk analysis is based on current wallet information.
 
 - Implemented as part of `spec-full-epic-2.md`.
 - Verification passed: `pnpm --dir agent lint`, `pnpm --dir agent build`, `pnpm --dir agent test` with 10 test files and 51 tests.
+- Code review patch validation passed: `pnpm --dir agent lint`, `pnpm --dir agent build`, and `pnpm --dir agent test` with 10 test files and 61 tests.
 
 ### File List
 
@@ -38,3 +39,4 @@ so that risk analysis is based on current wallet information.
 ### Change Log
 
 - 2026-05-13: Implemented Story 2.1 and moved to review.
+- 2026-05-13: Applied code review patches and marked Story 2.1 done.

@@ -160,6 +160,60 @@ describe("agent setup API", () => {
     expect(riskPayload.data.score).toBe(75);
   });
 
+  it("returns latest state by timestamp instead of insertion order", async () => {
+    await portfolioSnapshots.append({
+      walletAddress: wallet.address,
+      source: "demo",
+      totalValueUsd: "1",
+      assets: [],
+      rewards: [],
+      riskSignals: [],
+      createdAt: "2026-01-01T00:00:00.000Z"
+    });
+    await portfolioSnapshots.append({
+      walletAddress: wallet.address,
+      source: "demo",
+      totalValueUsd: "2",
+      assets: [],
+      rewards: [],
+      riskSignals: [],
+      createdAt: "2025-01-01T00:00:00.000Z"
+    });
+
+    const response = await fetch(`${baseUrl}/api/portfolios/latest`);
+    const payload = await response.json();
+
+    expect(payload.data.totalValueUsd).toBe("1");
+  });
+
+  it("reports server misconfiguration when latest-state repositories are missing", async () => {
+    const setupService = new SetupService(
+      new UsersRepository(dataDirectory),
+      createTestConfig()
+    );
+    const misconfiguredServer = createAgentApiServer({ setupService });
+    misconfiguredServer.listen(0, "127.0.0.1");
+    await once(misconfiguredServer, "listening");
+    const address = misconfiguredServer.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Expected TCP server address");
+    }
+
+    try {
+      const response = await fetch(
+        `http://${address.address}:${address.port}/api/portfolios/latest`
+      );
+      const payload = await response.json();
+
+      expect(response.status).toBe(500);
+      expect(payload.error.code).toBe("server_misconfigured");
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        misconfiguredServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   it("returns validation errors for invalid latest-state wallet query params", async () => {
     const response = await fetch(
       `${baseUrl}/api/portfolios/latest?walletAddress=0x123`
