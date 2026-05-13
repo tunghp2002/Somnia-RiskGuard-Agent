@@ -15,9 +15,28 @@ export interface TelegramSendMessageResult {
   messageId?: string;
 }
 
+export interface TelegramCallbackUpdate {
+  updateId: number;
+  callbackQueryId: string;
+  chatId: string;
+  telegramUserId?: string;
+  data: string;
+}
+
+export interface TelegramPollingHandle {
+  stop(): void;
+}
+
+export interface StartTelegramPollingOptions {
+  handleCallback(update: TelegramCallbackUpdate): Promise<{ ok: boolean; message: string }>;
+  intervalMs?: number;
+  logger?: Pick<Console, "error" | "info">;
+}
+
 export interface TelegramClient {
   health(): Promise<{ ok: boolean; enabled: boolean; reason?: string }> | { ok: boolean; enabled: boolean; reason?: string };
   sendMessage(input: TelegramSendMessageInput): Promise<TelegramSendMessageResult>;
+  startPolling?(options: StartTelegramPollingOptions): TelegramPollingHandle;
 }
 
 export class DisabledTelegramClient implements TelegramClient {
@@ -84,6 +103,127 @@ export class TelegramBotApiClient implements TelegramClient {
     const messageId = payload.result?.message_id?.toString();
     return messageId ? { messageId } : {};
   }
+
+  public startPolling(options: StartTelegramPollingOptions): TelegramPollingHandle {
+    let stopped = false;
+    let offset = 0;
+    const intervalMs = options.intervalMs ?? 1_000;
+
+    const poll = async () => {
+      while (!stopped) {
+        try {
+          const updates = await this.getUpdates(offset);
+          for (const update of updates) {
+            offset = Math.max(offset, update.update_id + 1);
+            const callbackUpdate = this.toCallbackUpdate(update);
+
+            if (!callbackUpdate) {
+              continue;
+            }
+
+            const result = await options.handleCallback(callbackUpdate);
+            await this.answerCallbackQuery(
+              callbackUpdate.callbackQueryId,
+              result.message
+            );
+          }
+        } catch (error) {
+          options.logger?.error(
+            { error: error instanceof Error ? error.message : "polling failed" },
+            "telegram polling failed"
+          );
+        }
+
+        if (!stopped) {
+          await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        }
+      }
+    };
+
+    void poll();
+
+    return {
+      stop() {
+        stopped = true;
+      }
+    };
+  }
+
+  private async getUpdates(offset: number) {
+    if (!this.config.botToken) {
+      throw new Error("Telegram is not configured");
+    }
+
+    const response = await fetch(
+      `https://api.telegram.org/bot${this.config.botToken}/getUpdates`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          offset,
+          timeout: 25,
+          allowed_updates: ["callback_query"]
+        })
+      }
+    );
+    const payload = (await response.json()) as {
+      ok?: boolean;
+      result?: TelegramRawUpdate[];
+      description?: string;
+    };
+
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.description ?? "Telegram getUpdates failed");
+    }
+
+    return payload.result ?? [];
+  }
+
+  private async answerCallbackQuery(callbackQueryId: string, text: string) {
+    if (!this.config.botToken) {
+      throw new Error("Telegram is not configured");
+    }
+
+    await fetch(
+      `https://api.telegram.org/bot${this.config.botToken}/answerCallbackQuery`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          callback_query_id: callbackQueryId,
+          text: text.slice(0, 200)
+        })
+      }
+    );
+  }
+
+  private toCallbackUpdate(update: TelegramRawUpdate): TelegramCallbackUpdate | undefined {
+    const callback = update.callback_query;
+    const chatId = callback?.message?.chat?.id;
+    const telegramUserId = callback?.from?.id;
+
+    if (!callback?.id || !callback.data || chatId === undefined) {
+      return undefined;
+    }
+
+    return {
+      updateId: update.update_id,
+      callbackQueryId: callback.id,
+      chatId: chatId.toString(),
+      ...(telegramUserId === undefined ? {} : { telegramUserId: telegramUserId.toString() }),
+      data: callback.data
+    };
+  }
+}
+
+interface TelegramRawUpdate {
+  update_id: number;
+  callback_query?: {
+    id?: string;
+    from?: { id?: number };
+    message?: { chat?: { id?: number } };
+    data?: string;
+  };
 }
 
 export function createTelegramClient(config: AgentConfig): TelegramClient {

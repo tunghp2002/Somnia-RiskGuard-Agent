@@ -45,6 +45,23 @@ describe("agent runtime config", () => {
     expect(config.telegram.enabled).toBe(true);
   });
 
+  it("normalizes private keys without 0x and defaults empty model names", () => {
+    const privateKey = "b".repeat(64);
+    const config = validateConfig({
+      ...validEnv,
+      AGENT_PRIVATE_KEY: privateKey,
+      AGENT_WALLET_ADDRESS: new Wallet(`0x${privateKey}`).address,
+      GROQ_MODEL: "",
+      DEEPSEEK_MODEL: "",
+      DEAD_MAN_SWITCH_CONTRACT_ADDRESS: ""
+    });
+
+    expect(config.somnia.agentPrivateKey).toBe(`0x${privateKey}`);
+    expect(config.llm.groq.model).toBe("llama-3.3-70b-versatile");
+    expect(config.llm.deepSeek.model).toBe("deepseek-chat");
+    expect(config.somnia.deadManSwitchContractAddress).toBeUndefined();
+  });
+
   it("fails with safe diagnostics when required values are missing", () => {
     expect(() => validateConfig({})).toThrow(ConfigValidationError);
 

@@ -1,4 +1,4 @@
-export { main, runCli } from "./main.js";
+export { main, runCli, startAgentRuntime } from "./main.js";
 export {
   ConfigValidationError,
   agentEnvSchema,

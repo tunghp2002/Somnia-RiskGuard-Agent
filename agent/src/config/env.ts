@@ -9,17 +9,28 @@ const ethereumAddressSchema = z
   .regex(/^0x[a-fA-F0-9]{40}$/, "Must be a valid EVM address")
   .transform((value) => getAddress(value));
 
-const privateKeySchema = z
-  .string()
-  .regex(/^0x[a-fA-F0-9]{64}$/, "Must be a 32-byte hex private key")
-  .refine((value) => {
-    try {
-      new Wallet(value);
-      return true;
-    } catch {
-      return false;
-    }
-  }, "Must be a valid secp256k1 private key");
+const optionalEthereumAddressSchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  ethereumAddressSchema.optional()
+);
+
+const privateKeySchema = z.preprocess(
+  (value) =>
+    typeof value === "string" && /^[a-fA-F0-9]{64}$/.test(value)
+      ? `0x${value}`
+      : value,
+  z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{64}$/, "Must be a 32-byte hex private key")
+    .refine((value) => {
+      try {
+        new Wallet(value);
+        return true;
+      } catch {
+        return false;
+      }
+    }, "Must be a valid secp256k1 private key")
+);
 
 const optionalNonEmptyString = z.preprocess(
   (value) => (value === "" ? undefined : value),
@@ -49,6 +60,12 @@ const requiredNonEmptyString = (fieldName: string) =>
   z.string({ required_error: `${fieldName} is required` }).trim().min(1, {
     message: `${fieldName} is required`
   });
+
+const defaultModelString = (defaultValue: string) =>
+  z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().trim().min(1).default(defaultValue)
+  );
 
 const integerFromString = (fieldName: string) =>
   z
@@ -100,9 +117,9 @@ const rawEnvSchema = z
   AGENT_WALLET_ADDRESS: ethereumAddressSchema,
   AGENT_PRIVATE_KEY: privateKeySchema,
   GROQ_API_KEY: requiredNonEmptyString("GROQ_API_KEY"),
-  GROQ_MODEL: requiredNonEmptyString("GROQ_MODEL"),
+  GROQ_MODEL: defaultModelString("llama-3.3-70b-versatile"),
   DEEPSEEK_API_KEY: requiredNonEmptyString("DEEPSEEK_API_KEY"),
-  DEEPSEEK_MODEL: requiredNonEmptyString("DEEPSEEK_MODEL"),
+  DEEPSEEK_MODEL: defaultModelString("deepseek-chat"),
   RISK_SCORE_ALERT_THRESHOLD: integerFromString(
     "RISK_SCORE_ALERT_THRESHOLD"
   ).pipe(z.number().int().min(0).max(100)),
@@ -112,7 +129,7 @@ const rawEnvSchema = z
   HEARTBEAT_GRACE_SECONDS: integerFromString("HEARTBEAT_GRACE_SECONDS").pipe(
     z.number().int().positive()
   ),
-  DEAD_MAN_SWITCH_CONTRACT_ADDRESS: ethereumAddressSchema,
+  DEAD_MAN_SWITCH_CONTRACT_ADDRESS: optionalEthereumAddressSchema,
   AUTO_CLAIM_ENABLED: booleanFromString,
   MAX_CLAIM_GAS_USD: numberFromString("MAX_CLAIM_GAS_USD").pipe(
     z.number().nonnegative()
