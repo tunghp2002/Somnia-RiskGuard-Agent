@@ -13,6 +13,8 @@ import { SetupService } from "../services/setup.service.js";
 import type { TelegramAlertService } from "../services/telegram-alert.service.js";
 import { HeartbeatsRepository } from "../persistence/heartbeats.repository.js";
 import { HeartbeatService } from "../services/heartbeat.service.js";
+import { RewardClaimsRepository } from "../persistence/reward-claims.repository.js";
+import { RewardClaimService } from "../services/reward-claim.service.js";
 import { UsersRepository } from "../persistence/users.repository.js";
 import { createTestConfig } from "../test-helpers/env.js";
 
@@ -26,6 +28,7 @@ let portfolioSnapshots: PortfolioSnapshotsRepository;
 let riskSnapshots: RiskSnapshotsRepository;
 let telegramAlerts: TelegramAlertService;
 let heartbeats: HeartbeatService;
+let rewards: RewardClaimService;
 
 async function signedProof(signer: Wallet, purpose: string) {
   const proofMessage = `${purpose}: ${signer.address}`;
@@ -45,6 +48,15 @@ beforeEach(async () => {
   heartbeats = new HeartbeatService(
     new HeartbeatsRepository(dataDirectory),
     createTestConfig(),
+    undefined,
+    () => new Date("2026-05-14T00:00:00.000Z")
+  );
+  rewards = new RewardClaimService(
+    new RewardClaimsRepository(dataDirectory),
+    createTestConfig(),
+    undefined,
+    undefined,
+    undefined,
     undefined,
     () => new Date("2026-05-14T00:00:00.000Z")
   );
@@ -71,6 +83,7 @@ beforeEach(async () => {
     riskSnapshots,
     telegramAlerts,
     heartbeats,
+    rewards,
     health: () => ({ ok: true })
   });
   server.listen(0, "127.0.0.1");
@@ -337,5 +350,73 @@ describe("agent setup API", () => {
     expect(response.status).toBe(200);
     expect(payload.data.alertId).toBe("33333333-3333-4333-8333-333333333333");
     expect(telegramAlerts.sendRiskAlert).toHaveBeenCalledOnce();
+  });
+
+  it("exposes reward settings, fixture, status, run, and policy routes", async () => {
+    await fetch(`${baseUrl}/api/users`, {
+      method: "POST",
+      body: JSON.stringify({
+        walletAddress: wallet.address,
+        message,
+        signature
+      })
+    });
+    const target = Wallet.createRandom();
+
+    const settingsResponse = await fetch(`${baseUrl}/api/rewards/settings`, {
+      method: "POST",
+      body: JSON.stringify({
+        walletAddress: wallet.address,
+        autoClaimEnabled: true,
+        minRewardValueUsd: 1,
+        maxClaimGasUsd: 2
+      })
+    });
+    const fixtureResponse = await fetch(`${baseUrl}/api/rewards/fixtures`, {
+      method: "POST",
+      body: JSON.stringify({
+        walletAddress: wallet.address,
+        protocol: "Somnia Staking",
+        rewardToken: "STT",
+        valueUsd: 5,
+        gasUsd: 1,
+        target: target.address,
+        calldataSummary: "claimRewards()"
+      })
+    });
+    const statusResponse = await fetch(
+      `${baseUrl}/api/rewards/status?walletAddress=${wallet.address}`
+    );
+    const policyResponse = await fetch(`${baseUrl}/api/rewards/policy-check`, {
+      method: "POST",
+      body: JSON.stringify({
+        walletAddress: wallet.address,
+        actionType: "swap_all_rewards",
+        rewardValueUsd: 5,
+        gasUsd: 1,
+        target: target.address,
+        calldataSummary: "swapExactTokensForTokens(...)"
+      })
+    });
+    const runResponse = await fetch(`${baseUrl}/api/rewards/run`, {
+      method: "POST",
+      body: JSON.stringify({ walletAddress: wallet.address })
+    });
+
+    const settingsPayload = await settingsResponse.json();
+    const fixturePayload = await fixtureResponse.json();
+    const statusPayload = await statusResponse.json();
+    const policyPayload = await policyResponse.json();
+    const runPayload = await runResponse.json();
+
+    expect(settingsResponse.status).toBe(201);
+    expect(settingsPayload.data.settings.autoClaimEnabled).toBe(true);
+    expect(fixtureResponse.status).toBe(201);
+    expect(fixturePayload.data.rewardToken).toBe("STT");
+    expect(statusPayload.data.claimableRewards).toHaveLength(1);
+    expect(policyPayload.data.allowed).toBe(false);
+    expect(policyPayload.data.policyId).toBe("reward.action.unsupported");
+    expect(runPayload.data[0].claims[0].status).toBe("failed");
+    expect(runPayload.data[0].claims[0].reason).toBe("Somnia execution client is not configured");
   });
 });

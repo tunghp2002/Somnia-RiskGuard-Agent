@@ -22,6 +22,14 @@ import {
   heartbeatSettingsRequestSchema,
   type HeartbeatService
 } from "../services/heartbeat.service.js";
+import {
+  rewardFixtureRequestSchema,
+  RewardClaimServiceError,
+  rewardPolicyCheckRequestSchema,
+  rewardRunRequestSchema,
+  rewardSettingsRequestSchema,
+  type RewardClaimService
+} from "../services/reward-claim.service.js";
 
 const defaultMaxBodyBytes = 1_048_576;
 
@@ -89,6 +97,7 @@ export interface AgentApiDependencies {
   riskSnapshots?: RiskSnapshotsRepository;
   telegramAlerts?: TelegramAlertService;
   heartbeats?: HeartbeatService;
+  rewards?: RewardClaimService;
   health?: () => Promise<unknown> | unknown;
 }
 
@@ -208,6 +217,62 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/rewards/settings") {
+        if (!dependencies.rewards) {
+          throw new ServerDependencyError("Reward claim service is not configured");
+        }
+        const body = rewardSettingsRequestSchema.parse(await readJsonBody(request));
+        const status = await dependencies.rewards.configure(body);
+        sendJson(response, 201, success(status, requestId));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/rewards/status") {
+        if (!dependencies.rewards) {
+          throw new ServerDependencyError("Reward claim service is not configured");
+        }
+        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
+
+        if (!walletAddress) {
+          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
+          return;
+        }
+
+        const status = await dependencies.rewards.getStatus(walletAddress);
+        sendJson(response, 200, success(status, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/rewards/fixtures") {
+        if (!dependencies.rewards) {
+          throw new ServerDependencyError("Reward claim service is not configured");
+        }
+        const body = rewardFixtureRequestSchema.parse(await readJsonBody(request));
+        const fixture = await dependencies.rewards.addDemoFixture(body);
+        sendJson(response, 201, success(fixture, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/rewards/run") {
+        if (!dependencies.rewards) {
+          throw new ServerDependencyError("Reward claim service is not configured");
+        }
+        const body = rewardRunRequestSchema.parse(await readJsonBody(request));
+        const result = await dependencies.rewards.run(body);
+        sendJson(response, 200, success(result, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/rewards/policy-check") {
+        if (!dependencies.rewards) {
+          throw new ServerDependencyError("Reward claim service is not configured");
+        }
+        const body = rewardPolicyCheckRequestSchema.parse(await readJsonBody(request));
+        const decision = await dependencies.rewards.evaluatePolicy(body);
+        sendJson(response, 200, success(decision, requestId));
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/telegram/health") {
         if (!dependencies.telegramAlerts) {
           throw new ServerDependencyError("Telegram alert service is not configured");
@@ -292,6 +357,11 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
       }
 
       if (error instanceof HeartbeatServiceError) {
+        sendJson(response, error.statusCode, failure(error.code, error.message));
+        return;
+      }
+
+      if (error instanceof RewardClaimServiceError) {
         sendJson(response, error.statusCode, failure(error.code, error.message));
         return;
       }

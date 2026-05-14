@@ -18,6 +18,7 @@ import { RiskSnapshotsRepository } from "./persistence/risk-snapshots.repository
 import { TelegramBindingsRepository } from "./persistence/telegram-bindings.repository.js";
 import { UsersRepository } from "./persistence/users.repository.js";
 import { HeartbeatsRepository } from "./persistence/heartbeats.repository.js";
+import { RewardClaimsRepository } from "./persistence/reward-claims.repository.js";
 import { DeepSeekClient } from "./integrations/llm/deepseek.client.js";
 import { GroqClient } from "./integrations/llm/groq.client.js";
 import {
@@ -26,11 +27,14 @@ import {
   type TelegramPollingHandle
 } from "./integrations/telegram/telegram.client.js";
 import { EthersDeadManSwitchStateReader } from "./integrations/somnia/deadman-switch.client.js";
+import { createSomniaAgentKitClient } from "./integrations/somnia/somnia-agent-kit.client.js";
 import { AuditService } from "./services/audit.service.js";
 import { TelegramHeartbeatReminderNotifier } from "./services/heartbeat-reminder-notifier.js";
+import { TelegramRewardClaimNotifier } from "./services/reward-claim-notifier.js";
 import { RiskScoreService } from "./services/risk-score.service.js";
 import { SetupService } from "./services/setup.service.js";
 import { HeartbeatService } from "./services/heartbeat.service.js";
+import { RewardClaimService } from "./services/reward-claim.service.js";
 import { TelegramAlertService } from "./services/telegram-alert.service.js";
 
 export interface MainOptions extends LoadConfigOptions {
@@ -73,9 +77,11 @@ export async function startAgentRuntime(
   const riskSnapshots = new RiskSnapshotsRepository();
   const telegramBindings = new TelegramBindingsRepository();
   const heartbeatsRepository = new HeartbeatsRepository();
+  const rewardClaims = new RewardClaimsRepository();
   const alerts = new AlertsRepository();
   const actionNonces = new ActionNoncesRepository();
   const telegramClient = options.telegramClient ?? createTelegramClient(config);
+  const somnia = createSomniaAgentKitClient(config);
   const riskScore = new RiskScoreService(config, riskSnapshots, audit, {
     primary: new GroqClient(config),
     fallback: new DeepSeekClient(config)
@@ -96,6 +102,11 @@ export async function startAgentRuntime(
     telegramBindings,
     telegramClient
   );
+  const rewardClaimNotifier = new TelegramRewardClaimNotifier(
+    telegramBindings,
+    telegramClient,
+    audit
+  );
   const deadManSwitchReader = new EthersDeadManSwitchStateReader(config);
   const heartbeats = new HeartbeatService(
     heartbeatsRepository,
@@ -105,12 +116,21 @@ export async function startAgentRuntime(
     heartbeatReminderNotifier,
     deadManSwitchReader
   );
+  const rewards = new RewardClaimService(
+    rewardClaims,
+    config,
+    audit,
+    somnia,
+    rewardClaimNotifier,
+    users
+  );
   const apiServer = createAgentApiServer({
     setupService,
     portfolioSnapshots,
     riskSnapshots,
     telegramAlerts,
     heartbeats,
+    rewards,
     health: async () => ({
       ok: true,
       telegram: await telegramAlerts.health()

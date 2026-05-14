@@ -76,12 +76,12 @@ development_status:
   4-6-prevent-premature-dead-man-s-switch-execution: done
   epic-4-retrospective: optional
 
-  epic-5: backlog
-  5-1-detect-claimable-rewards: backlog
-  5-2-apply-reward-claim-value-and-gas-policies: backlog
-  5-3-execute-eligible-reward-claims-through-agent-wallet: backlog
-  5-4-record-and-notify-reward-claim-outcomes: backlog
-  5-5-block-unsupported-autonomous-actions: backlog
+  epic-5: done
+  5-1-detect-claimable-rewards: done
+  5-2-apply-reward-claim-value-and-gas-policies: done
+  5-3-execute-eligible-reward-claims-through-agent-wallet: done
+  5-4-record-and-notify-reward-claim-outcomes: done
+  5-5-block-unsupported-autonomous-actions: done
   epic-5-retrospective: optional
 
   epic-6: backlog
