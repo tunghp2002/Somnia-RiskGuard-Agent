@@ -15,6 +15,13 @@ import {
   TelegramAlertServiceError,
   type TelegramAlertService
 } from "../services/telegram-alert.service.js";
+import {
+  deadmanPolicyRequestSchema,
+  heartbeatCheckInRequestSchema,
+  HeartbeatServiceError,
+  heartbeatSettingsRequestSchema,
+  type HeartbeatService
+} from "../services/heartbeat.service.js";
 
 const defaultMaxBodyBytes = 1_048_576;
 
@@ -81,6 +88,7 @@ export interface AgentApiDependencies {
   portfolioSnapshots?: PortfolioSnapshotsRepository;
   riskSnapshots?: RiskSnapshotsRepository;
   telegramAlerts?: TelegramAlertService;
+  heartbeats?: HeartbeatService;
   health?: () => Promise<unknown> | unknown;
 }
 
@@ -131,6 +139,72 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
           ? await dependencies.health()
           : { ok: true };
         sendJson(response, 200, success(health, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/heartbeats/settings") {
+        if (!dependencies.heartbeats) {
+          throw new ServerDependencyError("Heartbeat service is not configured");
+        }
+        const body = heartbeatSettingsRequestSchema.parse(await readJsonBody(request));
+        const status = await dependencies.heartbeats.configure(body);
+        sendJson(response, 201, success(status, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/heartbeats/check-in") {
+        if (!dependencies.heartbeats) {
+          throw new ServerDependencyError("Heartbeat service is not configured");
+        }
+        const body = heartbeatCheckInRequestSchema.parse(await readJsonBody(request));
+        const status = await dependencies.heartbeats.checkIn(body);
+        sendJson(response, 200, success(status, requestId));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/heartbeats/status") {
+        if (!dependencies.heartbeats) {
+          throw new ServerDependencyError("Heartbeat service is not configured");
+        }
+        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
+
+        if (!walletAddress) {
+          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
+          return;
+        }
+
+        const status = await dependencies.heartbeats.getStatus(walletAddress);
+        sendJson(response, 200, success(status ?? null, requestId));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/heartbeats/beneficiary-status") {
+        if (!dependencies.heartbeats) {
+          throw new ServerDependencyError("Heartbeat service is not configured");
+        }
+        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
+        const beneficiaryAddress = parseOptionalWalletAddress(url.searchParams.get("beneficiaryAddress"));
+
+        if (!walletAddress) {
+          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
+          return;
+        }
+
+        const status = await dependencies.heartbeats.getBeneficiaryStatus(
+          walletAddress,
+          beneficiaryAddress
+        );
+        sendJson(response, 200, success(status ?? null, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/deadman/policy-check") {
+        if (!dependencies.heartbeats) {
+          throw new ServerDependencyError("Heartbeat service is not configured");
+        }
+        const body = deadmanPolicyRequestSchema.parse(await readJsonBody(request));
+        const decision = await dependencies.heartbeats.evaluateExecution(body);
+        sendJson(response, 200, success(decision, requestId));
         return;
       }
 
@@ -213,6 +287,11 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
       }
 
       if (error instanceof TelegramAlertServiceError) {
+        sendJson(response, error.statusCode, failure(error.code, error.message));
+        return;
+      }
+
+      if (error instanceof HeartbeatServiceError) {
         sendJson(response, error.statusCode, failure(error.code, error.message));
         return;
       }

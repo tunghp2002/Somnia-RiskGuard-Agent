@@ -14,6 +14,15 @@ export { createAgentApiServer } from "./api/server.js";
 export { failure, sendJson, success } from "./api/response.js";
 export { AuditService } from "./services/audit.service.js";
 export { SetupService, setupWalletRequestSchema } from "./services/setup.service.js";
+export {
+  HeartbeatService,
+  HeartbeatServiceError,
+  type HeartbeatReminderNotifier,
+  deadmanPolicyRequestSchema,
+  heartbeatCheckInRequestSchema,
+  heartbeatSettingsRequestSchema
+} from "./services/heartbeat.service.js";
+export { TelegramHeartbeatReminderNotifier } from "./services/heartbeat-reminder-notifier.js";
 export { PortfolioService } from "./services/portfolio.service.js";
 export { RiskScoreService } from "./services/risk-score.service.js";
 export {
@@ -23,9 +32,15 @@ export {
   telegramCallbackRequestSchema
 } from "./services/telegram-alert.service.js";
 export { PortfolioMonitorJob } from "./jobs/portfolio-monitor.job.js";
+export { HeartbeatJob } from "./jobs/heartbeat.job.js";
 export { AuditEventsRepository, auditEventSchema } from "./persistence/audit-events.repository.js";
 export { AlertsRepository, alertRecordSchema } from "./persistence/alerts.repository.js";
 export { UsersRepository, userSchema } from "./persistence/users.repository.js";
+export {
+  HeartbeatsRepository,
+  heartbeatRecordSchema,
+  heartbeatContractStateSchema
+} from "./persistence/heartbeats.repository.js";
 export {
   TelegramBindingsRepository,
   telegramBindingSchema
@@ -48,6 +63,10 @@ export {
   evaluateTelegramSafeActionApproval,
   policyDecisionSchema
 } from "./policies/execution-policy.js";
+export {
+  deadmanExecutionPolicyInputSchema,
+  evaluateDeadmanExecutionPolicy
+} from "./policies/deadman-policy.js";
 export { GroqClient } from "./integrations/llm/groq.client.js";
 export { DeepSeekClient } from "./integrations/llm/deepseek.client.js";
 export {
@@ -75,3 +94,7 @@ export {
   SomniaIntegrationUnavailableError,
   createSomniaAgentKitClient
 } from "./integrations/somnia/somnia-agent-kit.client.js";
+export {
+  EthersDeadManSwitchStateReader,
+  type DeadManSwitchStateReader
+} from "./integrations/somnia/deadman-switch.client.js";

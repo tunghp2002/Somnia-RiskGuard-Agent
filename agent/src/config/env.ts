@@ -57,7 +57,7 @@ const optionalTelegramBotToken = z.preprocess(
 );
 
 const requiredNonEmptyString = (fieldName: string) =>
-  z.string({ required_error: `${fieldName} is required` }).trim().min(1, {
+  z.string({ error: `${fieldName} is required` }).trim().min(1, {
     message: `${fieldName} is required`
   });
 
@@ -69,7 +69,7 @@ const defaultModelString = (defaultValue: string) =>
 
 const integerFromString = (fieldName: string) =>
   z
-    .string({ required_error: `${fieldName} is required` })
+    .string({ error: `${fieldName} is required` })
     .regex(/^-?\d+$/, "Must be an integer string")
     .refine((value) => Number.isSafeInteger(Number(value)), {
       message: "Must be a safe integer"
@@ -78,12 +78,12 @@ const integerFromString = (fieldName: string) =>
 
 const numberFromString = (fieldName: string) =>
   z
-    .string({ required_error: `${fieldName} is required` })
+    .string({ error: `${fieldName} is required` })
     .regex(/^-?\d+(\.\d+)?$/, "Must be a number string")
     .transform((value) => Number(value));
 
 const booleanFromString = z
-  .string({ required_error: "AUTO_CLAIM_ENABLED is required" })
+  .string({ error: "AUTO_CLAIM_ENABLED is required" })
   .transform((value, context) => {
     if (value === "true") {
       return true;
@@ -261,7 +261,10 @@ export function loadConfig(options: LoadConfigOptions = {}): AgentConfig {
 export function formatConfigError(error: ConfigValidationError): string {
   const lines = error.issues.map((issue) => {
     const field = issue.path.join(".") || "ENV";
-    return `- ${field}: ${issue.message}`;
+    const message = issue.message.includes("received undefined")
+      ? `${field} is required`
+      : issue.message;
+    return `- ${field}: ${message}`;
   });
 
   return ["Agent runtime configuration is invalid:", ...lines].join("\n");

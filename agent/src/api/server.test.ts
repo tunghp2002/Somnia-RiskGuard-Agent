@@ -11,6 +11,8 @@ import { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots
 import { RiskSnapshotsRepository } from "../persistence/risk-snapshots.repository.js";
 import { SetupService } from "../services/setup.service.js";
 import type { TelegramAlertService } from "../services/telegram-alert.service.js";
+import { HeartbeatsRepository } from "../persistence/heartbeats.repository.js";
+import { HeartbeatService } from "../services/heartbeat.service.js";
 import { UsersRepository } from "../persistence/users.repository.js";
 import { createTestConfig } from "../test-helpers/env.js";
 
@@ -23,6 +25,15 @@ let signature: string;
 let portfolioSnapshots: PortfolioSnapshotsRepository;
 let riskSnapshots: RiskSnapshotsRepository;
 let telegramAlerts: TelegramAlertService;
+let heartbeats: HeartbeatService;
+
+async function signedProof(signer: Wallet, purpose: string) {
+  const proofMessage = `${purpose}: ${signer.address}`;
+  return {
+    message: proofMessage,
+    signature: await signer.signMessage(proofMessage)
+  };
+}
 
 beforeEach(async () => {
   dataDirectory = await mkdtemp(join(tmpdir(), "riskguard-api-"));
@@ -31,6 +42,12 @@ beforeEach(async () => {
   signature = await wallet.signMessage(message);
   portfolioSnapshots = new PortfolioSnapshotsRepository(dataDirectory);
   riskSnapshots = new RiskSnapshotsRepository(dataDirectory);
+  heartbeats = new HeartbeatService(
+    new HeartbeatsRepository(dataDirectory),
+    createTestConfig(),
+    undefined,
+    () => new Date("2026-05-14T00:00:00.000Z")
+  );
   const setupService = new SetupService(
     new UsersRepository(dataDirectory),
     createTestConfig()
@@ -53,6 +70,7 @@ beforeEach(async () => {
     portfolioSnapshots,
     riskSnapshots,
     telegramAlerts,
+    heartbeats,
     health: () => ({ ok: true })
   });
   server.listen(0, "127.0.0.1");
@@ -256,6 +274,49 @@ describe("agent setup API", () => {
     expect(healthPayload.data.ok).toBe(true);
     expect(bindResponse.status).toBe(201);
     expect(bindPayload.data.chatId).toBe("987654321");
+  });
+
+  it("exposes heartbeat settings, status, beneficiary status, and policy routes", async () => {
+    const beneficiary = Wallet.createRandom();
+    const configureProof = await signedProof(wallet, "Configure heartbeat");
+    const policyProof = await signedProof(beneficiary, "Deadman policy check");
+    const configureResponse = await fetch(`${baseUrl}/api/heartbeats/settings`, {
+      method: "POST",
+      body: JSON.stringify({
+        walletAddress: wallet.address,
+        beneficiaryAddress: beneficiary.address,
+        intervalSeconds: 100,
+        graceSeconds: 50,
+        timelockSeconds: 75,
+        reminderLeadSeconds: 25,
+        ...configureProof
+      })
+    });
+    const statusResponse = await fetch(
+      `${baseUrl}/api/heartbeats/status?walletAddress=${wallet.address}`
+    );
+    const beneficiaryResponse = await fetch(
+      `${baseUrl}/api/heartbeats/beneficiary-status?walletAddress=${wallet.address}&beneficiaryAddress=${beneficiary.address}`
+    );
+    const policyResponse = await fetch(`${baseUrl}/api/deadman/policy-check`, {
+      method: "POST",
+      body: JSON.stringify({
+        walletAddress: wallet.address,
+        requestedBy: beneficiary.address,
+        ...policyProof
+      })
+    });
+
+    const configurePayload = await configureResponse.json();
+    const statusPayload = await statusResponse.json();
+    const beneficiaryPayload = await beneficiaryResponse.json();
+    const policyPayload = await policyResponse.json();
+
+    expect(configureResponse.status).toBe(201);
+    expect(configurePayload.data.nextDeadlineAt).toBe("2026-05-14T00:01:40.000Z");
+    expect(statusPayload.data.state).toBe("healthy");
+    expect(beneficiaryPayload.data.executionAvailable).toBe(false);
+    expect(policyPayload.data.allowed).toBe(false);
   });
 
   it("sends a test Telegram alert from the latest risk snapshot", async () => {

@@ -17,7 +17,7 @@ export const auditEventSchema = z.object({
   createdAt: z.string().datetime(),
   eventType: z.string().min(1),
   status: auditEventStatusSchema,
-  metadata: z.record(z.unknown())
+  metadata: z.record(z.string(), z.unknown())
 });
 
 export const auditEventsSchema = z.array(auditEventSchema);

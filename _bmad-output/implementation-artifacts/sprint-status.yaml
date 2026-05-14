@@ -1,5 +1,5 @@
 # generated: 2026-05-11
-# last_updated: 2026-05-13
+# last_updated: 2026-05-14
 # project: Somnia RiskGuard Agent
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-11
-last_updated: 2026-05-13
+last_updated: 2026-05-14
 project: Somnia RiskGuard Agent
 project_key: NOKEY
 tracking_system: file-system
@@ -67,13 +67,13 @@ development_status:
   3-5-route-safe-action-approvals-through-policy-gates: done
   epic-3-retrospective: optional
 
-  epic-4: backlog
-  4-1-implement-foundry-dead-man-s-switch-contract-baseline: backlog
-  4-2-configure-heartbeat-settings-and-check-ins: backlog
-  4-3-send-heartbeat-reminders-before-expiry: backlog
-  4-4-enforce-expiry-and-timelock-contract-behavior: backlog
-  4-5-expose-beneficiary-safe-status: backlog
-  4-6-prevent-premature-dead-man-s-switch-execution: backlog
+  epic-4: done
+  4-1-implement-foundry-dead-man-s-switch-contract-baseline: done
+  4-2-configure-heartbeat-settings-and-check-ins: done
+  4-3-send-heartbeat-reminders-before-expiry: done
+  4-4-enforce-expiry-and-timelock-contract-behavior: done
+  4-5-expose-beneficiary-safe-status: done
+  4-6-prevent-premature-dead-man-s-switch-execution: done
   epic-4-retrospective: optional
 
   epic-5: backlog

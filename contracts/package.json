@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "forge build",
-    "test": "forge test",
-    "format": "forge fmt",
-    "clean": "forge clean"
+    "build": "node scripts/foundry.mjs build",
+    "test": "node scripts/foundry.mjs test",
+    "format": "node scripts/foundry.mjs fmt",
+    "clean": "node scripts/foundry.mjs clean"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.6.1"
   }
 }

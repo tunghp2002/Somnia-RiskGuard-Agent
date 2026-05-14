@@ -17,6 +17,7 @@ import { PortfolioSnapshotsRepository } from "./persistence/portfolio-snapshots.
 import { RiskSnapshotsRepository } from "./persistence/risk-snapshots.repository.js";
 import { TelegramBindingsRepository } from "./persistence/telegram-bindings.repository.js";
 import { UsersRepository } from "./persistence/users.repository.js";
+import { HeartbeatsRepository } from "./persistence/heartbeats.repository.js";
 import { DeepSeekClient } from "./integrations/llm/deepseek.client.js";
 import { GroqClient } from "./integrations/llm/groq.client.js";
 import {
@@ -24,9 +25,12 @@ import {
   type TelegramClient,
   type TelegramPollingHandle
 } from "./integrations/telegram/telegram.client.js";
+import { EthersDeadManSwitchStateReader } from "./integrations/somnia/deadman-switch.client.js";
 import { AuditService } from "./services/audit.service.js";
+import { TelegramHeartbeatReminderNotifier } from "./services/heartbeat-reminder-notifier.js";
 import { RiskScoreService } from "./services/risk-score.service.js";
 import { SetupService } from "./services/setup.service.js";
+import { HeartbeatService } from "./services/heartbeat.service.js";
 import { TelegramAlertService } from "./services/telegram-alert.service.js";
 
 export interface MainOptions extends LoadConfigOptions {
@@ -68,6 +72,7 @@ export async function startAgentRuntime(
   const portfolioSnapshots = new PortfolioSnapshotsRepository();
   const riskSnapshots = new RiskSnapshotsRepository();
   const telegramBindings = new TelegramBindingsRepository();
+  const heartbeatsRepository = new HeartbeatsRepository();
   const alerts = new AlertsRepository();
   const actionNonces = new ActionNoncesRepository();
   const telegramClient = options.telegramClient ?? createTelegramClient(config);
@@ -87,11 +92,25 @@ export async function startAgentRuntime(
     audit
   );
   const setupService = new SetupService(users, config, audit);
+  const heartbeatReminderNotifier = new TelegramHeartbeatReminderNotifier(
+    telegramBindings,
+    telegramClient
+  );
+  const deadManSwitchReader = new EthersDeadManSwitchStateReader(config);
+  const heartbeats = new HeartbeatService(
+    heartbeatsRepository,
+    config,
+    audit,
+    undefined,
+    heartbeatReminderNotifier,
+    deadManSwitchReader
+  );
   const apiServer = createAgentApiServer({
     setupService,
     portfolioSnapshots,
     riskSnapshots,
     telegramAlerts,
+    heartbeats,
     health: async () => ({
       ok: true,
       telegram: await telegramAlerts.health()
