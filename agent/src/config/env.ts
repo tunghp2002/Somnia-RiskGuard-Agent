@@ -116,6 +116,7 @@ const rawEnvSchema = z
   ),
   AGENT_WALLET_ADDRESS: ethereumAddressSchema,
   AGENT_PRIVATE_KEY: privateKeySchema,
+  MONITORED_WALLET_ADDRESS: optionalEthereumAddressSchema,
   GROQ_API_KEY: requiredNonEmptyString("GROQ_API_KEY"),
   GROQ_MODEL: defaultModelString("llama-3.3-70b-versatile"),
   DEEPSEEK_API_KEY: requiredNonEmptyString("DEEPSEEK_API_KEY"),
@@ -188,6 +189,7 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
     chainId: env.SOMNIA_CHAIN_ID,
     agentWalletAddress: env.AGENT_WALLET_ADDRESS,
     agentPrivateKey: env.AGENT_PRIVATE_KEY,
+    monitoredWalletAddress: env.MONITORED_WALLET_ADDRESS,
     deadManSwitchContractAddress: env.DEAD_MAN_SWITCH_CONTRACT_ADDRESS
   },
   llm: {

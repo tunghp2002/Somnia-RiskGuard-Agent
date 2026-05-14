@@ -39,6 +39,36 @@ import {
 const defaultMaxBodyBytes = 1_048_576;
 const sensitiveResponseKeyPattern =
   /(private[_-]?key|api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|authorization|cookie|password|credential)/i;
+const corsRequestHeaders = "content-type, x-riskguard-request-id";
+
+function isAllowedDevOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    const hostname = url.hostname.toLowerCase();
+
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname.startsWith("192.168.") ||
+      hostname.startsWith("10.") ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function applyCorsHeaders(request: IncomingMessage, response: Parameters<typeof sendJson>[0]) {
+  const origin = request.headers.origin;
+
+  if (origin && isAllowedDevOrigin(origin)) {
+    response.setHeader("Access-Control-Allow-Origin", origin);
+    response.setHeader("Vary", "Origin");
+  }
+
+  response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  response.setHeader("Access-Control-Allow-Headers", corsRequestHeaders);
+}
 
 class PayloadTooLargeError extends Error {
   public constructor() {
@@ -142,6 +172,14 @@ export interface AgentApiDependencies {
 
 export function createAgentApiServer(dependencies: AgentApiDependencies): Server {
   return createServer(async (request, response) => {
+    applyCorsHeaders(request, response);
+
+    if (request.method === "OPTIONS") {
+      response.statusCode = 204;
+      response.end();
+      return;
+    }
+
     const requestId = request.headers["x-riskguard-request-id"]?.toString() ?? randomUUID();
     const url = new URL(request.url ?? "/", "http://localhost");
 

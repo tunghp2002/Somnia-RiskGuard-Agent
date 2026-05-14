@@ -147,12 +147,24 @@ export interface DemoScenarioResult {
   createdAt: string;
 }
 
-const agentApiBaseUrl =
-  process.env.NEXT_PUBLIC_AGENT_API_BASE_URL?.replace(/\/$/, "") ??
-  "http://127.0.0.1:3001";
+function getAgentApiBaseUrl() {
+  const configured =
+    process.env.NEXT_PUBLIC_AGENT_API_BASE_URL ??
+    process.env.NEXT_PUBLIC_AGENT_API_URL;
+
+  if (configured) {
+    return configured.replace(/\/$/, "");
+  }
+
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:3001`;
+  }
+
+  return "http://127.0.0.1:3001";
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${agentApiBaseUrl}${path}`, {
+  const response = await fetch(`${getAgentApiBaseUrl()}${path}`, {
     ...init,
     headers: {
       "content-type": "application/json",

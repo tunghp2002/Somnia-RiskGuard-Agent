@@ -37,6 +37,10 @@ import { DemoScenarioService } from "./services/demo-scenario.service.js";
 import { HeartbeatService } from "./services/heartbeat.service.js";
 import { RewardClaimService } from "./services/reward-claim.service.js";
 import { TelegramAlertService } from "./services/telegram-alert.service.js";
+import { PortfolioService } from "./services/portfolio.service.js";
+import { PortfolioMonitorJob } from "./jobs/portfolio-monitor.job.js";
+import { HeartbeatJob } from "./jobs/heartbeat.job.js";
+import { RewardClaimJob } from "./jobs/reward-claim.job.js";
 
 export interface MainOptions extends LoadConfigOptions {
   startRuntime?: (config: AgentConfig) => Promise<void> | void;
@@ -52,6 +56,7 @@ export interface AgentRuntime {
 export interface StartAgentRuntimeOptions {
   apiPort?: number;
   telegramClient?: TelegramClient;
+  startJobs?: boolean;
 }
 
 export async function main(options: MainOptions = {}): Promise<AgentConfig> {
@@ -125,6 +130,20 @@ export async function startAgentRuntime(
     rewardClaimNotifier,
     users
   );
+  const portfolioService = new PortfolioService(
+    users,
+    portfolioSnapshots,
+    audit,
+    undefined,
+    { demoMode: true }
+  );
+  const portfolioMonitorJob = new PortfolioMonitorJob(
+    portfolioService,
+    riskScore,
+    telegramAlerts
+  );
+  const heartbeatJob = new HeartbeatJob(heartbeats);
+  const rewardClaimJob = new RewardClaimJob(rewards);
   const demoScenarios = new DemoScenarioService(
     users,
     portfolioSnapshots,
@@ -148,6 +167,19 @@ export async function startAgentRuntime(
       telegram: await telegramAlerts.health()
     })
   });
+
+  if (config.somnia.monitoredWalletAddress) {
+    await users.upsertMonitoredWallet(config.somnia.monitoredWalletAddress);
+    await audit.record({
+      eventType: "setup.wallet.bootstrapped",
+      status: "succeeded",
+      metadata: {
+        walletAddress: config.somnia.monitoredWalletAddress,
+        source: "MONITORED_WALLET_ADDRESS"
+      }
+    });
+  }
+
   const requestedPort = options.apiPort ?? 3001;
   await listen(apiServer, requestedPort);
   const address = apiServer.address();
@@ -166,26 +198,90 @@ export async function startAgentRuntime(
   logger.info(
     {
       apiPort,
+      apiHost: "0.0.0.0",
       telegram: await telegramAlerts.health()
     },
     "agent runtime started"
   );
+
+  const jobTimers = options.startJobs === false
+    ? []
+    : startRuntimeJobs({
+        logger,
+        portfolioMonitorJob,
+        heartbeatJob,
+        rewardClaimJob
+      });
 
   return {
     apiServer,
     apiPort,
     ...(telegramPolling ? { telegramPolling } : {}),
     async stop() {
+      for (const timer of jobTimers) {
+        clearInterval(timer);
+      }
       telegramPolling?.stop();
       await close(apiServer);
     }
   };
 }
 
+function startRuntimeJobs({
+  logger,
+  portfolioMonitorJob,
+  heartbeatJob,
+  rewardClaimJob
+}: {
+  logger: ReturnType<typeof createLogger>;
+  portfolioMonitorJob: PortfolioMonitorJob;
+  heartbeatJob: HeartbeatJob;
+  rewardClaimJob: RewardClaimJob;
+}) {
+  const timers: NodeJS.Timeout[] = [];
+
+  const schedule = (
+    name: string,
+    intervalMs: number,
+    run: () => Promise<unknown>
+  ) => {
+    let running = false;
+
+    const tick = async () => {
+      if (running) {
+        logger.warn({ job: name }, "agent job skipped because previous run is still active");
+        return;
+      }
+
+      running = true;
+      try {
+        const result = await run();
+        logger.debug({ job: name, result }, "agent job completed");
+      } catch (error) {
+        logger.error(
+          { job: name, error: error instanceof Error ? error.message : "unknown error" },
+          "agent job failed"
+        );
+      } finally {
+        running = false;
+      }
+    };
+
+    void tick();
+    timers.push(setInterval(() => void tick(), intervalMs));
+  };
+
+  schedule("portfolio-monitor", 30_000, () => portfolioMonitorJob.runOnce());
+  schedule("heartbeat-reminders", 60_000, () => heartbeatJob.runOnce());
+  schedule("reward-claims", 60_000, () => rewardClaimJob.runOnce());
+
+  return timers;
+}
+
 function listen(server: Server, port: number) {
   return new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, "127.0.0.1", () => {
+    server.listen(port, "0.0.0.0", () => {
       server.off("error", reject);
       resolve();
     });

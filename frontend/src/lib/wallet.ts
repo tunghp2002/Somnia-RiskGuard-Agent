@@ -58,3 +58,16 @@ export async function signWalletMessage(message: string): Promise<string> {
     params: [message, address]
   });
 }
+
+export async function disconnectBrowserWallet(): Promise<void> {
+  const provider = getProvider();
+
+  try {
+    await provider.request({
+      method: "wallet_revokePermissions",
+      params: [{ eth_accounts: {} }]
+    });
+  } catch {
+    // Some wallets do not expose programmatic disconnect; the UI still clears local state.
+  }
+}

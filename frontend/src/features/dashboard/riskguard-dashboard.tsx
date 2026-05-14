@@ -34,7 +34,12 @@ import {
   type RewardStatus,
   type RiskSnapshot
 } from "@/lib/agent-api";
-import { connectBrowserWallet, signWalletMessage, type BrowserWalletState } from "@/lib/wallet";
+import {
+  connectBrowserWallet,
+  disconnectBrowserWallet,
+  signWalletMessage,
+  type BrowserWalletState
+} from "@/lib/wallet";
 import { GuardianSettings } from "@/features/settings/guardian-settings";
 
 type Notice = { tone: "ok" | "warn" | "bad"; message: string };
@@ -144,7 +149,7 @@ export function RiskGuardDashboard() {
 
   const activeWalletAddress = mode === "simulation"
     ? demoWalletAddress
-    : wallet?.address ?? readiness?.monitoredWallet.walletAddress;
+    : wallet?.address;
   const guardianReady = Boolean(readiness?.agentWallet.ready && readiness.monitoredWallet.ready);
   const riskScore = risk?.score ?? 0;
   const riskTone = riskScore >= 75 ? "bad" : riskScore >= 50 ? "warn" : "ok";
@@ -263,6 +268,23 @@ export function RiskGuardDashboard() {
       const nextWallet = await connectBrowserWallet();
       setWallet(nextWallet);
       setNotice({ tone: "ok", message: "Browser wallet connected. Backend agent wallet remains separate." });
+    } catch (error) {
+      setNotice({ tone: "bad", message: errorMessage(error) });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleDisconnectWallet() {
+    setActionLoading("wallet");
+    try {
+      await disconnectBrowserWallet();
+      setWallet(null);
+      setPortfolio(null);
+      setRisk(null);
+      setHeartbeat(null);
+      setRewards(null);
+      setNotice({ tone: "ok", message: "Browser wallet disconnected from this dashboard." });
     } catch (error) {
       setNotice({ tone: "bad", message: errorMessage(error) });
     } finally {
@@ -414,9 +436,15 @@ export function RiskGuardDashboard() {
               Testnet
             </button>
           </div>
-          <button className="primary-button" onClick={handleConnectWallet} type="button">
-            {actionLoading === "wallet" ? <Loader2 className="spin" size={16} /> : <Wallet size={16} />}
-            {wallet ? formatAddress(wallet.address) : "Connect Wallet"}
+          <button
+            className="primary-button"
+            onClick={wallet ? handleDisconnectWallet : handleConnectWallet}
+            type="button"
+          >
+            {actionLoading === "wallet"
+              ? <Loader2 className="spin" size={16} />
+              : wallet ? <XCircle size={16} /> : <Wallet size={16} />}
+            {wallet ? `Disconnect ${formatAddress(wallet.address)}` : "Connect Wallet"}
           </button>
         </div>
       </header>

@@ -22,6 +22,9 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 
+# Local agent runtime state
+agent/src/persistence/data/
+
 # OS / editors
 .DS_Store
 Thumbs.db

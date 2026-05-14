@@ -34,7 +34,9 @@ child.on("error", (error) => {
         "Foundry forge was not found.",
         "Install Foundry first, then rerun the command:",
         "  Linux/WSL: curl -L https://foundry.paradigm.xyz | bash && foundryup",
-        "  Windows:  iwr https://foundry.paradigm.xyz -UseBasicParsing | iex; foundryup",
+        "  Windows:  use Git Bash or WSL; foundryup does not support PowerShell/Cmd",
+        "            curl -L https://foundry.paradigm.xyz | bash && foundryup",
+        "            or install a Windows release archive from https://github.com/foundry-rs/foundry/releases",
         "You can also set FOUNDRY_FORGE to the full forge executable path.",
       ].join("\n"),
     );

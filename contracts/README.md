@@ -25,11 +25,16 @@ curl -L https://foundry.paradigm.xyz | bash
 foundryup
 ```
 
-```powershell
-# Windows PowerShell
-iwr https://foundry.paradigm.xyz -UseBasicParsing | iex
+```bash
+# Windows: Git Bash or WSL
+curl -L https://foundry.paradigm.xyz | bash
 foundryup
 ```
+
+Foundryup does not support Windows PowerShell or Cmd. If you stay in PowerShell,
+download the Windows release archive from
+<https://github.com/foundry-rs/foundry/releases> and place `forge.exe` in
+`%USERPROFILE%\.foundry\bin`, or set `FOUNDRY_FORGE` to the full path.
 
 The JavaScript workspace installs OpenZeppelin through pnpm; Foundry resolves it through the remapping in `foundry.toml`.
 
