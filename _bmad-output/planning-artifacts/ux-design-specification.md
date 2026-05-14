@@ -413,7 +413,7 @@ Telegram-style quick actions should show one primary action and at most one or t
 
 ### Feedback Patterns
 
-RiskGuard should treat success, skip, denial, pending, and failure as first-class outcomes. Success feedback confirms what happened and includes transaction hash when available. Skip feedback explains why no action was needed. Denial feedback explains the policy or contract rule that blocked action. Pending feedback includes exact time or condition needed. Failure feedback states that the system failed closed and records what subsystem failed.
+RiskGuard should treat success, skip, denial, pending, disconnected, unavailable, and adapter-disabled states as first-class outcomes. The dashboard must allow browser-wallet disconnect, must remain usable when the agent API is unavailable, and must label whether each visible result is simulation-backed, demo-fixture-backed, or Somnia Testnet-backed. Success feedback confirms what happened and includes transaction hash when available. Skip feedback explains why no action was needed. Denial feedback explains the policy or contract rule that blocked action. Pending feedback includes exact time or condition needed. Failure feedback states that the system failed closed and records what subsystem failed.
 
 Feedback should use both text and semantic badge/icon treatment. Color alone is insufficient. Every feedback state should be eligible to become a Safety Receipt.
 

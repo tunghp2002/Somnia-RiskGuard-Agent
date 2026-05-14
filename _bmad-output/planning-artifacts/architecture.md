@@ -724,7 +724,7 @@ Root TypeScript config should define shared strict compiler defaults and be exte
 ### Development Workflow Integration
 
 **Development Server Structure:**
-- `pnpm dev:agent` runs the agent API, Telegram polling, and scheduled jobs.
+- `pnpm dev:agent` runs the agent API, Telegram polling, and scheduled jobs. Runtime startup must log API host/port and scheduler activation, expose health for API/Telegram/RPC/signer/Somnia adapter where possible, and write audit events for job success, skip, and failure states. Local development must support browser API calls from localhost and the active LAN host without opening unsafe public origins.
 - `pnpm dev:frontend` runs the Next.js dashboard.
 - Foundry local simulation runs through contract/package scripts or explicit `anvil` commands.
 

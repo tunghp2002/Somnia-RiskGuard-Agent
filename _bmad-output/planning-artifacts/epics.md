@@ -376,6 +376,18 @@ Users and judges can view setup state, portfolio/risk status, heartbeat state, r
 
 **Natural dependency:** Builds on all prior epics but can start with stubbed agent APIs.
 
+### Epic 7: Runtime Integration & MVP Acceptance Hardening
+
+The team can trust that the marked-complete MVP works through the normal `pnpm dev` path, with scheduled agent behavior, browser-visible state, honest demo/testnet labeling, and repeatable smoke verification.
+
+**User Outcome:** The dashboard and agent behave as a coherent product instead of separate implemented slices. Operators can run a deterministic demo, inspect live state, and know exactly which flows are simulation-backed versus Somnia Testnet-backed.
+
+**FRs covered:** FR8, FR13, FR14, FR23, FR31, FR35, FR36, FR38, FR39, FR41
+
+**Epic size:** Medium
+
+**Natural dependency:** Must complete after Epics 1-6 and before retrospective/demo finalization.
+
 ## Epic 1: Secure Agent Foundation & User Setup
 
 Users and the operator can run the project safely with validated config, separated wallets, workspace scaffolding, and basic monitored-wallet setup.
@@ -1085,3 +1097,97 @@ So that I can troubleshoot demo or integration failures quickly.
 **When** logs are displayed
 **Then** they exclude secrets and sensitive payloads
 **And** include enough context to identify the failing subsystem.
+
+## Epic 7: Runtime Integration & MVP Acceptance Hardening
+
+The team can trust that the marked-complete MVP works through the normal `pnpm dev` path, with scheduled agent behavior, browser-visible state, honest demo/testnet labeling, and repeatable smoke verification.
+
+### Story 7.1: Run Agent Jobs In Normal Runtime
+
+As an operator,
+I want `pnpm dev` to start scheduled monitoring, heartbeat, and reward jobs,
+So that the agent performs work without manual test harnesses.
+
+**Effort:** Medium
+
+**Requirements:** FR8, FR23, FR31, FR38, FR41
+
+**Acceptance Criteria:**
+
+**Given** valid env config and a monitored wallet
+**When** `pnpm dev` starts
+**Then** portfolio monitoring, heartbeat reminder evaluation, and reward policy evaluation run on configured intervals
+**And** job success/failure is visible in audit events without exposing secrets.
+
+### Story 7.2: Add Local Runtime Smoke Checks
+
+As a developer,
+I want repeatable smoke checks for the running frontend and agent,
+So that “done” reflects real app behavior.
+
+**Effort:** Medium
+
+**Requirements:** FR13, FR35, FR38, FR39, FR41
+
+**Acceptance Criteria:**
+
+**Given** dev servers are running
+**When** smoke checks execute
+**Then** they verify `/api/health`, latest portfolio/risk reads, frontend HTTP 200, demo scenario execution, and secret-safe audit output.
+
+### Story 7.3: Make Demo/Testnet Capability Honest
+
+As a user or judge,
+I want the UI and docs to state whether each result is simulation-backed or Somnia Testnet-backed,
+So that the product does not overclaim live autonomy.
+
+**Effort:** Medium
+
+**Requirements:** FR36, FR39, FR41
+
+**Acceptance Criteria:**
+
+**Given** a flow uses demo fixtures
+**When** the dashboard displays the result
+**Then** the UI labels it as simulation/demo
+**And** testnet mode does not silently show demo data.
+
+### Story 7.4: Wire Or Explicitly Gate Somnia Agent Kit Execution
+
+As an operator,
+I want real Somnia execution either wired through the policy-gated adapter or visibly disabled,
+So that reward and DMS claims are not falsely presented as complete.
+
+**Effort:** Large
+
+**Requirements:** FR31, FR36, FR38, FR41
+
+**Acceptance Criteria:**
+
+**Given** Somnia Agent Kit adapter config is unavailable
+**When** execution-capable flows are viewed or attempted
+**Then** the system reports execution disabled and records a fail-closed receipt.
+
+**Given** adapter config is available
+**When** an eligible reward claim is run
+**Then** the state-changing call passes deterministic policy checks before signing.
+
+### Story 7.5: Finish Dashboard Operational UX
+
+As a user,
+I want wallet disconnect, API failure states, refresh behavior, and safety receipts to work predictably,
+So that I can operate the MVP without terminal inspection.
+
+**Effort:** Medium
+
+**Requirements:** FR35, FR36, FR38, FR39
+
+**Acceptance Criteria:**
+
+**Given** a wallet is connected
+**When** I choose disconnect
+**Then** local wallet state and wallet-specific dashboard state are cleared.
+
+**Given** the agent API is unavailable or partially failing
+**When** the dashboard loads
+**Then** the UI shows subsystem-specific unavailable states and keeps the page usable.

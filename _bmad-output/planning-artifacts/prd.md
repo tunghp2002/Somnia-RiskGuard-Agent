@@ -63,7 +63,7 @@ The MVP is delivered within the 3-week Agentathon window and demonstrates a comp
 
 ### Technical Success
 
-The system reliably monitors portfolio state and relevant on-chain events, produces fast and understandable AI risk analysis through Groq with DeepSeek fallback, and delivers stable Telegram notifications with quick action buttons. The Dead Man's Switch prevents false triggers, uses proper timelock behavior, and restricts execution to safe pre-approved paths. The codebase maintains clean separation between `/agent`, `/frontend`, and `/contracts`, avoids hard-coded secrets, validates runtime configuration, handles failures explicitly, and remains audit-friendly.
+The system reliably monitors portfolio state and relevant on-chain events through the normal runtime path, produces fast and understandable AI risk analysis through Groq with DeepSeek fallback, and delivers stable Telegram notifications with quick action buttons. MVP completion requires a repeatable smoke check proving that the agent API, scheduled jobs, dashboard reads, demo scenarios, and secret-safe audit timeline work together from `pnpm dev`. The Dead Man's Switch prevents false triggers, uses proper timelock behavior, and restricts execution to safe pre-approved paths. The codebase maintains clean separation between `/agent`, `/frontend`, and `/contracts`, avoids hard-coded secrets, validates runtime configuration, handles failures explicitly, and remains audit-friendly.
 
 ### Measurable Outcomes
 
