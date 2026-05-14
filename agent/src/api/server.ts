@@ -7,8 +7,13 @@ import { ZodError } from "zod";
 import { failure, sendJson, success } from "./response.js";
 import type { SetupService } from "../services/setup.service.js";
 import { setupWalletRequestSchema } from "../services/setup.service.js";
+import type { AuditEventsRepository } from "../persistence/audit-events.repository.js";
 import type { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
 import type { RiskSnapshotsRepository } from "../persistence/risk-snapshots.repository.js";
+import {
+  demoScenarioRequestSchema,
+  type DemoScenarioService
+} from "../services/demo-scenario.service.js";
 import {
   telegramBindingRequestSchema,
   telegramCallbackRequestSchema,
@@ -32,6 +37,8 @@ import {
 } from "../services/reward-claim.service.js";
 
 const defaultMaxBodyBytes = 1_048_576;
+const sensitiveResponseKeyPattern =
+  /(private[_-]?key|api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|authorization|cookie|password|credential)/i;
 
 class PayloadTooLargeError extends Error {
   public constructor() {
@@ -66,6 +73,36 @@ function parseOptionalWalletAddress(value: string | null): string | undefined {
   }
 }
 
+function parseOptionalLimit(value: string | null, defaultValue = 20): number {
+  if (!value) {
+    return defaultValue;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+    throw new AddressValidationError();
+  }
+
+  return parsed;
+}
+
+function redactSecretSafe(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSecretSafe(item));
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      sensitiveResponseKeyPattern.test(key) ? "[REDACTED]" : redactSecretSafe(item)
+    ])
+  );
+}
+
 async function readJsonBody(
   request: IncomingMessage,
   maxBodyBytes = defaultMaxBodyBytes
@@ -93,8 +130,10 @@ async function readJsonBody(
 
 export interface AgentApiDependencies {
   setupService: SetupService;
+  auditEvents?: AuditEventsRepository;
   portfolioSnapshots?: PortfolioSnapshotsRepository;
   riskSnapshots?: RiskSnapshotsRepository;
+  demoScenarios?: DemoScenarioService;
   telegramAlerts?: TelegramAlertService;
   heartbeats?: HeartbeatService;
   rewards?: RewardClaimService;
@@ -143,11 +182,34 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/audit-events/recent") {
+        if (!dependencies.auditEvents) {
+          throw new ServerDependencyError("Audit events repository is not configured");
+        }
+        const limit = parseOptionalLimit(url.searchParams.get("limit"));
+        const data = (await dependencies.auditEvents.list())
+          .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+          .slice(0, limit)
+          .map((event) => redactSecretSafe(event));
+        sendJson(response, 200, success({ events: data }, requestId));
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/health") {
         const health = dependencies.health
           ? await dependencies.health()
           : { ok: true };
         sendJson(response, 200, success(health, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/demo/scenarios") {
+        if (!dependencies.demoScenarios) {
+          throw new ServerDependencyError("Demo scenario service is not configured");
+        }
+        const body = demoScenarioRequestSchema.parse(await readJsonBody(request));
+        const result = await dependencies.demoScenarios.run(body);
+        sendJson(response, 200, success(result, requestId));
         return;
       }
 

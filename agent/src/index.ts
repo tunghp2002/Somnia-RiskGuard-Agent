@@ -15,6 +15,11 @@ export { failure, sendJson, success } from "./api/response.js";
 export { AuditService } from "./services/audit.service.js";
 export { SetupService, setupWalletRequestSchema } from "./services/setup.service.js";
 export {
+  DemoScenarioService,
+  demoScenarioNameSchema,
+  demoScenarioRequestSchema
+} from "./services/demo-scenario.service.js";
+export {
   HeartbeatService,
   HeartbeatServiceError,
   type HeartbeatReminderNotifier,

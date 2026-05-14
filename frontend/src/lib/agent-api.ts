@@ -1,0 +1,232 @@
+export interface AgentEnvelope<T> {
+  data: T;
+  meta?: {
+    requestId?: string;
+  };
+}
+
+export interface AgentFailure {
+  error: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+}
+
+export class AgentApiError extends Error {
+  public constructor(
+    public readonly status: number,
+    public readonly code: string,
+    message: string,
+    public readonly details?: unknown
+  ) {
+    super(message);
+    this.name = "AgentApiError";
+  }
+}
+
+export type Mode = "simulation" | "testnet";
+export type ReceiptStatus = "started" | "succeeded" | "failed" | "skipped" | "denied";
+
+export interface Readiness {
+  monitoredWallet: {
+    ready: boolean;
+    walletAddress?: string;
+  };
+  agentWallet: {
+    ready: boolean;
+    walletAddress: string;
+    chainId: number;
+  };
+  configuration: {
+    telegramEnabled: boolean;
+    autoClaimEnabled: boolean;
+  };
+}
+
+export interface UserRecord {
+  userId: string;
+  walletAddress: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PortfolioSnapshot {
+  walletAddress: string;
+  source: "demo" | "somnia";
+  totalValueUsd: string;
+  assets: Array<{
+    symbol: string;
+    balance: string;
+    valueUsd: string;
+  }>;
+  rewards: Array<{
+    protocol: string;
+    claimableValueUsd: string;
+  }>;
+  riskSignals: Array<{
+    signalType: string;
+    severity: "low" | "medium" | "high";
+    description: string;
+  }>;
+  createdAt: string;
+}
+
+export interface RiskSnapshot {
+  walletAddress: string;
+  status: "succeeded" | "failed";
+  score: number;
+  explanation: string;
+  provider: "groq" | "deepseek" | "none";
+  threshold: {
+    alertThreshold: number;
+    exceeded: boolean;
+  };
+  safeNextSteps: string[];
+  createdAt: string;
+}
+
+export interface HeartbeatStatus {
+  walletAddress: string;
+  beneficiaryAddress: string;
+  state: string;
+  lastHeartbeatAt: string;
+  nextDeadlineAt: string;
+  graceEndsAt: string;
+  timelockEndsAt: string;
+  contractStateReady: boolean;
+  executionAvailable: boolean;
+  nextAction: string;
+  returnAt?: string;
+}
+
+export interface RewardStatus {
+  walletAddress: string;
+  settings: null | {
+    autoClaimEnabled: boolean;
+    minRewardValueUsd: string;
+    maxClaimGasUsd: string;
+  };
+  latestClaim: null | {
+    protocol: string;
+    rewardToken: string;
+    status: "skipped" | "attempted" | "failed" | "succeeded";
+    reason?: string;
+    valueUsd: string;
+    gasUsd: string;
+    txHash?: string;
+    createdAt: string;
+  };
+  claimableRewards: Array<{
+    protocol: string;
+    rewardToken: string;
+    valueUsd: string;
+    gasUsd: string;
+  }>;
+}
+
+export interface AuditEvent {
+  auditEventId: string;
+  createdAt: string;
+  eventType: string;
+  status: ReceiptStatus;
+  metadata: Record<string, unknown>;
+}
+
+export interface DemoScenarioResult {
+  scenario: "setup_ready" | "risk_alert" | "reward_claim" | "missed_heartbeat" | "full_demo";
+  mode: "simulation";
+  walletAddress: string;
+  receipts: Array<{
+    receiptId: string;
+    eventType: string;
+    status: ReceiptStatus;
+    reason: string;
+    createdAt: string;
+  }>;
+  createdAt: string;
+}
+
+const agentApiBaseUrl =
+  process.env.NEXT_PUBLIC_AGENT_API_BASE_URL?.replace(/\/$/, "") ??
+  "http://127.0.0.1:3001";
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${agentApiBaseUrl}${path}`, {
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      ...init?.headers
+    },
+    cache: "no-store"
+  });
+  const payload = (await response.json()) as AgentEnvelope<T> | AgentFailure;
+
+  if (!response.ok || "error" in payload) {
+    const error = "error" in payload
+      ? payload.error
+      : { code: "request_failed", message: "Agent API request failed" };
+    throw new AgentApiError(response.status, error.code, error.message, error.details);
+  }
+
+  return payload.data;
+}
+
+function walletQuery(walletAddress?: string) {
+  return walletAddress ? `?walletAddress=${encodeURIComponent(walletAddress)}` : "";
+}
+
+export const agentApi = {
+  getReadiness: () => request<Readiness>("/api/setup/readiness"),
+  registerWallet: (body: { walletAddress: string; message: string; signature: string }) =>
+    request<UserRecord>("/api/users", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  getPortfolio: (walletAddress?: string) =>
+    request<PortfolioSnapshot | null>(`/api/portfolios/latest${walletQuery(walletAddress)}`),
+  getRisk: (walletAddress?: string) =>
+    request<RiskSnapshot | null>(`/api/risk-snapshots/latest${walletQuery(walletAddress)}`),
+  getHeartbeat: (walletAddress: string) =>
+    request<HeartbeatStatus | null>(`/api/heartbeats/status${walletQuery(walletAddress)}`),
+  configureHeartbeat: (body: {
+    walletAddress: string;
+    beneficiaryAddress: string;
+    intervalSeconds: number;
+    graceSeconds: number;
+    timelockSeconds: number;
+    message: string;
+    signature: string;
+  }) =>
+    request<HeartbeatStatus>("/api/heartbeats/settings", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  configureRewards: (body: {
+    walletAddress: string;
+    autoClaimEnabled: boolean;
+    minRewardValueUsd: number;
+    maxClaimGasUsd: number;
+  }) =>
+    request<RewardStatus>("/api/rewards/settings", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  getRewards: (walletAddress: string) =>
+    request<RewardStatus>(`/api/rewards/status${walletQuery(walletAddress)}`),
+  linkTelegram: (body: { walletAddress: string; chatId: string }) =>
+    request<unknown>("/api/telegram/bindings", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  getHealth: () => request<Record<string, unknown>>("/api/health"),
+  getAuditEvents: (limit = 20) =>
+    request<{ events: AuditEvent[] }>(`/api/audit-events/recent?limit=${limit}`),
+  runDemoScenario: (body: {
+    scenario: DemoScenarioResult["scenario"];
+  }) =>
+    request<DemoScenarioResult>("/api/demo/scenarios", {
+      method: "POST",
+      body: JSON.stringify(body)
+    })
+};

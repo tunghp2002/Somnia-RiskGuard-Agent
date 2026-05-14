@@ -33,6 +33,7 @@ import { TelegramHeartbeatReminderNotifier } from "./services/heartbeat-reminder
 import { TelegramRewardClaimNotifier } from "./services/reward-claim-notifier.js";
 import { RiskScoreService } from "./services/risk-score.service.js";
 import { SetupService } from "./services/setup.service.js";
+import { DemoScenarioService } from "./services/demo-scenario.service.js";
 import { HeartbeatService } from "./services/heartbeat.service.js";
 import { RewardClaimService } from "./services/reward-claim.service.js";
 import { TelegramAlertService } from "./services/telegram-alert.service.js";
@@ -124,10 +125,21 @@ export async function startAgentRuntime(
     rewardClaimNotifier,
     users
   );
-  const apiServer = createAgentApiServer({
-    setupService,
+  const demoScenarios = new DemoScenarioService(
+    users,
     portfolioSnapshots,
     riskSnapshots,
+    heartbeatsRepository,
+    rewardClaims,
+    audit,
+    config
+  );
+  const apiServer = createAgentApiServer({
+    setupService,
+    auditEvents,
+    portfolioSnapshots,
+    riskSnapshots,
+    demoScenarios,
     telegramAlerts,
     heartbeats,
     rewards,

@@ -7,8 +7,11 @@ import { Wallet } from "ethers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createAgentApiServer } from "./server.js";
+import { AuditEventsRepository } from "../persistence/audit-events.repository.js";
 import { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
 import { RiskSnapshotsRepository } from "../persistence/risk-snapshots.repository.js";
+import { AuditService } from "../services/audit.service.js";
+import { DemoScenarioService } from "../services/demo-scenario.service.js";
 import { SetupService } from "../services/setup.service.js";
 import type { TelegramAlertService } from "../services/telegram-alert.service.js";
 import { HeartbeatsRepository } from "../persistence/heartbeats.repository.js";
@@ -26,6 +29,7 @@ let message: string;
 let signature: string;
 let portfolioSnapshots: PortfolioSnapshotsRepository;
 let riskSnapshots: RiskSnapshotsRepository;
+let auditEvents: AuditEventsRepository;
 let telegramAlerts: TelegramAlertService;
 let heartbeats: HeartbeatService;
 let rewards: RewardClaimService;
@@ -45,24 +49,39 @@ beforeEach(async () => {
   signature = await wallet.signMessage(message);
   portfolioSnapshots = new PortfolioSnapshotsRepository(dataDirectory);
   riskSnapshots = new RiskSnapshotsRepository(dataDirectory);
+  auditEvents = new AuditEventsRepository(dataDirectory);
+  const audit = new AuditService(auditEvents);
+  const users = new UsersRepository(dataDirectory);
   heartbeats = new HeartbeatService(
     new HeartbeatsRepository(dataDirectory),
     createTestConfig(),
-    undefined,
+    audit,
     () => new Date("2026-05-14T00:00:00.000Z")
   );
+  const rewardClaims = new RewardClaimsRepository(dataDirectory);
   rewards = new RewardClaimService(
-    new RewardClaimsRepository(dataDirectory),
+    rewardClaims,
     createTestConfig(),
+    audit,
     undefined,
     undefined,
-    undefined,
-    undefined,
+    users,
     () => new Date("2026-05-14T00:00:00.000Z")
   );
   const setupService = new SetupService(
-    new UsersRepository(dataDirectory),
-    createTestConfig()
+    users,
+    createTestConfig(),
+    audit
+  );
+  const demoScenarios = new DemoScenarioService(
+    users,
+    portfolioSnapshots,
+    riskSnapshots,
+    new HeartbeatsRepository(dataDirectory),
+    rewardClaims,
+    audit,
+    createTestConfig(),
+    () => new Date("2026-05-14T00:00:00.000Z")
   );
   telegramAlerts = {
     health: vi.fn().mockResolvedValue({ ok: true, enabled: true }),
@@ -79,8 +98,10 @@ beforeEach(async () => {
   } as unknown as TelegramAlertService;
   server = createAgentApiServer({
     setupService,
+    auditEvents,
     portfolioSnapshots,
     riskSnapshots,
+    demoScenarios,
     telegramAlerts,
     heartbeats,
     rewards,
@@ -418,5 +439,60 @@ describe("agent setup API", () => {
     expect(policyPayload.data.policyId).toBe("reward.action.unsupported");
     expect(runPayload.data[0].claims[0].status).toBe("failed");
     expect(runPayload.data[0].claims[0].reason).toBe("Somnia execution client is not configured");
+  });
+
+  it("returns recent audit events with secret metadata redacted", async () => {
+    await auditEvents.append({
+      eventType: "operator.test",
+      status: "failed",
+      metadata: {
+        subsystem: "telegram",
+        telegramToken: "secret-token",
+        api_key: "snake-secret",
+        nested: {
+          apiKey: "secret-key"
+        }
+      }
+    });
+
+    const response = await fetch(`${baseUrl}/api/audit-events/recent?limit=1`);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.data.events).toHaveLength(1);
+    expect(payload.data.events[0].metadata.telegramToken).toBe("[REDACTED]");
+    expect(payload.data.events[0].metadata.api_key).toBe("[REDACTED]");
+    expect(payload.data.events[0].metadata.nested.apiKey).toBe("[REDACTED]");
+  });
+
+  it("runs deterministic demo scenarios through the API", async () => {
+    const response = await fetch(`${baseUrl}/api/demo/scenarios`, {
+      method: "POST",
+      body: JSON.stringify({
+        scenario: "full_demo"
+      })
+    });
+    const payload = await response.json();
+    const riskResponse = await fetch(
+      `${baseUrl}/api/risk-snapshots/latest?walletAddress=${payload.data.walletAddress}`
+    );
+    const heartbeatResponse = await fetch(
+      `${baseUrl}/api/heartbeats/status?walletAddress=${payload.data.walletAddress}`
+    );
+    const rewardResponse = await fetch(
+      `${baseUrl}/api/rewards/status?walletAddress=${payload.data.walletAddress}`
+    );
+
+    const riskPayload = await riskResponse.json();
+    const heartbeatPayload = await heartbeatResponse.json();
+    const rewardPayload = await rewardResponse.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.data.mode).toBe("simulation");
+    expect(payload.data.walletAddress).toBe("0x1111111111111111111111111111111111111111");
+    expect(payload.data.receipts).toHaveLength(4);
+    expect(riskPayload.data.score).toBe(82);
+    expect(heartbeatPayload.data.executionAvailable).toBe(true);
+    expect(rewardPayload.data.latestClaim.status).toBe("skipped");
   });
 });

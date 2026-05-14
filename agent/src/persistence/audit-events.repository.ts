@@ -33,7 +33,7 @@ export interface CreateAuditEventInput {
 }
 
 const sensitiveMetadataKeyPattern =
-  /(privateKey|apiKey|token|secret|authorization|cookie|password)/i;
+  /(private[_-]?key|api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|authorization|cookie|password|credential)/i;
 
 function sanitizeAuditMetadata(value: unknown): unknown {
   if (Array.isArray(value)) {

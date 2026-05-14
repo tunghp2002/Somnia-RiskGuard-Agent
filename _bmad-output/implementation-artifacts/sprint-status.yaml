@@ -84,10 +84,10 @@ development_status:
   5-5-block-unsupported-autonomous-actions: done
   epic-5-retrospective: optional
 
-  epic-6: backlog
-  6-1-build-dashboard-shell-and-wallet-connection: backlog
-  6-2-add-configuration-forms-for-mvp-settings: backlog
-  6-3-display-portfolio-risk-heartbeat-and-recent-actions: backlog
-  6-4-add-deterministic-demo-scenario-controls: backlog
-  6-5-show-operator-health-and-secret-safe-logs: backlog
+  epic-6: done
+  6-1-build-dashboard-shell-and-wallet-connection: done
+  6-2-add-configuration-forms-for-mvp-settings: done
+  6-3-display-portfolio-risk-heartbeat-and-recent-actions: done
+  6-4-add-deterministic-demo-scenario-controls: done
+  6-5-show-operator-health-and-secret-safe-logs: done
   epic-6-retrospective: optional
