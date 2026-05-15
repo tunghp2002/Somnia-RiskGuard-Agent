@@ -5,6 +5,7 @@ import {
   ConfigValidationError,
   formatConfigError,
   loadConfig,
+  PublicConfigValidationError,
   type AgentConfig,
   type LoadConfigOptions
 } from "./config/env.js";
@@ -162,9 +163,12 @@ export async function startAgentRuntime(
     telegramAlerts,
     heartbeats,
     rewards,
+    publicChain: config.publicChain,
     health: async () => ({
       ok: true,
-      telegram: await telegramAlerts.health()
+      telegram: await telegramAlerts.health(),
+      somnia: await somnia.health(),
+      publicChain: config.publicChain
     })
   });
 
@@ -199,7 +203,9 @@ export async function startAgentRuntime(
     {
       apiPort,
       apiHost: "0.0.0.0",
-      telegram: await telegramAlerts.health()
+      telegram: await telegramAlerts.health(),
+      somnia: await somnia.health(),
+      publicChain: config.publicChain.key
     },
     "agent runtime started"
   );
@@ -300,6 +306,12 @@ export async function runCli(options: MainOptions = {}): Promise<void> {
   } catch (error) {
     if (error instanceof ConfigValidationError) {
       console.error(formatConfigError(error));
+      process.exitCode = 1;
+      return;
+    }
+
+    if (error instanceof PublicConfigValidationError) {
+      console.error(`Agent public chain configuration is invalid:\n- ${error.message}`);
       process.exitCode = 1;
       return;
     }

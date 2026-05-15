@@ -3,6 +3,8 @@ export interface InjectedEthereumProvider {
     method: string;
     params?: unknown[];
   }): Promise<T>;
+  on?(event: "accountsChanged" | "chainChanged", handler: (...args: unknown[]) => void): void;
+  removeListener?(event: "accountsChanged" | "chainChanged", handler: (...args: unknown[]) => void): void;
 }
 
 export interface BrowserWalletState {
@@ -42,6 +44,27 @@ export async function connectBrowserWallet(): Promise<BrowserWalletState> {
   return { address, chainId };
 }
 
+export async function restoreBrowserWallet(): Promise<BrowserWalletState | null> {
+  if (typeof window === "undefined" || !window.ethereum) {
+    return null;
+  }
+
+  const accounts = await window.ethereum.request<string[]>({
+    method: "eth_accounts"
+  });
+  const address = accounts[0];
+
+  if (!address) {
+    return null;
+  }
+
+  const chainId = await window.ethereum.request<string>({
+    method: "eth_chainId"
+  });
+
+  return { address, chainId };
+}
+
 export async function signWalletMessage(message: string): Promise<string> {
   const provider = getProvider();
   const accounts = await provider.request<string[]>({
@@ -70,4 +93,21 @@ export async function disconnectBrowserWallet(): Promise<void> {
   } catch {
     // Some wallets do not expose programmatic disconnect; the UI still clears local state.
   }
+}
+
+export function subscribeBrowserWalletChanges(onChange: () => void): () => void {
+  if (typeof window === "undefined" || !window.ethereum?.on) {
+    return () => {};
+  }
+
+  const handleAccountsChanged = () => onChange();
+  const handleChainChanged = () => onChange();
+
+  window.ethereum.on("accountsChanged", handleAccountsChanged);
+  window.ethereum.on("chainChanged", handleChainChanged);
+
+  return () => {
+    window.ethereum?.removeListener?.("accountsChanged", handleAccountsChanged);
+    window.ethereum?.removeListener?.("chainChanged", handleChainChanged);
+  };
 }

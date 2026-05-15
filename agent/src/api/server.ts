@@ -7,6 +7,7 @@ import { ZodError } from "zod";
 import { failure, sendJson, success } from "./response.js";
 import type { SetupService } from "../services/setup.service.js";
 import { setupWalletRequestSchema } from "../services/setup.service.js";
+import type { PublicChainMetadata } from "../config/public-chain.js";
 import type { AuditEventsRepository } from "../persistence/audit-events.repository.js";
 import type { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
 import type { RiskSnapshotsRepository } from "../persistence/risk-snapshots.repository.js";
@@ -91,6 +92,14 @@ class ServerDependencyError extends Error {
   }
 }
 
+interface TelegramConnectSession {
+  walletAddress: string;
+  code: string;
+  expiresAt: string;
+  status: "waiting" | "connected" | "expired" | "failed";
+  binding?: unknown;
+}
+
 function parseOptionalWalletAddress(value: string | null): string | undefined {
   if (!value) {
     return undefined;
@@ -167,10 +176,37 @@ export interface AgentApiDependencies {
   telegramAlerts?: TelegramAlertService;
   heartbeats?: HeartbeatService;
   rewards?: RewardClaimService;
+  publicChain?: PublicChainMetadata;
   health?: () => Promise<unknown> | unknown;
 }
 
 export function createAgentApiServer(dependencies: AgentApiDependencies): Server {
+  const telegramConnectSessions = new Map<string, TelegramConnectSession>();
+
+  const sessionForWallet = (walletAddress: string) =>
+    [...telegramConnectSessions.values()]
+      .filter((session) => session.walletAddress === walletAddress)
+      .sort((left, right) => Date.parse(right.expiresAt) - Date.parse(left.expiresAt))[0];
+
+  const serializeTelegramConnectSession = (session: TelegramConnectSession) => {
+    const expired = session.status === "waiting" && Date.parse(session.expiresAt) <= Date.now();
+
+    if (expired) {
+      session.status = "expired";
+      telegramConnectSessions.set(session.code, session);
+    }
+
+    return {
+      walletAddress: session.walletAddress,
+      code: session.code,
+      expiresAt: session.expiresAt,
+      status: session.status,
+      connected: session.status === "connected",
+      ...(session.binding ? { binding: session.binding } : {}),
+      botDeepLink: `https://t.me/RiskGuardBot?start=${encodeURIComponent(session.code)}`
+    };
+  };
+
   return createServer(async (request, response) => {
     applyCorsHeaders(request, response);
 
@@ -238,6 +274,14 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
           ? await dependencies.health()
           : { ok: true };
         sendJson(response, 200, success(health, requestId));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/public-chain") {
+        if (!dependencies.publicChain) {
+          throw new ServerDependencyError("Public chain metadata is not configured");
+        }
+        sendJson(response, 200, success(dependencies.publicChain, requestId));
         return;
       }
 
@@ -378,6 +422,100 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
           throw new ServerDependencyError("Telegram alert service is not configured");
         }
         sendJson(response, 200, success(await dependencies.telegramAlerts.health(), requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/telegram/connect/start") {
+        if (!dependencies.telegramAlerts) {
+          throw new ServerDependencyError("Telegram alert service is not configured");
+        }
+
+        const body = await readJsonBody(request);
+        const walletAddress = parseOptionalWalletAddress(
+          typeof body === "object" && body && "walletAddress" in body
+            ? String((body as { walletAddress?: unknown }).walletAddress ?? "")
+            : null
+        );
+
+        if (!walletAddress) {
+          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
+          return;
+        }
+
+        const code = randomUUID().slice(0, 8).toUpperCase();
+        const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+        const session: TelegramConnectSession = {
+          walletAddress,
+          code,
+          expiresAt,
+          status: "waiting"
+        };
+        telegramConnectSessions.set(code, session);
+        sendJson(
+          response,
+          201,
+          success(serializeTelegramConnectSession(session), requestId)
+        );
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/telegram/connect/status") {
+        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
+
+        if (!walletAddress) {
+          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
+          return;
+        }
+
+        const session = sessionForWallet(walletAddress);
+
+        if (!session) {
+          sendJson(response, 404, failure("not_found", "No Telegram Connect session is active"));
+          return;
+        }
+
+        sendJson(response, 200, success(serializeTelegramConnectSession(session), requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/telegram/connect/confirm") {
+        if (!dependencies.telegramAlerts) {
+          throw new ServerDependencyError("Telegram alert service is not configured");
+        }
+
+        const body = await readJsonBody(request);
+        const code = typeof body === "object" && body && "code" in body
+          ? String((body as { code?: unknown }).code ?? "").toUpperCase()
+          : "";
+        const chatId = typeof body === "object" && body && "chatId" in body
+          ? String((body as { chatId?: unknown }).chatId ?? "")
+          : "";
+        const telegramUserId = typeof body === "object" && body && "telegramUserId" in body
+          ? String((body as { telegramUserId?: unknown }).telegramUserId ?? "")
+          : undefined;
+        const session = telegramConnectSessions.get(code);
+
+        if (!session) {
+          sendJson(response, 404, failure("not_found", "Telegram Connect code was not found"));
+          return;
+        }
+
+        if (Date.parse(session.expiresAt) <= Date.now()) {
+          session.status = "expired";
+          telegramConnectSessions.set(session.code, session);
+          sendJson(response, 410, failure("telegram_connect_expired", "Telegram Connect code expired"));
+          return;
+        }
+
+        const binding = await dependencies.telegramAlerts.linkChat({
+          walletAddress: session.walletAddress,
+          chatId,
+          ...(telegramUserId ? { telegramUserId } : {})
+        });
+        session.status = "connected";
+        session.binding = binding;
+        telegramConnectSessions.set(session.code, session);
+        sendJson(response, 200, success(serializeTelegramConnectSession(session), requestId));
         return;
       }
 

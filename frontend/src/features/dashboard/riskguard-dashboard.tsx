@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, ReactNode } from "react";
 import {
   Activity,
@@ -10,11 +10,14 @@ import {
   CircleDollarSign,
   Clock3,
   Cpu,
+  FileText,
   KeyRound,
   Link2,
   Loader2,
+  Menu,
   RadioTower,
   RefreshCw,
+  Send,
   Shield,
   ShieldAlert,
   Sparkles,
@@ -30,19 +33,38 @@ import {
   type HeartbeatStatus,
   type Mode,
   type PortfolioSnapshot,
+  type PublicChainMetadata,
   type Readiness,
   type RewardStatus,
-  type RiskSnapshot
+  type RiskSnapshot,
+  type TelegramConnectSession
 } from "@/lib/agent-api";
 import {
   connectBrowserWallet,
   disconnectBrowserWallet,
+  restoreBrowserWallet,
   signWalletMessage,
+  subscribeBrowserWalletChanges,
   type BrowserWalletState
 } from "@/lib/wallet";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { GuardianSettings } from "@/features/settings/guardian-settings";
 
 type Notice = { tone: "ok" | "warn" | "bad"; message: string };
+type DashboardSection = "overview" | "setup" | "risk" | "heartbeat" | "rewards" | "receipts" | "demo" | "health";
+type AccountStatus = "restoring" | "connected" | "disconnected" | "disconnecting" | "expired" | "error";
+
+const navItems: Array<{ id: DashboardSection; label: string; icon: ReactNode; primaryMobile?: boolean }> = [
+  { id: "overview", label: "Overview", icon: <Shield size={17} />, primaryMobile: true },
+  { id: "setup", label: "Setup", icon: <KeyRound size={17} />, primaryMobile: true },
+  { id: "risk", label: "Risk", icon: <ShieldAlert size={17} />, primaryMobile: true },
+  { id: "heartbeat", label: "Heartbeat", icon: <Clock3 size={17} /> },
+  { id: "rewards", label: "Rewards", icon: <CircleDollarSign size={17} /> },
+  { id: "receipts", label: "Receipts", icon: <FileText size={17} />, primaryMobile: true },
+  { id: "demo", label: "Demo", icon: <Sparkles size={17} /> },
+  { id: "health", label: "Health", icon: <Cpu size={17} /> }
+];
 
 const scenarios: Array<{
   id: DemoScenarioResult["scenario"];
@@ -132,10 +154,18 @@ function errorMessage(error: unknown) {
   return "Request failed";
 }
 
+function hasOkFlag(value: unknown): value is { ok: boolean } {
+  return Boolean(value && typeof value === "object" && "ok" in value);
+}
+
 export function RiskGuardDashboard() {
+  const [activeSection, setActiveSection] = useState<DashboardSection>("overview");
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [accountStatus, setAccountStatus] = useState<AccountStatus>("restoring");
   const [wallet, setWallet] = useState<BrowserWalletState | null>(null);
   const [demoWalletAddress, setDemoWalletAddress] = useState<string>();
   const [mode, setMode] = useState<Mode>("simulation");
+  const [publicChain, setPublicChain] = useState<PublicChainMetadata | null>(null);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
   const [risk, setRisk] = useState<RiskSnapshot | null>(null);
@@ -143,9 +173,11 @@ export function RiskGuardDashboard() {
   const [rewards, setRewards] = useState<RewardStatus | null>(null);
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [telegramSession, setTelegramSession] = useState<TelegramConnectSession | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const loadRequestRef = useRef(0);
 
   const activeWalletAddress = mode === "simulation"
     ? demoWalletAddress
@@ -175,11 +207,23 @@ export function RiskGuardDashboard() {
     return [...latestClaim, ...fromAudit].slice(0, 8);
   }, [events, rewards]);
 
+  const clearWalletScopedState = useCallback(() => {
+    setPortfolio(null);
+    setRisk(null);
+    setHeartbeat(null);
+    setRewards(null);
+    setEvents([]);
+    setTelegramSession(null);
+  }, []);
+
   const loadData = useCallback(async () => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
     setLoading(true);
     try {
       const walletAddress = activeWalletAddress;
       const [
+        publicChainResult,
         readinessResult,
         portfolioResult,
         riskResult,
@@ -188,6 +232,7 @@ export function RiskGuardDashboard() {
         heartbeatResult,
         rewardsResult
       ] = await Promise.allSettled([
+        agentApi.getPublicChain(),
         agentApi.getReadiness(),
         walletAddress || mode === "simulation" ? agentApi.getPortfolio(walletAddress) : Promise.resolve(null),
         walletAddress || mode === "simulation" ? agentApi.getRisk(walletAddress) : Promise.resolve(null),
@@ -196,11 +241,20 @@ export function RiskGuardDashboard() {
         walletAddress ? agentApi.getHeartbeat(walletAddress) : Promise.resolve(null),
         walletAddress ? agentApi.getRewards(walletAddress) : Promise.resolve(null)
       ]);
+      const failedReads: string[] = [];
 
+      if (requestId !== loadRequestRef.current) {
+        return;
+      }
+
+      if (publicChainResult.status === "fulfilled") {
+        setPublicChain(publicChainResult.value);
+      } else {
+        failedReads.push("public chain");
+      }
       if (readinessResult.status === "fulfilled") {
         setReadiness(readinessResult.value);
       }
-      const failedReads: string[] = [];
 
       if (portfolioResult.status === "fulfilled") {
         const nextPortfolio = mode === "testnet" && portfolioResult.value?.source === "demo"
@@ -252,9 +306,14 @@ export function RiskGuardDashboard() {
         });
       }
     } catch (error) {
+      if (requestId !== loadRequestRef.current) {
+        return;
+      }
       setNotice({ tone: "bad", message: errorMessage(error) });
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) {
+        setLoading(false);
+      }
     }
   }, [activeWalletAddress, mode]);
 
@@ -262,13 +321,77 @@ export function RiskGuardDashboard() {
     void loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    restoreBrowserWallet()
+      .then((restored) => {
+        if (!mounted) {
+          return;
+        }
+
+        setWallet(restored);
+        setAccountStatus(restored ? "connected" : "disconnected");
+      })
+      .catch(() => {
+        if (!mounted) {
+          return;
+        }
+
+        setAccountStatus("error");
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => subscribeBrowserWalletChanges(() => {
+    loadRequestRef.current += 1;
+    restoreBrowserWallet()
+      .then((restored) => {
+        setWallet(restored);
+        setAccountStatus(restored ? "connected" : "expired");
+        clearWalletScopedState();
+      })
+      .catch(() => {
+        setWallet(null);
+        setAccountStatus("error");
+        clearWalletScopedState();
+      });
+  }), [clearWalletScopedState]);
+
+  useEffect(() => {
+    if (!telegramSession || telegramSession.status !== "waiting") {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      void agentApi.getTelegramConnectStatus(telegramSession.walletAddress)
+        .then((session) => {
+          setTelegramSession(session);
+          if (session.status === "connected") {
+            setNotice({ tone: "ok", message: "Telegram is connected." });
+            void loadData();
+          } else if (session.status === "expired") {
+            setNotice({ tone: "warn", message: "Telegram Connect code expired. Start a new connection." });
+          }
+        })
+        .catch(() => undefined);
+    }, 3_000);
+
+    return () => clearInterval(timer);
+  }, [loadData, telegramSession]);
+
   async function handleConnectWallet() {
     setActionLoading("wallet");
     try {
       const nextWallet = await connectBrowserWallet();
       setWallet(nextWallet);
+      setAccountStatus("connected");
       setNotice({ tone: "ok", message: "Browser wallet connected. Backend agent wallet remains separate." });
     } catch (error) {
+      setAccountStatus("error");
       setNotice({ tone: "bad", message: errorMessage(error) });
     } finally {
       setActionLoading(null);
@@ -277,15 +400,16 @@ export function RiskGuardDashboard() {
 
   async function handleDisconnectWallet() {
     setActionLoading("wallet");
+    setAccountStatus("disconnecting");
     try {
       await disconnectBrowserWallet();
       setWallet(null);
-      setPortfolio(null);
-      setRisk(null);
-      setHeartbeat(null);
-      setRewards(null);
+      loadRequestRef.current += 1;
+      clearWalletScopedState();
+      setAccountStatus("disconnected");
       setNotice({ tone: "ok", message: "Browser wallet disconnected from this dashboard." });
     } catch (error) {
+      setAccountStatus("error");
       setNotice({ tone: "bad", message: errorMessage(error) });
     } finally {
       setActionLoading(null);
@@ -342,22 +466,18 @@ export function RiskGuardDashboard() {
     }
   }
 
-  async function handleTelegramSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleTelegramConnect() {
     const walletAddress = activeWalletAddress;
     if (!walletAddress) {
-      setNotice({ tone: "warn", message: "Connect or seed a wallet before linking Telegram." });
+      setNotice({ tone: "warn", message: "Connect or seed a wallet before starting Telegram Connect." });
       return;
     }
 
-    const form = new FormData(event.currentTarget);
     setActionLoading("telegram");
     try {
-      await agentApi.linkTelegram({
-        walletAddress,
-        chatId: String(form.get("chatId") ?? "")
-      });
-      setNotice({ tone: "ok", message: "Telegram chat binding saved." });
+      const session = await agentApi.startTelegramConnect({ walletAddress });
+      setTelegramSession(session);
+      setNotice({ tone: "ok", message: "Telegram Connect started. Send the one-time code to the bot." });
       await loadData();
     } catch (error) {
       setNotice({ tone: "bad", message: errorMessage(error) });
@@ -412,53 +532,86 @@ export function RiskGuardDashboard() {
   }
 
   return (
-    <main className="rg-shell">
-      <header className="rg-header">
-        <div>
-          <div className="rg-kicker"><Shield size={14} /> Somnia RiskGuard AgentCore</div>
-          <h1>Guardian Command Center</h1>
-          <p>Always-on portfolio safety, heartbeat protection, policy receipts, and operator visibility.</p>
+    <main className="rg-app-shell">
+      <aside className="rg-sidebar" aria-label="Primary sections">
+        <div className="sidebar-brand"><Shield size={18} /> RiskGuard</div>
+        <nav>
+          {navItems.map((item) => (
+            <Button
+              className={activeSection === item.id ? "active" : ""}
+              key={item.id}
+              onClick={() => setActiveSection(item.id)}
+              type="button"
+              variant="ghost"
+            >
+              {item.icon}
+              {item.label}
+            </Button>
+          ))}
+        </nav>
+        <div className="sidebar-meta">
+          <span>{publicChain?.name ?? "Public chain loading"}</span>
+          <Badge>{mode === "simulation" ? "Simulation" : "Somnia Testnet"}</Badge>
         </div>
-        <div className="rg-header-actions">
-          <div className="mode-switch" aria-label="Reality mode">
-            <button
-              className={mode === "simulation" ? "active" : ""}
-              onClick={() => setMode("simulation")}
-              type="button"
-            >
-              Simulation
-            </button>
-            <button
-              className={mode === "testnet" ? "active" : ""}
-              onClick={() => setMode("testnet")}
-              type="button"
-            >
-              Testnet
-            </button>
+      </aside>
+
+      <div className="rg-shell">
+        <header className="rg-header">
+          <div>
+            <div className="rg-kicker"><Shield size={14} /> Somnia RiskGuard AgentCore</div>
+            <h1>{navItems.find((item) => item.id === activeSection)?.label ?? "Overview"}</h1>
+            <p>Focused operational dashboard for setup, risk, heartbeat, rewards, receipts, demo, and health.</p>
           </div>
-          <button
-            className="primary-button"
-            onClick={wallet ? handleDisconnectWallet : handleConnectWallet}
-            type="button"
-          >
-            {actionLoading === "wallet"
-              ? <Loader2 className="spin" size={16} />
-              : wallet ? <XCircle size={16} /> : <Wallet size={16} />}
-            {wallet ? `Disconnect ${formatAddress(wallet.address)}` : "Connect Wallet"}
-          </button>
-        </div>
-      </header>
+          <div className="rg-header-actions">
+            <div className="account-status" aria-label="Account state">
+              <span>{accountStatus}</span>
+              <strong>{wallet ? formatAddress(wallet.address) : "no browser wallet"}</strong>
+            </div>
+            <div className="mode-switch" aria-label="Reality mode">
+              <Button
+                className={mode === "simulation" ? "active" : ""}
+                onClick={() => setMode("simulation")}
+                type="button"
+                variant="ghost"
+              >
+                Simulation
+              </Button>
+              <Button
+                className={mode === "testnet" ? "active" : ""}
+                onClick={() => setMode("testnet")}
+                type="button"
+                variant="ghost"
+              >
+                Testnet
+              </Button>
+            </div>
+            <Button
+              className="primary-button"
+              onClick={wallet ? handleDisconnectWallet : handleConnectWallet}
+              type="button"
+              variant="primary"
+            >
+              {actionLoading === "wallet"
+                ? <Loader2 className="spin" size={16} />
+                : wallet ? <XCircle size={16} /> : <Wallet size={16} />}
+              {wallet ? "Disconnect" : "Connect Wallet"}
+            </Button>
+          </div>
+        </header>
 
-      {notice ? <div className={`notice ${notice.tone}`}>{notice.message}</div> : null}
+        {notice ? <div className={`notice ${notice.tone}`}>{notice.message}</div> : null}
 
-      <section className="rg-overview">
-        <GuardianStatus ready={guardianReady} readiness={readiness} wallet={wallet} mode={mode} />
-        <RiskScore score={riskScore} tone={riskTone} risk={risk} />
-        <HeartbeatPanel heartbeat={heartbeat} />
-        <RewardPanel rewards={rewards} />
-      </section>
+        {activeSection === "overview" ? (
+          <section className="rg-overview">
+            <GuardianStatus ready={guardianReady} readiness={readiness} wallet={wallet} mode={mode} />
+            <RiskScore score={riskScore} tone={riskTone} risk={risk} />
+            <HeartbeatPanel heartbeat={heartbeat} />
+            <RewardPanel rewards={rewards} />
+          </section>
+        ) : null}
 
-      <section className="rg-grid">
+        <section className="rg-grid">
+        {activeSection === "risk" ? (
         <section className="panel portfolio-panel">
           <PanelHeading icon={<Activity size={17} />} title="Portfolio Watch" action={loading ? "refreshing" : portfolio?.source ?? "no data"} />
           <div className="portfolio-total">{formatUsd(portfolio?.totalValueUsd)}</div>
@@ -480,47 +633,61 @@ export function RiskGuardDashboard() {
             ))}
           </div>
         </section>
+        ) : null}
 
+        {activeSection === "setup" ? (
         <section className="panel">
           <PanelHeading icon={<KeyRound size={17} />} title="Configuration" action="signed where required" />
           <GuardianSettings
             actionLoading={actionLoading}
+            telegramSession={telegramSession}
             onHeartbeatSubmit={handleHeartbeatSubmit}
             onRegisterWallet={handleRegisterWallet}
             onRewardsSubmit={handleRewardsSubmit}
-            onTelegramSubmit={handleTelegramSubmit}
+            onTelegramConnect={handleTelegramConnect}
           />
         </section>
+        ) : null}
 
+        {activeSection === "demo" ? (
         <section className="panel demo-panel">
           <PanelHeading icon={<Sparkles size={17} />} title="Demo Scenario Control" action={mode} />
           <p className="muted">Deterministic simulation states are seeded through the agent API and then shown from the same read models as live status.</p>
           <div className="scenario-grid">
             {scenarios.map((scenario) => (
-              <button
+              <Button
                 className="scenario-button"
                 disabled={mode !== "simulation" || actionLoading === scenario.id}
                 key={scenario.id}
                 onClick={() => void handleRunDemo(scenario.id)}
                 type="button"
+                variant="secondary"
               >
                 <span>{scenario.label}</span>
                 <small>{actionLoading === scenario.id ? "Running..." : scenario.detail}</small>
-              </button>
+              </Button>
             ))}
           </div>
         </section>
+        ) : null}
 
+        {activeSection === "health" ? (
         <section className="panel">
           <PanelHeading icon={<Cpu size={17} />} title="Operator Health" action="secret-safe" />
           <div className="health-list">
             <HealthRow icon={<RadioTower size={15} />} label="Agent API" value={health ? health.ok === false ? "degraded" : "reachable" : "unavailable"} tone={health ? health.ok === false ? "bad" : "ok" : "warn"} />
             <HealthRow icon={<Bot size={15} />} label="Telegram" value={readableMetadata(health?.telegram)} tone={health?.telegram ? "ok" : "warn"} />
+            <HealthRow icon={<Send size={15} />} label="Somnia adapter" value={readableMetadata(health?.somnia)} tone={hasOkFlag(health?.somnia) && health.somnia.ok ? "ok" : "warn"} />
             <HealthRow icon={<Shield size={15} />} label="Signer" value={readiness?.agentWallet.ready ? formatAddress(readiness.agentWallet.walletAddress) : "missing"} tone={readiness?.agentWallet.ready ? "ok" : "bad"} />
-            <HealthRow icon={<Link2 size={15} />} label="Chain" value={readiness?.agentWallet.chainId ? `chain ${readiness.agentWallet.chainId}` : "unknown"} tone="neutral" />
+            <HealthRow icon={<Link2 size={15} />} label="Chain" value={publicChain ? `${publicChain.name} (${publicChain.chainId})` : "unknown"} tone="neutral" />
           </div>
         </section>
+        ) : null}
 
+        {activeSection === "heartbeat" ? <HeartbeatPanel heartbeat={heartbeat} /> : null}
+        {activeSection === "rewards" ? <RewardPanel rewards={rewards} /> : null}
+
+        {activeSection === "receipts" ? (
         <section className="panel timeline-panel">
           <PanelHeading icon={<Clock3 size={17} />} title="Safety Receipts" action={`${receipts.length} recent`} />
           <div className="timeline">
@@ -540,11 +707,60 @@ export function RiskGuardDashboard() {
             {receipts.length === 0 ? <p className="muted">No receipts yet. Run a demo scenario or save settings.</p> : null}
           </div>
         </section>
-      </section>
+        ) : null}
+        </section>
 
-      <button className="floating-refresh" onClick={() => void loadData()} type="button">
-        <RefreshCw size={16} /> Refresh
-      </button>
+        <section className="mobile-bottom-nav" aria-label="Mobile sections">
+          {navItems.filter((item) => item.primaryMobile).map((item) => (
+            <Button
+              className={activeSection === item.id ? "active" : ""}
+              key={item.id}
+              onClick={() => {
+                setActiveSection(item.id);
+                setMobileMoreOpen(false);
+              }}
+              type="button"
+              variant="ghost"
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </Button>
+          ))}
+          <Button
+            className={navItems.some((item) => !item.primaryMobile && item.id === activeSection) ? "active" : ""}
+            onClick={() => setMobileMoreOpen((open) => !open)}
+            type="button"
+            variant="ghost"
+          >
+            <Menu size={17} />
+            <span>More</span>
+          </Button>
+        </section>
+
+        {mobileMoreOpen ? (
+          <section className="mobile-more-sheet" aria-label="More sections">
+            {navItems.filter((item) => !item.primaryMobile).map((item) => (
+              <Button
+                className={activeSection === item.id ? "active" : ""}
+                key={item.id}
+                onClick={() => {
+                  setActiveSection(item.id);
+                  setMobileMoreOpen(false);
+                }}
+                type="button"
+                variant="secondary"
+              >
+                {item.icon}
+                {item.label}
+              </Button>
+            ))}
+          </section>
+        ) : null}
+
+        <Button className="floating-refresh" onClick={() => void loadData()} type="button" variant="secondary">
+          <RefreshCw size={16} /> Refresh
+        </Button>
+      </div>
     </main>
   );
 }

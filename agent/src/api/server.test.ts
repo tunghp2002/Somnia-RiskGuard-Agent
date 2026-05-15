@@ -105,6 +105,7 @@ beforeEach(async () => {
     telegramAlerts,
     heartbeats,
     rewards,
+    publicChain: createTestConfig().publicChain,
     health: () => ({ ok: true })
   });
   server.listen(0, "127.0.0.1");
@@ -252,6 +253,56 @@ describe("agent setup API", () => {
     const payload = await response.json();
 
     expect(payload.data.totalValueUsd).toBe("1");
+  });
+
+  it("returns public chain metadata without secrets", async () => {
+    const response = await fetch(`${baseUrl}/api/public-chain`);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.data.chainId).toBe(50312);
+    expect(payload.data.nativeCurrency.symbol).toBe("STT");
+    expect(JSON.stringify(payload)).not.toContain("AGENT_PRIVATE_KEY");
+  });
+
+  it("moves Telegram Connect sessions from waiting to connected", async () => {
+    await fetch(`${baseUrl}/api/users`, {
+      method: "POST",
+      body: JSON.stringify({
+        walletAddress: wallet.address,
+        message,
+        signature
+      })
+    });
+
+    const startResponse = await fetch(`${baseUrl}/api/telegram/connect/start`, {
+      method: "POST",
+      body: JSON.stringify({ walletAddress: wallet.address })
+    });
+    const startPayload = await startResponse.json();
+
+    expect(startResponse.status).toBe(201);
+    expect(startPayload.data.status).toBe("waiting");
+    expect(startPayload.data.botDeepLink).toContain("t.me/RiskGuardBot");
+
+    const confirmResponse = await fetch(`${baseUrl}/api/telegram/connect/confirm`, {
+      method: "POST",
+      body: JSON.stringify({
+        code: startPayload.data.code,
+        chatId: "987654321",
+        telegramUserId: "123456"
+      })
+    });
+    const confirmPayload = await confirmResponse.json();
+
+    expect(confirmResponse.status).toBe(200);
+    expect(confirmPayload.data.status).toBe("connected");
+    expect(confirmPayload.data.connected).toBe(true);
+    expect(telegramAlerts.linkChat).toHaveBeenCalledWith({
+      walletAddress: wallet.address,
+      chatId: "987654321",
+      telegramUserId: "123456"
+    });
   });
 
   it("reports server misconfiguration when latest-state repositories are missing", async () => {

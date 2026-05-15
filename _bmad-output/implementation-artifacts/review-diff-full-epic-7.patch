@@ -1,0 +1,3956 @@
+diff --git a/_bmad-output/implementation-artifacts/spec-full-epic-7.md b/_bmad-output/implementation-artifacts/spec-full-epic-7.md
+index 67ae6e5..e53a60b 100644
+--- a/_bmad-output/implementation-artifacts/spec-full-epic-7.md
++++ b/_bmad-output/implementation-artifacts/spec-full-epic-7.md
+@@ -2,7 +2,8 @@
+ title: 'Full Epic 7: Runtime Integration & MVP Acceptance Hardening'
+ type: 'feature'
+ created: '2026-05-15'
+-status: 'in-progress'
++status: 'done'
++baseline_commit: 'e20b548991f9b5474b8271a4408cbc8912504ae6'
+ context:
+   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-context.md'
+   - '{project-root}/_bmad-output/planning-artifacts/epics.md'
+@@ -55,16 +56,16 @@ context:
+ 
+ **Story 7.6: Redesign Dashboard IA, Telegram Connect, And Public Chain Config**
+ 
+-- [ ] Add or finalize a typed public chain config loader for `config/public-chains.json`.
+-- [ ] Migrate non-secret chain id, public RPC URL, explorer URL, native currency, and public contract address reads away from env-only usage.
+-- [ ] Keep env validation for secrets and credentials only; preserve legacy env fallback only if clearly labeled temporary.
+-- [ ] Build/refactor the frontend app shell with desktop left sidebar and mobile bottom navigation.
+-- [ ] Split the current dashboard into focused sections: Overview, Setup, Risk, Heartbeat, Rewards, Receipts, Demo, and Health.
+-- [ ] Add account/session controls for restoring, connected, disconnected, expired, disconnecting, and error states.
+-- [ ] Replace manual Telegram chat-id UX with Connect Telegram via bot deep link, one-time code, QR/link fallback, or equivalent callback flow.
+-- [ ] Replace custom UI surfaces with shadcn/ui-style primitives or local wrappers where practical.
+-- [ ] Update smoke checks or manual verification notes to cover desktop navigation, mobile navigation, disconnect/sign out, Telegram Connect, and public config loading.
+-- [ ] Update sprint status when implementation reaches review.
++- [x] Add or finalize a typed public chain config loader for `config/public-chains.json`.
++- [x] Migrate non-secret chain id, public RPC URL, explorer URL, native currency, and public contract address reads away from env-only usage.
++- [x] Keep env validation for secrets and credentials only; preserve legacy env fallback only if clearly labeled temporary.
++- [x] Build/refactor the frontend app shell with desktop left sidebar and mobile bottom navigation.
++- [x] Split the current dashboard into focused sections: Overview, Setup, Risk, Heartbeat, Rewards, Receipts, Demo, and Health.
++- [x] Add account/session controls for restoring, connected, disconnected, expired, disconnecting, and error states.
++- [x] Replace manual Telegram chat-id UX with Connect Telegram via bot deep link, one-time code, QR/link fallback, or equivalent callback flow.
++- [x] Replace custom UI surfaces with shadcn/ui-style primitives or local wrappers where practical.
++- [x] Update smoke checks or manual verification notes to cover desktop navigation, mobile navigation, disconnect/sign out, Telegram Connect, and public config loading.
++- [x] Update sprint status when implementation reaches review.
+ 
+ **Acceptance Criteria:**
+ 
+@@ -84,3 +85,34 @@ Run or update these as implementation allows:
+ - `pnpm --dir agent lint`
+ - `pnpm --dir agent test`
+ - local runtime smoke check covering agent health, frontend load, demo scenario, audit redaction, navigation, disconnect, Telegram Connect, and public chain config.
++
++## Implementation Notes
++
++- Added `agent/src/config/public-chain.ts` and `/api/public-chain` so public chain id, RPC, explorer, native currency, and public contract metadata load from `config/public-chains.json`.
++- Updated agent config to use public config defaults while retaining env overrides only as legacy fallback for Somnia RPC/chain/contract values; secrets remain env-driven.
++- Exposed Somnia adapter health and public chain metadata through `/api/health`.
++- Reworked the frontend dashboard into focused sections with desktop sidebar navigation and mobile bottom navigation plus a More sheet.
++- Replaced the user-facing Telegram chat-id form with a Telegram Connect code/deep-link panel.
++- Added account restoration/disconnect state handling and wallet-specific state clearing on disconnect.
++- Added `scripts/runtime-smoke.mjs` and `pnpm smoke:runtime` for local runtime smoke verification.
++
++## Verification Results
++
++- `pnpm --dir frontend lint` passed.
++- `pnpm --dir agent lint` passed.
++- `pnpm --dir agent test` passed: 13 files, 95 tests.
++- `pnpm --dir agent build` passed.
++- `pnpm --dir frontend build` passed after rerunning outside the sandbox; the initial sandbox run failed because Turbopack could not bind a local process/port under sandbox restrictions.
++- Code review patch pass resolved 9/9 findings and re-ran `pnpm --dir frontend lint`, `pnpm --dir agent lint`, `pnpm --dir agent test`, `pnpm --dir agent build`, and `pnpm --dir frontend build`.
++
++### Review Findings
++
++- [x] [Review][Patch] Telegram Connect cannot complete a binding — `/api/telegram/connect/start` creates a code but does not persist a session, `/api/telegram/connect/status` always returns `waiting`, the frontend never polls status, and the removed chat-id form means users have no working way to bind Telegram. [agent/src/api/server.ts:394]
++- [x] [Review][Patch] Telegram deep link is not a bot connect link — the returned `https://t.me/share/url` URL only opens Telegram sharing and does not target a bot `/start` flow or carry a token the backend can consume. [agent/src/api/server.ts:423]
++- [x] [Review][Patch] Public chain config path depends on process cwd — `resolve(process.cwd(), "../config/public-chains.json")` only works when the agent starts from `/agent` and can fail from repo root, compiled output, or a service manager. [agent/src/config/public-chain.ts:7]
++- [x] [Review][Patch] Public chain env overrides still drive public metadata — `SOMNIA_RPC_URL`, `SOMNIA_CHAIN_ID`, and `DEAD_MAN_SWITCH_CONTRACT_ADDRESS` override `config/public-chains.json`, which contradicts the requirement that public metadata come from config with env reserved for secrets/credentials. [agent/src/config/env.ts:242]
++- [x] [Review][Patch] Public config contract schema/type mismatch — backend parsing requires `contracts.deadManSwitch` to exist while frontend API types it as optional. [agent/src/config/public-chain.ts:18]
++- [x] [Review][Patch] Account/session behavior is incomplete — `expired` is declared but never set, there is no account/chain change listener, stale in-flight loads can repopulate wallet/demo state after mode switch or disconnect, and account state is rendered as raw status text. [frontend/src/features/dashboard/riskguard-dashboard.tsx:164]
++- [x] [Review][Patch] Mobile More sheet remains open after primary navigation — tapping Overview/Setup/Risk/Receipts does not close the open More sheet. [frontend/src/features/dashboard/riskguard-dashboard.tsx:651]
++- [x] [Review][Patch] shadcn/ui adoption requirement is largely bypassed — the patch adds custom raw controls for sidebar, More sheet, account status, Telegram Connect, forms, and alerts instead of local shadcn-style primitives or wrappers where practical. [frontend/src/features/dashboard/riskguard-dashboard.tsx:405]
++- [x] [Review][Patch] Runtime smoke script misses required checks and allows degraded health — `pnpm smoke:runtime` does not exercise navigation, disconnect/sign out, or Telegram Connect, and `ok:false` health is reported as a successful degraded check. [scripts/runtime-smoke.mjs:33]
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index 5e05b1b..2ede752 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -1,5 +1,5 @@
+ # generated: 2026-05-11
+-# last_updated: 2026-05-14
++# last_updated: 2026-05-15
+ # project: Somnia RiskGuard Agent
+ # project_key: NOKEY
+ # tracking_system: file-system
+@@ -35,7 +35,7 @@
+ # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+ 
+ generated: 2026-05-11
+-last_updated: 2026-05-14
++last_updated: 2026-05-15
+ project: Somnia RiskGuard Agent
+ project_key: NOKEY
+ tracking_system: file-system
+@@ -92,11 +92,11 @@ development_status:
+   6-5-show-operator-health-and-secret-safe-logs: review
+   epic-6-retrospective: optional
+ 
+-  epic-7: in-progress
+-  7-1-run-agent-jobs-in-normal-runtime: review
+-  7-2-add-local-runtime-smoke-checks: backlog
+-  7-3-make-demo-testnet-capability-honest: backlog
+-  7-4-wire-or-explicitly-gate-somnia-agent-kit-execution: backlog
+-  7-5-finish-dashboard-operational-ux: review
+-  7-6-redesign-dashboard-ia-telegram-connect-and-public-chain-config: backlog
++  epic-7: done
++  7-1-run-agent-jobs-in-normal-runtime: done
++  7-2-add-local-runtime-smoke-checks: done
++  7-3-make-demo-testnet-capability-honest: done
++  7-4-wire-or-explicitly-gate-somnia-agent-kit-execution: done
++  7-5-finish-dashboard-operational-ux: done
++  7-6-redesign-dashboard-ia-telegram-connect-and-public-chain-config: done
+   epic-7-retrospective: optional
+diff --git a/_bmad-output/planning-artifacts/ux-design-specification.md b/_bmad-output/planning-artifacts/ux-design-specification.md
+index b5edb6f..5e70967 100644
+--- a/_bmad-output/planning-artifacts/ux-design-specification.md
++++ b/_bmad-output/planning-artifacts/ux-design-specification.md
+@@ -17,9 +17,15 @@ stepsCompleted:
+ lastStep: 14
+ workflowStatus: complete
+ completedAt: '2026-05-14'
++lastUpdated: '2026-05-15'
+ inputDocuments:
+   - _bmad-output/planning-artifacts/prd.md
+   - _bmad-output/planning-artifacts/prd-validation-report.md
++revisionDocuments:
++  - _bmad-output/planning-artifacts/sprint-change-proposal-2026-05-14.md
++  - _bmad-output/implementation-artifacts/epic-7-context.md
++  - _bmad-output/implementation-artifacts/spec-full-epic-7.md
++  - _bmad-output/implementation-artifacts/7-6-redesign-dashboard-ia-telegram-connect-and-public-chain-config.md
+ ---
+ 
+ # UX Design Specification Somnia RiskGuard Agent
+@@ -33,6 +39,18 @@ inputDocuments:
+ 
+ ## Executive Summary
+ 
++### 2026-05-15 Revision Alignment
++
++This revision aligns the UX specification with Epic 7 and Story 7.6. The dashboard must now be treated as a focused multi-section operational app, not a single page that accumulates every workflow. Desktop uses a persistent left sidebar. Mobile uses a bottom navigation bar with a More sheet or menu for lower-frequency sections. Overview summarizes guardian state and next safe action; detailed setup, risk, heartbeat, reward, receipt, demo, and health workflows live in their own sections.
++
++Telegram setup must be a Connect Telegram flow, not a manual chat-id form. The primary user path should use a bot deep link, one-time code, QR/link fallback, or equivalent callback flow, with waiting, connected, expired, failed, disconnect, and reconnect states. Direct chat-id entry may exist only as an internal or legacy fallback.
++
++Account and session behavior must feel like a normal web app. The UI must explicitly handle restoring, connected, disconnected, expired, error, and disconnecting states. Disconnect or sign out must clear wallet-specific dashboard state so one wallet's risk, setup, receipt, and demo state does not bleed into another wallet session.
++
++Public chain metadata is part of UX because users and operators need consistent mode, network, explorer, currency, and contract labels. Chain id, public RPC URL, explorer URL, native currency, and public contract addresses should come from `config/public-chains.json`; secrets and credentials remain environment-driven.
++
++The component model should default to shadcn/ui-style primitives or local wrappers for navigation, forms, account menus, dialogs, sheets, tabs, tables, badges, alerts, tooltips, toasts, skeletons, and loading/error states.
++
+ ### Project Vision
+ 
+ Somnia RiskGuard Agent is a safety-first Web3 guardian for users who cannot continuously monitor their Somnia wallets. The UX must make constrained autonomy feel understandable and trustworthy: the agent watches portfolio risk, explains what matters, sends Telegram actions, claims only bounded rewards, and exposes heartbeat and Dead Man's Switch states without implying unrestricted control or financial advice.
+@@ -423,9 +441,41 @@ RiskGuard should rely on Tailwind and shadcn/ui primitives for app shell/sidebar
+ 
+ Build custom components from design-system primitives and shared tokens. Prioritize status clarity, keyboard accessibility, and dense dashboard composition. Every custom component should support dark and light mode, semantic state labels, and copy-safe handling for wallet addresses and transaction hashes.
+ 
++### shadcn/ui Component Plan
++
++#### Components And Variants
++
++Use project-local shadcn/ui-style primitives as the default implementation vocabulary. The dashboard shell should use a `Sidebar` or local sidebar wrapper on desktop, a bottom navigation composition on mobile, `Sheet` for More navigation, `DropdownMenu` for the account menu, `Button` variants for primary/secondary/destructive/ghost actions, `Badge` variants for mode and status labels, `Alert` for blocked or failed-closed states, `Tabs` for local route subviews, `Table` for receipt and health detail views, `Dialog` or `Sheet` for confirmation and connection flows, `Tooltip` for icon-only controls, `Toast` for short-lived action feedback, `Skeleton` for loading summaries, and `Form`, `Input`, `Select`, `Switch`, and numeric inputs for setup configuration.
++
++Product-specific compositions should wrap those primitives: App Shell Navigation, Account And Session Control, Telegram Connect Panel, Guardian Status Panel, Risk Score Circle, Wallet Role Chip, Safety Receipt, Safety Timeline, Heartbeat Timer, Dead Man's Switch Status, Reward Policy Summary, Demo Scenario Control, and Subsystem Health Row.
++
++#### Interaction States
++
++Every route and major component must cover loading, empty, ready, pending, disabled, error, failed-closed, and API-unavailable states where relevant. Account controls must cover signed out, restoring, connected, disconnected, expired, disconnecting, failed, and wallet-switch states. Telegram Connect must cover not connected, code generated, waiting for confirmation, expired code, connected, failed, disconnecting, disconnected, and reconnecting. Execution-capable actions must show adapter-disabled, simulation-backed, demo-fixture-backed, and Somnia Testnet-backed states at the point of action.
++
++#### Responsive Behavior
++
++Desktop uses persistent left navigation with Overview, Setup, Risk, Heartbeat, Rewards, Receipts, Demo, and Health. Mobile uses bottom navigation for the highest-frequency sections and a More `Sheet` or menu for lower-frequency sections. Overview remains a summary on all breakpoints. Dense tables become compact lists on mobile, and operator health details should move behind tabs or disclosure controls.
++
++#### Accessibility Requirements
++
++Use semantic landmarks for the app shell, route content, and navigation. Icon-only controls need accessible labels and tooltips. Focus rings must be visible in dark and light mode. Status cannot rely on color alone; every state needs text and, where useful, an icon. Dialogs and sheets must trap focus correctly and return focus to the triggering control. Copy buttons for addresses and transaction hashes must announce success without changing layout.
++
++#### Implementation Location Hints
++
++Reusable primitives belong in `frontend/src/components/ui`. Product compositions belong under `frontend/src/features/dashboard` and `frontend/src/features/settings`. Route composition belongs under `frontend/src/app`. Shared public chain metadata should be read from `config/public-chains.json` through typed loaders rather than duplicated constants. Frontend API calls should keep using typed response shapes and should not expose secrets or private-key material.
++
++#### Navigation Placement
++
++Desktop sidebar placement: Overview, Setup, Risk, Heartbeat, Rewards, Receipts, Demo, Health. Mobile bottom nav placement should prioritize Overview, Setup, Risk, Receipts, and More; More exposes Heartbeat, Rewards, Demo, and Health when space is constrained. Beneficiary mode may use a focused simplified route that inherits account and mode labeling but avoids operator-heavy navigation.
++
+ ### Implementation Roadmap
+ 
+-Phase 1 should build App Shell Navigation, Account And Session Control, Telegram Connect Panel, Guardian Status Panel, Risk Score Circle, Wallet Role Chip, Safety Receipt, and Safety Timeline. Phase 2 should add Heartbeat Timer, Dead Man's Switch Status, Reward Policy Summary, and Subsystem Health Row. Phase 3 should add Demo Scenario Control and richer operator diagnostics.
++Phase 1 should build App Shell Navigation, Account And Session Control, Telegram Connect Panel, Guardian Status Panel, Risk Score Circle, Wallet Role Chip, Safety Receipt, and Safety Timeline. Phase 1 also includes the public chain config display contract: all network, explorer, native currency, and public contract labels are read from `config/public-chains.json`.
++
++Phase 2 should add Heartbeat Timer, Dead Man's Switch Status, Reward Policy Summary, and Subsystem Health Row. Phase 2 must make runtime truth visible: API unavailable, adapter disabled, simulation-backed, demo-fixture-backed, and Somnia Testnet-backed states are explicit.
++
++Phase 3 should add Demo Scenario Control and richer operator diagnostics, including smoke/manual verification coverage for desktop navigation, mobile navigation, disconnect/sign out, Telegram Connect, public chain config loading, and mode labeling.
+ 
+ ## UX Consistency Patterns
+ 
+diff --git a/agent/src/api/server.test.ts b/agent/src/api/server.test.ts
+index e64f95f..91655f6 100644
+--- a/agent/src/api/server.test.ts
++++ b/agent/src/api/server.test.ts
+@@ -105,6 +105,7 @@ beforeEach(async () => {
+     telegramAlerts,
+     heartbeats,
+     rewards,
++    publicChain: createTestConfig().publicChain,
+     health: () => ({ ok: true })
+   });
+   server.listen(0, "127.0.0.1");
+@@ -254,6 +255,56 @@ describe("agent setup API", () => {
+     expect(payload.data.totalValueUsd).toBe("1");
+   });
+ 
++  it("returns public chain metadata without secrets", async () => {
++    const response = await fetch(`${baseUrl}/api/public-chain`);
++    const payload = await response.json();
++
++    expect(response.status).toBe(200);
++    expect(payload.data.chainId).toBe(50312);
++    expect(payload.data.nativeCurrency.symbol).toBe("STT");
++    expect(JSON.stringify(payload)).not.toContain("AGENT_PRIVATE_KEY");
++  });
++
++  it("moves Telegram Connect sessions from waiting to connected", async () => {
++    await fetch(`${baseUrl}/api/users`, {
++      method: "POST",
++      body: JSON.stringify({
++        walletAddress: wallet.address,
++        message,
++        signature
++      })
++    });
++
++    const startResponse = await fetch(`${baseUrl}/api/telegram/connect/start`, {
++      method: "POST",
++      body: JSON.stringify({ walletAddress: wallet.address })
++    });
++    const startPayload = await startResponse.json();
++
++    expect(startResponse.status).toBe(201);
++    expect(startPayload.data.status).toBe("waiting");
++    expect(startPayload.data.botDeepLink).toContain("t.me/RiskGuardBot");
++
++    const confirmResponse = await fetch(`${baseUrl}/api/telegram/connect/confirm`, {
++      method: "POST",
++      body: JSON.stringify({
++        code: startPayload.data.code,
++        chatId: "987654321",
++        telegramUserId: "123456"
++      })
++    });
++    const confirmPayload = await confirmResponse.json();
++
++    expect(confirmResponse.status).toBe(200);
++    expect(confirmPayload.data.status).toBe("connected");
++    expect(confirmPayload.data.connected).toBe(true);
++    expect(telegramAlerts.linkChat).toHaveBeenCalledWith({
++      walletAddress: wallet.address,
++      chatId: "987654321",
++      telegramUserId: "123456"
++    });
++  });
++
+   it("reports server misconfiguration when latest-state repositories are missing", async () => {
+     const setupService = new SetupService(
+       new UsersRepository(dataDirectory),
+diff --git a/agent/src/api/server.ts b/agent/src/api/server.ts
+index e5b7008..0b174b5 100644
+--- a/agent/src/api/server.ts
++++ b/agent/src/api/server.ts
+@@ -7,6 +7,7 @@ import { ZodError } from "zod";
+ import { failure, sendJson, success } from "./response.js";
+ import type { SetupService } from "../services/setup.service.js";
+ import { setupWalletRequestSchema } from "../services/setup.service.js";
++import type { PublicChainMetadata } from "../config/public-chain.js";
+ import type { AuditEventsRepository } from "../persistence/audit-events.repository.js";
+ import type { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
+ import type { RiskSnapshotsRepository } from "../persistence/risk-snapshots.repository.js";
+@@ -91,6 +92,14 @@ class ServerDependencyError extends Error {
+   }
+ }
+ 
++interface TelegramConnectSession {
++  walletAddress: string;
++  code: string;
++  expiresAt: string;
++  status: "waiting" | "connected" | "expired" | "failed";
++  binding?: unknown;
++}
++
+ function parseOptionalWalletAddress(value: string | null): string | undefined {
+   if (!value) {
+     return undefined;
+@@ -167,10 +176,37 @@ export interface AgentApiDependencies {
+   telegramAlerts?: TelegramAlertService;
+   heartbeats?: HeartbeatService;
+   rewards?: RewardClaimService;
++  publicChain?: PublicChainMetadata;
+   health?: () => Promise<unknown> | unknown;
+ }
+ 
+ export function createAgentApiServer(dependencies: AgentApiDependencies): Server {
++  const telegramConnectSessions = new Map<string, TelegramConnectSession>();
++
++  const sessionForWallet = (walletAddress: string) =>
++    [...telegramConnectSessions.values()]
++      .filter((session) => session.walletAddress === walletAddress)
++      .sort((left, right) => Date.parse(right.expiresAt) - Date.parse(left.expiresAt))[0];
++
++  const serializeTelegramConnectSession = (session: TelegramConnectSession) => {
++    const expired = session.status === "waiting" && Date.parse(session.expiresAt) <= Date.now();
++
++    if (expired) {
++      session.status = "expired";
++      telegramConnectSessions.set(session.code, session);
++    }
++
++    return {
++      walletAddress: session.walletAddress,
++      code: session.code,
++      expiresAt: session.expiresAt,
++      status: session.status,
++      connected: session.status === "connected",
++      ...(session.binding ? { binding: session.binding } : {}),
++      botDeepLink: `https://t.me/RiskGuardBot?start=${encodeURIComponent(session.code)}`
++    };
++  };
++
+   return createServer(async (request, response) => {
+     applyCorsHeaders(request, response);
+ 
+@@ -241,6 +277,14 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
+         return;
+       }
+ 
++      if (request.method === "GET" && url.pathname === "/api/public-chain") {
++        if (!dependencies.publicChain) {
++          throw new ServerDependencyError("Public chain metadata is not configured");
++        }
++        sendJson(response, 200, success(dependencies.publicChain, requestId));
++        return;
++      }
++
+       if (request.method === "POST" && url.pathname === "/api/demo/scenarios") {
+         if (!dependencies.demoScenarios) {
+           throw new ServerDependencyError("Demo scenario service is not configured");
+@@ -381,6 +425,100 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
+         return;
+       }
+ 
++      if (request.method === "POST" && url.pathname === "/api/telegram/connect/start") {
++        if (!dependencies.telegramAlerts) {
++          throw new ServerDependencyError("Telegram alert service is not configured");
++        }
++
++        const body = await readJsonBody(request);
++        const walletAddress = parseOptionalWalletAddress(
++          typeof body === "object" && body && "walletAddress" in body
++            ? String((body as { walletAddress?: unknown }).walletAddress ?? "")
++            : null
++        );
++
++        if (!walletAddress) {
++          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
++          return;
++        }
++
++        const code = randomUUID().slice(0, 8).toUpperCase();
++        const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
++        const session: TelegramConnectSession = {
++          walletAddress,
++          code,
++          expiresAt,
++          status: "waiting"
++        };
++        telegramConnectSessions.set(code, session);
++        sendJson(
++          response,
++          201,
++          success(serializeTelegramConnectSession(session), requestId)
++        );
++        return;
++      }
++
++      if (request.method === "GET" && url.pathname === "/api/telegram/connect/status") {
++        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
++
++        if (!walletAddress) {
++          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
++          return;
++        }
++
++        const session = sessionForWallet(walletAddress);
++
++        if (!session) {
++          sendJson(response, 404, failure("not_found", "No Telegram Connect session is active"));
++          return;
++        }
++
++        sendJson(response, 200, success(serializeTelegramConnectSession(session), requestId));
++        return;
++      }
++
++      if (request.method === "POST" && url.pathname === "/api/telegram/connect/confirm") {
++        if (!dependencies.telegramAlerts) {
++          throw new ServerDependencyError("Telegram alert service is not configured");
++        }
++
++        const body = await readJsonBody(request);
++        const code = typeof body === "object" && body && "code" in body
++          ? String((body as { code?: unknown }).code ?? "").toUpperCase()
++          : "";
++        const chatId = typeof body === "object" && body && "chatId" in body
++          ? String((body as { chatId?: unknown }).chatId ?? "")
++          : "";
++        const telegramUserId = typeof body === "object" && body && "telegramUserId" in body
++          ? String((body as { telegramUserId?: unknown }).telegramUserId ?? "")
++          : undefined;
++        const session = telegramConnectSessions.get(code);
++
++        if (!session) {
++          sendJson(response, 404, failure("not_found", "Telegram Connect code was not found"));
++          return;
++        }
++
++        if (Date.parse(session.expiresAt) <= Date.now()) {
++          session.status = "expired";
++          telegramConnectSessions.set(session.code, session);
++          sendJson(response, 410, failure("telegram_connect_expired", "Telegram Connect code expired"));
++          return;
++        }
++
++        const binding = await dependencies.telegramAlerts.linkChat({
++          walletAddress: session.walletAddress,
++          chatId,
++          ...(telegramUserId ? { telegramUserId } : {})
++        });
++        session.status = "connected";
++        session.binding = binding;
++        telegramConnectSessions.set(session.code, session);
++        sendJson(response, 200, success(serializeTelegramConnectSession(session), requestId));
++        return;
++      }
++
+       if (request.method === "POST" && url.pathname === "/api/telegram/bindings") {
+         if (!dependencies.telegramAlerts) {
+           throw new ServerDependencyError("Telegram alert service is not configured");
+diff --git a/agent/src/config/env.test.ts b/agent/src/config/env.test.ts
+index dc18fae..3e885e9 100644
+--- a/agent/src/config/env.test.ts
++++ b/agent/src/config/env.test.ts
+@@ -1,3 +1,5 @@
++import { chdir, cwd } from "node:process";
++
+ import { describe, expect, it } from "vitest";
+ import { Wallet } from "ethers";
+ 
+@@ -71,23 +73,45 @@ describe("agent runtime config", () => {
+       expect(error).toBeInstanceOf(ConfigValidationError);
+       const message = formatConfigError(error as ConfigValidationError);
+ 
+-      expect(message).toContain("SOMNIA_RPC_URL");
+       expect(message).toContain("AGENT_PRIVATE_KEY");
++      expect(message).not.toContain("SOMNIA_RPC_URL");
+       expect(message).not.toContain("undefined");
+     }
+   });
+ 
++  it("loads non-secret public chain metadata from config/public-chains.json", () => {
++    const config = validateConfig({
++      ...validEnv,
++      SOMNIA_RPC_URL: undefined,
++      SOMNIA_CHAIN_ID: undefined,
++      DEAD_MAN_SWITCH_CONTRACT_ADDRESS: undefined
++    });
++
++    expect(config.publicChain.key).toBe("somnia-testnet");
++    expect(config.somnia.rpcUrl).toBe("https://dream-rpc.somnia.network");
++    expect(config.somnia.chainId).toBe(50312);
++    expect(config.publicChain.nativeCurrency.symbol).toBe("STT");
++  });
++
++  it("loads public chain metadata independently of process cwd", () => {
++    const previousCwd = cwd();
++    chdir(previousCwd.endsWith("/agent") ? ".." : previousCwd);
++
++    try {
++      const config = validateConfig(validEnv);
++      expect(config.publicChain.key).toBe("somnia-testnet");
++    } finally {
++      chdir(previousCwd);
++    }
++  });
++
+   it.each([
+-    ["SOMNIA_RPC_URL", "not-a-url"],
+-    ["SOMNIA_CHAIN_ID", "0"],
+-    ["SOMNIA_CHAIN_ID", `${Number.MAX_SAFE_INTEGER + 2}`],
+     ["AGENT_WALLET_ADDRESS", "0x123"],
+     ["AGENT_PRIVATE_KEY", "0x123"],
+     ["AGENT_PRIVATE_KEY", `0x${"0".repeat(64)}`],
+     ["RISK_SCORE_ALERT_THRESHOLD", "101"],
+     ["HEARTBEAT_INTERVAL_SECONDS", "0"],
+-    ["AUTO_CLAIM_ENABLED", "sometimes"],
+-    ["DEAD_MAN_SWITCH_CONTRACT_ADDRESS", "0xabc"]
++    ["AUTO_CLAIM_ENABLED", "sometimes"]
+   ])("rejects malformed %s", (key, value) => {
+     expect(() => validateConfig({ ...validEnv, [key]: value })).toThrow(
+       ConfigValidationError
+@@ -156,7 +180,7 @@ describe("agent runtime config", () => {
+   it("can validate an explicit env source without reading process.env", () => {
+     const config = loadConfig({ env: validEnv, loadDotenv: false });
+ 
+-    expect(config.somnia.rpcUrl).toBe(validEnv.SOMNIA_RPC_URL);
++    expect(config.somnia.rpcUrl).toBe("https://dream-rpc.somnia.network");
+   });
+ 
+   it("uses an explicit dotenv path when provided", () => {
+diff --git a/agent/src/config/env.ts b/agent/src/config/env.ts
+index a3e7326..ca9db20 100644
+--- a/agent/src/config/env.ts
++++ b/agent/src/config/env.ts
+@@ -4,6 +4,8 @@ import { config as loadDotenvFile } from "dotenv";
+ import { getAddress, Wallet } from "ethers";
+ import { z } from "zod";
+ 
++import { loadPublicChainMetadata, PublicChainConfigError } from "./public-chain.js";
++
+ const ethereumAddressSchema = z
+   .string()
+   .regex(/^0x[a-fA-F0-9]{40}$/, "Must be a valid EVM address")
+@@ -110,6 +112,14 @@ const rawEnvSchema = z
+   LOG_LEVEL: z
+     .enum(["trace", "debug", "info", "warn", "error", "fatal"])
+     .default("info"),
++  PUBLIC_CHAIN_KEY: requiredNonEmptyString("PUBLIC_CHAIN_KEY"),
++  PUBLIC_CHAIN_NAME: requiredNonEmptyString("PUBLIC_CHAIN_NAME"),
++  PUBLIC_CHAIN_EXPLORER_URL: z.string().url("Must be a valid URL"),
++  PUBLIC_CHAIN_NATIVE_CURRENCY_NAME: requiredNonEmptyString("PUBLIC_CHAIN_NATIVE_CURRENCY_NAME"),
++  PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL: requiredNonEmptyString("PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL"),
++  PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS: integerFromString("PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS").pipe(
++    z.number().int().nonnegative()
++  ),
+   SOMNIA_RPC_URL: z.string().url("Must be a valid URL"),
+   SOMNIA_CHAIN_ID: integerFromString("SOMNIA_CHAIN_ID").pipe(
+     z.number().int().positive()
+@@ -143,6 +153,22 @@ const rawEnvSchema = z
+   TELEGRAM_WEBHOOK_SECRET: optionalNonEmptyString
+ })
+   .superRefine((env, context) => {
++    if (!env.SOMNIA_RPC_URL) {
++      context.addIssue({
++        code: z.ZodIssueCode.custom,
++        message: "Must be configured through config/public-chains.json or SOMNIA_RPC_URL legacy override",
++        path: ["SOMNIA_RPC_URL"]
++      });
++    }
++
++    if (!env.SOMNIA_CHAIN_ID || Number(env.SOMNIA_CHAIN_ID) <= 0) {
++      context.addIssue({
++        code: z.ZodIssueCode.custom,
++        message: "Must be configured through config/public-chains.json or SOMNIA_CHAIN_ID legacy override",
++        path: ["SOMNIA_CHAIN_ID"]
++      });
++    }
++
+     if (env.AGENT_PRIVATE_KEY && env.AGENT_WALLET_ADDRESS) {
+       let derivedAddress: string;
+ 
+@@ -186,12 +212,27 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
+   logLevel: env.LOG_LEVEL,
+   somnia: {
+     rpcUrl: env.SOMNIA_RPC_URL,
+-    chainId: env.SOMNIA_CHAIN_ID,
++    chainId: Number(env.SOMNIA_CHAIN_ID),
+     agentWalletAddress: env.AGENT_WALLET_ADDRESS,
+     agentPrivateKey: env.AGENT_PRIVATE_KEY,
+     monitoredWalletAddress: env.MONITORED_WALLET_ADDRESS,
+     deadManSwitchContractAddress: env.DEAD_MAN_SWITCH_CONTRACT_ADDRESS
+   },
++  publicChain: {
++    key: env.PUBLIC_CHAIN_KEY,
++    name: env.PUBLIC_CHAIN_NAME,
++    rpcUrl: env.SOMNIA_RPC_URL,
++    chainId: Number(env.SOMNIA_CHAIN_ID),
++    blockExplorerUrl: env.PUBLIC_CHAIN_EXPLORER_URL,
++    nativeCurrency: {
++      name: env.PUBLIC_CHAIN_NATIVE_CURRENCY_NAME,
++      symbol: env.PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL,
++      decimals: Number(env.PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS)
++    },
++    contracts: {
++      deadManSwitch: env.DEAD_MAN_SWITCH_CONTRACT_ADDRESS
++    }
++  },
+   llm: {
+     groq: {
+       apiKey: env.GROQ_API_KEY,
+@@ -234,6 +275,13 @@ export class ConfigValidationError extends Error {
+   }
+ }
+ 
++export class PublicConfigValidationError extends Error {
++  public constructor(message: string) {
++    super(message);
++    this.name = "PublicConfigValidationError";
++  }
++}
++
+ export interface LoadConfigOptions {
+   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+   loadDotenv?: boolean;
+@@ -243,7 +291,32 @@ export interface LoadConfigOptions {
+ export function validateConfig(
+   env: NodeJS.ProcessEnv | Record<string, string | undefined>
+ ): AgentConfig {
+-  const result = agentEnvSchema.safeParse(env);
++  let publicChain;
++
++  try {
++    publicChain = loadPublicChainMetadata(env.PUBLIC_CHAIN_KEY);
++  } catch (error) {
++    if (error instanceof PublicChainConfigError) {
++      throw new PublicConfigValidationError(error.message);
++    }
++
++    throw error;
++  }
++
++  const envWithPublicDefaults = {
++    ...env,
++    SOMNIA_RPC_URL: publicChain.rpcUrl,
++    SOMNIA_CHAIN_ID: String(publicChain.chainId),
++    DEAD_MAN_SWITCH_CONTRACT_ADDRESS: publicChain.contracts.deadManSwitch,
++    PUBLIC_CHAIN_KEY: publicChain.key,
++    PUBLIC_CHAIN_NAME: publicChain.name,
++    PUBLIC_CHAIN_EXPLORER_URL: publicChain.blockExplorerUrl,
++    PUBLIC_CHAIN_NATIVE_CURRENCY_NAME: publicChain.nativeCurrency.name,
++    PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL: publicChain.nativeCurrency.symbol,
++    PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS: String(publicChain.nativeCurrency.decimals)
++  };
++
++  const result = agentEnvSchema.safeParse(envWithPublicDefaults);
+ 
+   if (!result.success) {
+     throw new ConfigValidationError(result.error.issues);
+diff --git a/agent/src/main.test.ts b/agent/src/main.test.ts
+index c262e99..6a8fcf4 100644
+--- a/agent/src/main.test.ts
++++ b/agent/src/main.test.ts
+@@ -55,7 +55,8 @@ describe("agent startup", () => {
+     await runCli({ env: {}, loadDotenv: false });
+ 
+     expect(consoleError).toHaveBeenCalledOnce();
+-    expect(consoleError.mock.calls[0]?.[0]).toContain("SOMNIA_RPC_URL");
++    expect(consoleError.mock.calls[0]?.[0]).toContain("AGENT_PRIVATE_KEY");
++    expect(consoleError.mock.calls[0]?.[0]).not.toContain("SOMNIA_RPC_URL");
+     expect(consoleError.mock.calls[0]?.[0]).not.toContain("ConfigValidationError");
+     expect(consoleError.mock.calls[0]?.[0]).not.toContain("at ");
+     expect(process.exitCode).toBe(1);
+diff --git a/agent/src/main.ts b/agent/src/main.ts
+index 8f9b3aa..593a5db 100644
+--- a/agent/src/main.ts
++++ b/agent/src/main.ts
+@@ -5,6 +5,7 @@ import {
+   ConfigValidationError,
+   formatConfigError,
+   loadConfig,
++  PublicConfigValidationError,
+   type AgentConfig,
+   type LoadConfigOptions
+ } from "./config/env.js";
+@@ -162,9 +163,12 @@ export async function startAgentRuntime(
+     telegramAlerts,
+     heartbeats,
+     rewards,
++    publicChain: config.publicChain,
+     health: async () => ({
+       ok: true,
+-      telegram: await telegramAlerts.health()
++      telegram: await telegramAlerts.health(),
++      somnia: await somnia.health(),
++      publicChain: config.publicChain
+     })
+   });
+ 
+@@ -199,7 +203,9 @@ export async function startAgentRuntime(
+     {
+       apiPort,
+       apiHost: "0.0.0.0",
+-      telegram: await telegramAlerts.health()
++      telegram: await telegramAlerts.health(),
++      somnia: await somnia.health(),
++      publicChain: config.publicChain.key
+     },
+     "agent runtime started"
+   );
+@@ -304,6 +310,12 @@ export async function runCli(options: MainOptions = {}): Promise<void> {
+       return;
+     }
+ 
++    if (error instanceof PublicConfigValidationError) {
++      console.error(`Agent public chain configuration is invalid:\n- ${error.message}`);
++      process.exitCode = 1;
++      return;
++    }
++
+     throw error;
+   }
+ }
+diff --git a/frontend/src/app/globals.css b/frontend/src/app/globals.css
+index 5f1011d..7029814 100644
+--- a/frontend/src/app/globals.css
++++ b/frontend/src/app/globals.css
+@@ -45,6 +45,10 @@ button:disabled {
+   opacity: 0.55;
+ }
+ 
++a {
++  color: inherit;
++}
++
+ input {
+   width: 100%;
+   min-width: 0;
+@@ -62,6 +66,88 @@ button:focus-visible {
+   outline-offset: 2px;
+ }
+ 
++.rg-app-shell {
++  display: grid;
++  grid-template-columns: 248px minmax(0, 1fr);
++  min-height: 100vh;
++}
++
++.rg-sidebar {
++  position: sticky;
++  top: 0;
++  height: 100vh;
++  border-right: 1px solid var(--border);
++  background: rgb(10 10 15 / 92%);
++  padding: 20px 14px;
++}
++
++.sidebar-brand,
++.rg-sidebar nav,
++.sidebar-meta,
++.account-status,
++.connect-panel,
++.connect-code {
++  display: grid;
++}
++
++.sidebar-brand {
++  grid-template-columns: auto 1fr;
++  gap: 8px;
++  align-items: center;
++  font-weight: 800;
++  margin-bottom: 18px;
++}
++
++.rg-sidebar nav {
++  gap: 6px;
++}
++
++.rg-sidebar button,
++.mobile-bottom-nav button {
++  display: flex;
++  align-items: center;
++  gap: 9px;
++  border: 1px solid transparent;
++  border-radius: 8px;
++  background: transparent;
++  color: var(--muted);
++  min-height: 40px;
++  padding: 0 10px;
++  text-align: left;
++}
++
++.rg-sidebar button.active,
++.mobile-bottom-nav button.active {
++  border-color: rgb(192 38 211 / 42%);
++  background: rgb(192 38 211 / 14%);
++  color: var(--text);
++}
++
++.sidebar-meta {
++  position: absolute;
++  right: 14px;
++  bottom: 20px;
++  left: 14px;
++  gap: 4px;
++  border: 1px solid var(--border);
++  border-radius: 8px;
++  padding: 10px;
++  background: #0d0d13;
++}
++
++.sidebar-meta span,
++.account-status span,
++.connect-code span,
++.connect-code small {
++  color: var(--muted);
++  font-size: 0.74rem;
++}
++
++.sidebar-meta strong,
++.account-status strong {
++  overflow-wrap: anywhere;
++}
++
+ .rg-shell {
+   position: relative;
+   width: min(1480px, calc(100% - 32px));
+@@ -123,6 +209,15 @@ button:focus-visible {
+   justify-content: flex-end;
+ }
+ 
++.account-status {
++  gap: 2px;
++  min-width: 150px;
++  border: 1px solid var(--border);
++  border-radius: 8px;
++  background: #0d0d13;
++  padding: 7px 10px;
++}
++
+ .mode-switch {
+   display: grid;
+   grid-template-columns: repeat(2, 1fr);
+@@ -138,7 +233,8 @@ button:focus-visible {
+ .secondary-button,
+ form button,
+ .scenario-button,
+-.floating-refresh {
++.floating-refresh,
++.ui-button {
+   border: 1px solid transparent;
+   border-radius: 8px;
+   color: var(--text);
+@@ -159,7 +255,8 @@ form button,
+ .primary-button,
+ .secondary-button,
+ form button,
+-.floating-refresh {
++.floating-refresh,
++.ui-button {
+   display: inline-flex;
+   align-items: center;
+   justify-content: center;
+@@ -176,11 +273,33 @@ form button,
+ 
+ .secondary-button,
+ form button,
+-.floating-refresh {
++.floating-refresh,
++.ui-button-secondary {
+   background: #181820;
+   border-color: var(--border);
+ }
+ 
++.ui-button-primary {
++  background: var(--purple-strong);
++  box-shadow: 0 0 24px rgb(192 38 211 / 22%);
++}
++
++.ui-button-ghost {
++  background: transparent;
++}
++
++.ui-badge {
++  display: inline-flex;
++  align-items: center;
++  width: fit-content;
++  border: 1px solid var(--border);
++  border-radius: 999px;
++  padding: 4px 8px;
++  color: var(--soft);
++  font-family: "JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, monospace;
++  font-size: 0.74rem;
++}
++
+ .notice {
+   border: 1px solid var(--border);
+   border-radius: 8px;
+@@ -459,6 +578,40 @@ label {
+   width: 16px;
+ }
+ 
++.connect-panel {
++  gap: 10px;
++  border: 1px solid var(--border);
++  border-radius: 8px;
++  background: #0d0d13;
++  padding: 12px;
++}
++
++.connect-panel p {
++  margin: 4px 0 0;
++}
++
++.connect-code {
++  gap: 4px;
++  border: 1px solid rgb(34 211 238 / 32%);
++  border-radius: 8px;
++  padding: 10px;
++}
++
++.connect-code strong {
++  color: var(--cyan);
++  font-family: "JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, monospace;
++  font-size: 1.2rem;
++}
++
++.connect-code a {
++  display: inline-flex;
++  align-items: center;
++  gap: 5px;
++  color: var(--cyan);
++  margin-top: 4px;
++  text-decoration: none;
++}
++
+ .scenario-grid {
+   grid-template-columns: repeat(2, minmax(0, 1fr));
+ }
+@@ -535,6 +688,14 @@ label {
+   z-index: 5;
+ }
+ 
++.mobile-bottom-nav {
++  display: none;
++}
++
++.mobile-more-sheet {
++  display: none;
++}
++
+ .spin {
+   animation: spin 0.9s linear infinite;
+ }
+@@ -570,11 +731,81 @@ label {
+   .signal,
+   .status-strip,
+   .scenario-button,
+-  .mode-switch {
++  .mode-switch,
++  .account-status,
++  .connect-panel,
++  .sidebar-meta {
+     background: #ffffff;
+   }
+ }
+ 
++@media (max-width: 1023px) {
++  .rg-app-shell {
++    display: block;
++  }
++
++  .rg-sidebar {
++    display: none;
++  }
++
++  .mobile-bottom-nav {
++    position: fixed;
++    right: 10px;
++    bottom: 10px;
++    left: 10px;
++    z-index: 10;
++    display: grid;
++    grid-template-columns: repeat(5, minmax(0, 1fr));
++    gap: 4px;
++    border: 1px solid var(--border);
++    border-radius: 8px;
++    background: rgb(10 10 15 / 96%);
++    padding: 6px;
++  }
++
++  .mobile-more-sheet {
++    position: fixed;
++    right: 10px;
++    bottom: 76px;
++    left: 10px;
++    z-index: 11;
++    display: grid;
++    gap: 6px;
++    border: 1px solid var(--border);
++    border-radius: 8px;
++    background: rgb(17 17 21 / 98%);
++    padding: 10px;
++  }
++
++  .mobile-more-sheet button {
++    display: flex;
++    align-items: center;
++    gap: 8px;
++    min-height: 42px;
++    border: 1px solid var(--border);
++    border-radius: 8px;
++    background: #0d0d13;
++    color: var(--text);
++    padding: 0 10px;
++  }
++
++  .mobile-more-sheet button.active {
++    border-color: rgb(192 38 211 / 42%);
++    background: rgb(192 38 211 / 14%);
++  }
++
++  .mobile-bottom-nav button {
++    justify-content: center;
++    min-height: 48px;
++    padding: 0 4px;
++    font-size: 0.72rem;
++  }
++
++  .mobile-bottom-nav button span {
++    display: none;
++  }
++}
++
+ @media (max-width: 1180px) {
+   .rg-overview,
+   .rg-grid {
+@@ -590,6 +821,7 @@ label {
+   .rg-shell {
+     width: min(100% - 20px, 640px);
+     padding-top: 18px;
++    padding-bottom: 96px;
+   }
+ 
+   .rg-header,
+diff --git a/frontend/src/features/dashboard/riskguard-dashboard.tsx b/frontend/src/features/dashboard/riskguard-dashboard.tsx
+index bf81904..820bf52 100644
+--- a/frontend/src/features/dashboard/riskguard-dashboard.tsx
++++ b/frontend/src/features/dashboard/riskguard-dashboard.tsx
+@@ -1,6 +1,6 @@
+ "use client";
+ 
+-import { useCallback, useEffect, useMemo, useState } from "react";
++import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+ import type { CSSProperties, FormEvent, ReactNode } from "react";
+ import {
+   Activity,
+@@ -10,11 +10,14 @@ import {
+   CircleDollarSign,
+   Clock3,
+   Cpu,
++  FileText,
+   KeyRound,
+   Link2,
+   Loader2,
++  Menu,
+   RadioTower,
+   RefreshCw,
++  Send,
+   Shield,
+   ShieldAlert,
+   Sparkles,
+@@ -30,19 +33,38 @@ import {
+   type HeartbeatStatus,
+   type Mode,
+   type PortfolioSnapshot,
++  type PublicChainMetadata,
+   type Readiness,
+   type RewardStatus,
+-  type RiskSnapshot
++  type RiskSnapshot,
++  type TelegramConnectSession
+ } from "@/lib/agent-api";
+ import {
+   connectBrowserWallet,
+   disconnectBrowserWallet,
++  restoreBrowserWallet,
+   signWalletMessage,
++  subscribeBrowserWalletChanges,
+   type BrowserWalletState
+ } from "@/lib/wallet";
++import { Badge } from "@/components/ui/badge";
++import { Button } from "@/components/ui/button";
+ import { GuardianSettings } from "@/features/settings/guardian-settings";
+ 
+ type Notice = { tone: "ok" | "warn" | "bad"; message: string };
++type DashboardSection = "overview" | "setup" | "risk" | "heartbeat" | "rewards" | "receipts" | "demo" | "health";
++type AccountStatus = "restoring" | "connected" | "disconnected" | "disconnecting" | "expired" | "error";
++
++const navItems: Array<{ id: DashboardSection; label: string; icon: ReactNode; primaryMobile?: boolean }> = [
++  { id: "overview", label: "Overview", icon: <Shield size={17} />, primaryMobile: true },
++  { id: "setup", label: "Setup", icon: <KeyRound size={17} />, primaryMobile: true },
++  { id: "risk", label: "Risk", icon: <ShieldAlert size={17} />, primaryMobile: true },
++  { id: "heartbeat", label: "Heartbeat", icon: <Clock3 size={17} /> },
++  { id: "rewards", label: "Rewards", icon: <CircleDollarSign size={17} /> },
++  { id: "receipts", label: "Receipts", icon: <FileText size={17} />, primaryMobile: true },
++  { id: "demo", label: "Demo", icon: <Sparkles size={17} /> },
++  { id: "health", label: "Health", icon: <Cpu size={17} /> }
++];
+ 
+ const scenarios: Array<{
+   id: DemoScenarioResult["scenario"];
+@@ -132,10 +154,18 @@ function errorMessage(error: unknown) {
+   return "Request failed";
+ }
+ 
++function hasOkFlag(value: unknown): value is { ok: boolean } {
++  return Boolean(value && typeof value === "object" && "ok" in value);
++}
++
+ export function RiskGuardDashboard() {
++  const [activeSection, setActiveSection] = useState<DashboardSection>("overview");
++  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
++  const [accountStatus, setAccountStatus] = useState<AccountStatus>("restoring");
+   const [wallet, setWallet] = useState<BrowserWalletState | null>(null);
+   const [demoWalletAddress, setDemoWalletAddress] = useState<string>();
+   const [mode, setMode] = useState<Mode>("simulation");
++  const [publicChain, setPublicChain] = useState<PublicChainMetadata | null>(null);
+   const [readiness, setReadiness] = useState<Readiness | null>(null);
+   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
+   const [risk, setRisk] = useState<RiskSnapshot | null>(null);
+@@ -143,9 +173,11 @@ export function RiskGuardDashboard() {
+   const [rewards, setRewards] = useState<RewardStatus | null>(null);
+   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
+   const [events, setEvents] = useState<AuditEvent[]>([]);
++  const [telegramSession, setTelegramSession] = useState<TelegramConnectSession | null>(null);
+   const [notice, setNotice] = useState<Notice | null>(null);
+   const [loading, setLoading] = useState(false);
+   const [actionLoading, setActionLoading] = useState<string | null>(null);
++  const loadRequestRef = useRef(0);
+ 
+   const activeWalletAddress = mode === "simulation"
+     ? demoWalletAddress
+@@ -175,11 +207,23 @@ export function RiskGuardDashboard() {
+     return [...latestClaim, ...fromAudit].slice(0, 8);
+   }, [events, rewards]);
+ 
++  const clearWalletScopedState = useCallback(() => {
++    setPortfolio(null);
++    setRisk(null);
++    setHeartbeat(null);
++    setRewards(null);
++    setEvents([]);
++    setTelegramSession(null);
++  }, []);
++
+   const loadData = useCallback(async () => {
++    const requestId = loadRequestRef.current + 1;
++    loadRequestRef.current = requestId;
+     setLoading(true);
+     try {
+       const walletAddress = activeWalletAddress;
+       const [
++        publicChainResult,
+         readinessResult,
+         portfolioResult,
+         riskResult,
+@@ -188,6 +232,7 @@ export function RiskGuardDashboard() {
+         heartbeatResult,
+         rewardsResult
+       ] = await Promise.allSettled([
++        agentApi.getPublicChain(),
+         agentApi.getReadiness(),
+         walletAddress || mode === "simulation" ? agentApi.getPortfolio(walletAddress) : Promise.resolve(null),
+         walletAddress || mode === "simulation" ? agentApi.getRisk(walletAddress) : Promise.resolve(null),
+@@ -196,11 +241,20 @@ export function RiskGuardDashboard() {
+         walletAddress ? agentApi.getHeartbeat(walletAddress) : Promise.resolve(null),
+         walletAddress ? agentApi.getRewards(walletAddress) : Promise.resolve(null)
+       ]);
++      const failedReads: string[] = [];
++
++      if (requestId !== loadRequestRef.current) {
++        return;
++      }
+ 
++      if (publicChainResult.status === "fulfilled") {
++        setPublicChain(publicChainResult.value);
++      } else {
++        failedReads.push("public chain");
++      }
+       if (readinessResult.status === "fulfilled") {
+         setReadiness(readinessResult.value);
+       }
+-      const failedReads: string[] = [];
+ 
+       if (portfolioResult.status === "fulfilled") {
+         const nextPortfolio = mode === "testnet" && portfolioResult.value?.source === "demo"
+@@ -252,9 +306,14 @@ export function RiskGuardDashboard() {
+         });
+       }
+     } catch (error) {
++      if (requestId !== loadRequestRef.current) {
++        return;
++      }
+       setNotice({ tone: "bad", message: errorMessage(error) });
+     } finally {
+-      setLoading(false);
++      if (requestId === loadRequestRef.current) {
++        setLoading(false);
++      }
+     }
+   }, [activeWalletAddress, mode]);
+ 
+@@ -262,13 +321,77 @@ export function RiskGuardDashboard() {
+     void loadData();
+   }, [loadData]);
+ 
++  useEffect(() => {
++    let mounted = true;
++
++    restoreBrowserWallet()
++      .then((restored) => {
++        if (!mounted) {
++          return;
++        }
++
++        setWallet(restored);
++        setAccountStatus(restored ? "connected" : "disconnected");
++      })
++      .catch(() => {
++        if (!mounted) {
++          return;
++        }
++
++        setAccountStatus("error");
++      });
++
++    return () => {
++      mounted = false;
++    };
++  }, []);
++
++  useEffect(() => subscribeBrowserWalletChanges(() => {
++    loadRequestRef.current += 1;
++    restoreBrowserWallet()
++      .then((restored) => {
++        setWallet(restored);
++        setAccountStatus(restored ? "connected" : "expired");
++        clearWalletScopedState();
++      })
++      .catch(() => {
++        setWallet(null);
++        setAccountStatus("error");
++        clearWalletScopedState();
++      });
++  }), [clearWalletScopedState]);
++
++  useEffect(() => {
++    if (!telegramSession || telegramSession.status !== "waiting") {
++      return;
++    }
++
++    const timer = setInterval(() => {
++      void agentApi.getTelegramConnectStatus(telegramSession.walletAddress)
++        .then((session) => {
++          setTelegramSession(session);
++          if (session.status === "connected") {
++            setNotice({ tone: "ok", message: "Telegram is connected." });
++            void loadData();
++          } else if (session.status === "expired") {
++            setNotice({ tone: "warn", message: "Telegram Connect code expired. Start a new connection." });
++          }
++        })
++        .catch(() => undefined);
++    }, 3_000);
++
++    return () => clearInterval(timer);
++  }, [loadData, telegramSession]);
++
+   async function handleConnectWallet() {
+     setActionLoading("wallet");
+     try {
+       const nextWallet = await connectBrowserWallet();
+       setWallet(nextWallet);
++      setAccountStatus("connected");
+       setNotice({ tone: "ok", message: "Browser wallet connected. Backend agent wallet remains separate." });
+     } catch (error) {
++      setAccountStatus("error");
+       setNotice({ tone: "bad", message: errorMessage(error) });
+     } finally {
+       setActionLoading(null);
+@@ -277,15 +400,16 @@ export function RiskGuardDashboard() {
+ 
+   async function handleDisconnectWallet() {
+     setActionLoading("wallet");
++    setAccountStatus("disconnecting");
+     try {
+       await disconnectBrowserWallet();
+       setWallet(null);
+-      setPortfolio(null);
+-      setRisk(null);
+-      setHeartbeat(null);
+-      setRewards(null);
++      loadRequestRef.current += 1;
++      clearWalletScopedState();
++      setAccountStatus("disconnected");
+       setNotice({ tone: "ok", message: "Browser wallet disconnected from this dashboard." });
+     } catch (error) {
++      setAccountStatus("error");
+       setNotice({ tone: "bad", message: errorMessage(error) });
+     } finally {
+       setActionLoading(null);
+@@ -342,22 +466,18 @@ export function RiskGuardDashboard() {
+     }
+   }
+ 
+-  async function handleTelegramSubmit(event: FormEvent<HTMLFormElement>) {
+-    event.preventDefault();
++  async function handleTelegramConnect() {
+     const walletAddress = activeWalletAddress;
+     if (!walletAddress) {
+-      setNotice({ tone: "warn", message: "Connect or seed a wallet before linking Telegram." });
++      setNotice({ tone: "warn", message: "Connect or seed a wallet before starting Telegram Connect." });
+       return;
+     }
+ 
+-    const form = new FormData(event.currentTarget);
+     setActionLoading("telegram");
+     try {
+-      await agentApi.linkTelegram({
+-        walletAddress,
+-        chatId: String(form.get("chatId") ?? "")
+-      });
+-      setNotice({ tone: "ok", message: "Telegram chat binding saved." });
++      const session = await agentApi.startTelegramConnect({ walletAddress });
++      setTelegramSession(session);
++      setNotice({ tone: "ok", message: "Telegram Connect started. Send the one-time code to the bot." });
+       await loadData();
+     } catch (error) {
+       setNotice({ tone: "bad", message: errorMessage(error) });
+@@ -412,53 +532,86 @@ export function RiskGuardDashboard() {
+   }
+ 
+   return (
+-    <main className="rg-shell">
+-      <header className="rg-header">
+-        <div>
+-          <div className="rg-kicker"><Shield size={14} /> Somnia RiskGuard AgentCore</div>
+-          <h1>Guardian Command Center</h1>
+-          <p>Always-on portfolio safety, heartbeat protection, policy receipts, and operator visibility.</p>
+-        </div>
+-        <div className="rg-header-actions">
+-          <div className="mode-switch" aria-label="Reality mode">
+-            <button
+-              className={mode === "simulation" ? "active" : ""}
+-              onClick={() => setMode("simulation")}
++    <main className="rg-app-shell">
++      <aside className="rg-sidebar" aria-label="Primary sections">
++        <div className="sidebar-brand"><Shield size={18} /> RiskGuard</div>
++        <nav>
++          {navItems.map((item) => (
++            <Button
++              className={activeSection === item.id ? "active" : ""}
++              key={item.id}
++              onClick={() => setActiveSection(item.id)}
+               type="button"
++              variant="ghost"
+             >
+-              Simulation
+-            </button>
+-            <button
+-              className={mode === "testnet" ? "active" : ""}
+-              onClick={() => setMode("testnet")}
++              {item.icon}
++              {item.label}
++            </Button>
++          ))}
++        </nav>
++        <div className="sidebar-meta">
++          <span>{publicChain?.name ?? "Public chain loading"}</span>
++          <Badge>{mode === "simulation" ? "Simulation" : "Somnia Testnet"}</Badge>
++        </div>
++      </aside>
++
++      <div className="rg-shell">
++        <header className="rg-header">
++          <div>
++            <div className="rg-kicker"><Shield size={14} /> Somnia RiskGuard AgentCore</div>
++            <h1>{navItems.find((item) => item.id === activeSection)?.label ?? "Overview"}</h1>
++            <p>Focused operational dashboard for setup, risk, heartbeat, rewards, receipts, demo, and health.</p>
++          </div>
++          <div className="rg-header-actions">
++            <div className="account-status" aria-label="Account state">
++              <span>{accountStatus}</span>
++              <strong>{wallet ? formatAddress(wallet.address) : "no browser wallet"}</strong>
++            </div>
++            <div className="mode-switch" aria-label="Reality mode">
++              <Button
++                className={mode === "simulation" ? "active" : ""}
++                onClick={() => setMode("simulation")}
++                type="button"
++                variant="ghost"
++              >
++                Simulation
++              </Button>
++              <Button
++                className={mode === "testnet" ? "active" : ""}
++                onClick={() => setMode("testnet")}
++                type="button"
++                variant="ghost"
++              >
++                Testnet
++              </Button>
++            </div>
++            <Button
++              className="primary-button"
++              onClick={wallet ? handleDisconnectWallet : handleConnectWallet}
+               type="button"
++              variant="primary"
+             >
+-              Testnet
+-            </button>
++              {actionLoading === "wallet"
++                ? <Loader2 className="spin" size={16} />
++                : wallet ? <XCircle size={16} /> : <Wallet size={16} />}
++              {wallet ? "Disconnect" : "Connect Wallet"}
++            </Button>
+           </div>
+-          <button
+-            className="primary-button"
+-            onClick={wallet ? handleDisconnectWallet : handleConnectWallet}
+-            type="button"
+-          >
+-            {actionLoading === "wallet"
+-              ? <Loader2 className="spin" size={16} />
+-              : wallet ? <XCircle size={16} /> : <Wallet size={16} />}
+-            {wallet ? `Disconnect ${formatAddress(wallet.address)}` : "Connect Wallet"}
+-          </button>
+-        </div>
+-      </header>
++        </header>
+ 
+-      {notice ? <div className={`notice ${notice.tone}`}>{notice.message}</div> : null}
++        {notice ? <div className={`notice ${notice.tone}`}>{notice.message}</div> : null}
+ 
+-      <section className="rg-overview">
+-        <GuardianStatus ready={guardianReady} readiness={readiness} wallet={wallet} mode={mode} />
+-        <RiskScore score={riskScore} tone={riskTone} risk={risk} />
+-        <HeartbeatPanel heartbeat={heartbeat} />
+-        <RewardPanel rewards={rewards} />
+-      </section>
++        {activeSection === "overview" ? (
++          <section className="rg-overview">
++            <GuardianStatus ready={guardianReady} readiness={readiness} wallet={wallet} mode={mode} />
++            <RiskScore score={riskScore} tone={riskTone} risk={risk} />
++            <HeartbeatPanel heartbeat={heartbeat} />
++            <RewardPanel rewards={rewards} />
++          </section>
++        ) : null}
+ 
+-      <section className="rg-grid">
++        <section className="rg-grid">
++        {activeSection === "risk" ? (
+         <section className="panel portfolio-panel">
+           <PanelHeading icon={<Activity size={17} />} title="Portfolio Watch" action={loading ? "refreshing" : portfolio?.source ?? "no data"} />
+           <div className="portfolio-total">{formatUsd(portfolio?.totalValueUsd)}</div>
+@@ -480,47 +633,61 @@ export function RiskGuardDashboard() {
+             ))}
+           </div>
+         </section>
++        ) : null}
+ 
++        {activeSection === "setup" ? (
+         <section className="panel">
+           <PanelHeading icon={<KeyRound size={17} />} title="Configuration" action="signed where required" />
+           <GuardianSettings
+             actionLoading={actionLoading}
++            telegramSession={telegramSession}
+             onHeartbeatSubmit={handleHeartbeatSubmit}
+             onRegisterWallet={handleRegisterWallet}
+             onRewardsSubmit={handleRewardsSubmit}
+-            onTelegramSubmit={handleTelegramSubmit}
++            onTelegramConnect={handleTelegramConnect}
+           />
+         </section>
++        ) : null}
+ 
++        {activeSection === "demo" ? (
+         <section className="panel demo-panel">
+           <PanelHeading icon={<Sparkles size={17} />} title="Demo Scenario Control" action={mode} />
+           <p className="muted">Deterministic simulation states are seeded through the agent API and then shown from the same read models as live status.</p>
+           <div className="scenario-grid">
+             {scenarios.map((scenario) => (
+-              <button
++              <Button
+                 className="scenario-button"
+                 disabled={mode !== "simulation" || actionLoading === scenario.id}
+                 key={scenario.id}
+                 onClick={() => void handleRunDemo(scenario.id)}
+                 type="button"
++                variant="secondary"
+               >
+                 <span>{scenario.label}</span>
+                 <small>{actionLoading === scenario.id ? "Running..." : scenario.detail}</small>
+-              </button>
++              </Button>
+             ))}
+           </div>
+         </section>
++        ) : null}
+ 
++        {activeSection === "health" ? (
+         <section className="panel">
+           <PanelHeading icon={<Cpu size={17} />} title="Operator Health" action="secret-safe" />
+           <div className="health-list">
+             <HealthRow icon={<RadioTower size={15} />} label="Agent API" value={health ? health.ok === false ? "degraded" : "reachable" : "unavailable"} tone={health ? health.ok === false ? "bad" : "ok" : "warn"} />
+             <HealthRow icon={<Bot size={15} />} label="Telegram" value={readableMetadata(health?.telegram)} tone={health?.telegram ? "ok" : "warn"} />
++            <HealthRow icon={<Send size={15} />} label="Somnia adapter" value={readableMetadata(health?.somnia)} tone={hasOkFlag(health?.somnia) && health.somnia.ok ? "ok" : "warn"} />
+             <HealthRow icon={<Shield size={15} />} label="Signer" value={readiness?.agentWallet.ready ? formatAddress(readiness.agentWallet.walletAddress) : "missing"} tone={readiness?.agentWallet.ready ? "ok" : "bad"} />
+-            <HealthRow icon={<Link2 size={15} />} label="Chain" value={readiness?.agentWallet.chainId ? `chain ${readiness.agentWallet.chainId}` : "unknown"} tone="neutral" />
++            <HealthRow icon={<Link2 size={15} />} label="Chain" value={publicChain ? `${publicChain.name} (${publicChain.chainId})` : "unknown"} tone="neutral" />
+           </div>
+         </section>
++        ) : null}
++
++        {activeSection === "heartbeat" ? <HeartbeatPanel heartbeat={heartbeat} /> : null}
++        {activeSection === "rewards" ? <RewardPanel rewards={rewards} /> : null}
+ 
++        {activeSection === "receipts" ? (
+         <section className="panel timeline-panel">
+           <PanelHeading icon={<Clock3 size={17} />} title="Safety Receipts" action={`${receipts.length} recent`} />
+           <div className="timeline">
+@@ -540,11 +707,60 @@ export function RiskGuardDashboard() {
+             {receipts.length === 0 ? <p className="muted">No receipts yet. Run a demo scenario or save settings.</p> : null}
+           </div>
+         </section>
+-      </section>
++        ) : null}
++        </section>
++
++        <section className="mobile-bottom-nav" aria-label="Mobile sections">
++          {navItems.filter((item) => item.primaryMobile).map((item) => (
++            <Button
++              className={activeSection === item.id ? "active" : ""}
++              key={item.id}
++              onClick={() => {
++                setActiveSection(item.id);
++                setMobileMoreOpen(false);
++              }}
++              type="button"
++              variant="ghost"
++            >
++              {item.icon}
++              <span>{item.label}</span>
++            </Button>
++          ))}
++          <Button
++            className={navItems.some((item) => !item.primaryMobile && item.id === activeSection) ? "active" : ""}
++            onClick={() => setMobileMoreOpen((open) => !open)}
++            type="button"
++            variant="ghost"
++          >
++            <Menu size={17} />
++            <span>More</span>
++          </Button>
++        </section>
++
++        {mobileMoreOpen ? (
++          <section className="mobile-more-sheet" aria-label="More sections">
++            {navItems.filter((item) => !item.primaryMobile).map((item) => (
++              <Button
++                className={activeSection === item.id ? "active" : ""}
++                key={item.id}
++                onClick={() => {
++                  setActiveSection(item.id);
++                  setMobileMoreOpen(false);
++                }}
++                type="button"
++                variant="secondary"
++              >
++                {item.icon}
++                {item.label}
++              </Button>
++            ))}
++          </section>
++        ) : null}
+ 
+-      <button className="floating-refresh" onClick={() => void loadData()} type="button">
+-        <RefreshCw size={16} /> Refresh
+-      </button>
++        <Button className="floating-refresh" onClick={() => void loadData()} type="button" variant="secondary">
++          <RefreshCw size={16} /> Refresh
++        </Button>
++      </div>
+     </main>
+   );
+ }
+diff --git a/frontend/src/features/settings/guardian-settings.tsx b/frontend/src/features/settings/guardian-settings.tsx
+index 7d93153..e31cdec 100644
+--- a/frontend/src/features/settings/guardian-settings.tsx
++++ b/frontend/src/features/settings/guardian-settings.tsx
+@@ -1,33 +1,53 @@
+ import type { FormEvent } from "react";
+-import { Loader2, Shield } from "lucide-react";
++import { ExternalLink, Loader2, Send, Shield } from "lucide-react";
++
++import { Badge } from "@/components/ui/badge";
++import { Button } from "@/components/ui/button";
++import type { TelegramConnectSession } from "@/lib/agent-api";
+ 
+ export function GuardianSettings({
+   actionLoading,
++  telegramSession,
+   onRegisterWallet,
+-  onTelegramSubmit,
++  onTelegramConnect,
+   onHeartbeatSubmit,
+   onRewardsSubmit
+ }: {
+   actionLoading: string | null;
++  telegramSession: TelegramConnectSession | null;
+   onRegisterWallet: () => void;
+-  onTelegramSubmit: (event: FormEvent<HTMLFormElement>) => void;
++  onTelegramConnect: () => void;
+   onHeartbeatSubmit: (event: FormEvent<HTMLFormElement>) => void;
+   onRewardsSubmit: (event: FormEvent<HTMLFormElement>) => void;
+ }) {
+   return (
+     <div className="form-stack">
+-      <button className="secondary-button" onClick={onRegisterWallet} type="button">
++      <Button className="secondary-button" onClick={onRegisterWallet} type="button" variant="secondary">
+         {actionLoading === "register" ? <Loader2 className="spin" size={15} /> : <Shield size={15} />}
+         Register monitored wallet
+-      </button>
++      </Button>
+ 
+-      <form onSubmit={onTelegramSubmit}>
+-        <label htmlFor="chatId">Telegram Chat ID</label>
+-        <div className="inline-form">
+-          <input id="chatId" name="chatId" placeholder="987654321" />
+-          <button type="submit">{actionLoading === "telegram" ? "Saving" : "Link"}</button>
++      <section className="connect-panel" aria-label="Telegram connection">
++        <div>
++          <label>Telegram Connect</label>
++          <p className="muted">Start a bot/code flow. Manual chat-id entry is reserved for internal fallback only.</p>
+         </div>
+-      </form>
++        <Button onClick={onTelegramConnect} type="button" variant="secondary">
++          {actionLoading === "telegram" ? <Loader2 className="spin" size={15} /> : <Send size={15} />}
++          Connect Telegram
++        </Button>
++        {telegramSession ? (
++          <div className="connect-code">
++            <span>One-time code</span>
++            <strong>{telegramSession.code}</strong>
++            <Badge>{telegramSession.status}</Badge>
++            <small>Expires {new Date(telegramSession.expiresAt).toLocaleTimeString()}</small>
++            <a href={telegramSession.botDeepLink} rel="noreferrer" target="_blank">
++              Open bot link <ExternalLink size={13} />
++            </a>
++          </div>
++        ) : null}
++      </section>
+ 
+       <form onSubmit={onHeartbeatSubmit}>
+         <label htmlFor="beneficiaryAddress">Beneficiary wallet</label>
+@@ -37,7 +57,7 @@ export function GuardianSettings({
+           <input aria-label="Grace seconds" name="graceSeconds" type="number" min="1" defaultValue="3600" />
+           <input aria-label="Timelock seconds" name="timelockSeconds" type="number" min="1" defaultValue="86400" />
+         </div>
+-        <button type="submit">{actionLoading === "heartbeat" ? "Saving" : "Save Heartbeat"}</button>
++        <Button type="submit" variant="secondary">{actionLoading === "heartbeat" ? "Saving" : "Save Heartbeat"}</Button>
+       </form>
+ 
+       <form onSubmit={onRewardsSubmit}>
+@@ -49,7 +69,7 @@ export function GuardianSettings({
+           <input aria-label="Minimum reward value USD" name="minRewardValueUsd" type="number" min="0" step="0.01" defaultValue="1" />
+           <input aria-label="Maximum gas USD" name="maxClaimGasUsd" type="number" min="0" step="0.01" defaultValue="2" />
+         </div>
+-        <button type="submit">{actionLoading === "rewards" ? "Saving" : "Save Reward Policy"}</button>
++        <Button type="submit" variant="secondary">{actionLoading === "rewards" ? "Saving" : "Save Reward Policy"}</Button>
+       </form>
+     </div>
+   );
+diff --git a/frontend/src/lib/agent-api.ts b/frontend/src/lib/agent-api.ts
+index a6828a6..80db772 100644
+--- a/frontend/src/lib/agent-api.ts
++++ b/frontend/src/lib/agent-api.ts
+@@ -44,6 +44,31 @@ export interface Readiness {
+   };
+ }
+ 
++export interface PublicChainMetadata {
++  key: string;
++  name: string;
++  chainId: number;
++  rpcUrl: string;
++  blockExplorerUrl: string;
++  nativeCurrency: {
++    name: string;
++    symbol: string;
++    decimals: number;
++  };
++  contracts: {
++    deadManSwitch?: string;
++  };
++}
++
++export interface TelegramConnectSession {
++  walletAddress: string;
++  code: string;
++  expiresAt: string;
++  status: "waiting" | "connected" | "expired" | "failed";
++  connected: boolean;
++  botDeepLink: string;
++}
++
+ export interface UserRecord {
+   userId: string;
+   walletAddress: string;
+@@ -190,6 +215,7 @@ function walletQuery(walletAddress?: string) {
+ 
+ export const agentApi = {
+   getReadiness: () => request<Readiness>("/api/setup/readiness"),
++  getPublicChain: () => request<PublicChainMetadata>("/api/public-chain"),
+   registerWallet: (body: { walletAddress: string; message: string; signature: string }) =>
+     request<UserRecord>("/api/users", {
+       method: "POST",
+@@ -231,6 +257,18 @@ export const agentApi = {
+       method: "POST",
+       body: JSON.stringify(body)
+     }),
++  startTelegramConnect: (body: { walletAddress: string }) =>
++    request<TelegramConnectSession>("/api/telegram/connect/start", {
++      method: "POST",
++      body: JSON.stringify(body)
++    }),
++  getTelegramConnectStatus: (walletAddress: string) =>
++    request<TelegramConnectSession>(`/api/telegram/connect/status${walletQuery(walletAddress)}`),
++  confirmTelegramConnect: (body: { code: string; chatId: string; telegramUserId?: string }) =>
++    request<TelegramConnectSession>("/api/telegram/connect/confirm", {
++      method: "POST",
++      body: JSON.stringify(body)
++    }),
+   getHealth: () => request<Record<string, unknown>>("/api/health"),
+   getAuditEvents: (limit = 20) =>
+     request<{ events: AuditEvent[] }>(`/api/audit-events/recent?limit=${limit}`),
+diff --git a/frontend/src/lib/wallet.ts b/frontend/src/lib/wallet.ts
+index ddf4e16..e9f6803 100644
+--- a/frontend/src/lib/wallet.ts
++++ b/frontend/src/lib/wallet.ts
+@@ -3,6 +3,8 @@ export interface InjectedEthereumProvider {
+     method: string;
+     params?: unknown[];
+   }): Promise<T>;
++  on?(event: "accountsChanged" | "chainChanged", handler: (...args: unknown[]) => void): void;
++  removeListener?(event: "accountsChanged" | "chainChanged", handler: (...args: unknown[]) => void): void;
+ }
+ 
+ export interface BrowserWalletState {
+@@ -42,6 +44,27 @@ export async function connectBrowserWallet(): Promise<BrowserWalletState> {
+   return { address, chainId };
+ }
+ 
++export async function restoreBrowserWallet(): Promise<BrowserWalletState | null> {
++  if (typeof window === "undefined" || !window.ethereum) {
++    return null;
++  }
++
++  const accounts = await window.ethereum.request<string[]>({
++    method: "eth_accounts"
++  });
++  const address = accounts[0];
++
++  if (!address) {
++    return null;
++  }
++
++  const chainId = await window.ethereum.request<string>({
++    method: "eth_chainId"
++  });
++
++  return { address, chainId };
++}
++
+ export async function signWalletMessage(message: string): Promise<string> {
+   const provider = getProvider();
+   const accounts = await provider.request<string[]>({
+@@ -71,3 +94,20 @@ export async function disconnectBrowserWallet(): Promise<void> {
+     // Some wallets do not expose programmatic disconnect; the UI still clears local state.
+   }
+ }
++
++export function subscribeBrowserWalletChanges(onChange: () => void): () => void {
++  if (typeof window === "undefined" || !window.ethereum?.on) {
++    return () => {};
++  }
++
++  const handleAccountsChanged = () => onChange();
++  const handleChainChanged = () => onChange();
++
++  window.ethereum.on("accountsChanged", handleAccountsChanged);
++  window.ethereum.on("chainChanged", handleChainChanged);
++
++  return () => {
++    window.ethereum?.removeListener?.("accountsChanged", handleAccountsChanged);
++    window.ethereum?.removeListener?.("chainChanged", handleChainChanged);
++  };
++}
+diff --git a/package.json b/package.json
+index 3a57302..2533f0c 100644
+--- a/package.json
++++ b/package.json
+@@ -15,6 +15,7 @@
+     "test:agent": "pnpm --dir agent test",
+     "test:contracts": "pnpm --dir contracts test",
+     "lint": "pnpm -r lint",
++    "smoke:runtime": "node scripts/runtime-smoke.mjs",
+     "format:contracts": "pnpm --dir contracts format"
+   }
+ }
+diff --git a/_bmad-output/implementation-artifacts/review-acceptance-auditor-full-epic-7.md b/_bmad-output/implementation-artifacts/review-acceptance-auditor-full-epic-7.md
+new file mode 100644
+index 0000000..1e74da9
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/review-acceptance-auditor-full-epic-7.md
+@@ -0,0 +1,17 @@
++# Acceptance Auditor Review Prompt - Full Epic 7
++
++Use the `bmad-review-adversarial-general` skill with acceptance-audit stance.
++
++Inputs:
++
++- Diff: `review-diff-full-epic-7.patch`
++- Spec: `spec-full-epic-7.md`
++- Context docs from spec frontmatter:
++  - `epic-7-context.md`
++  - `../planning-artifacts/epics.md`
++  - `../planning-artifacts/ux-design-specification.md`
++  - `../../.agents/skills/shadcn-ui-design-system/SKILL.md`
++
++Check the patch against every acceptance criterion and implementation rule in the spec/context. Pay special attention to dashboard IA, mobile bottom navigation plus More sheet, Telegram Connect replacing manual chat-id UX, public chain metadata from `config/public-chains.json`, demo/testnet labeling, Somnia adapter gating, and verification claims.
++
++Return findings ordered by severity with exact acceptance criterion or rule violated.
+diff --git a/_bmad-output/implementation-artifacts/review-blind-hunter-full-epic-7.md b/_bmad-output/implementation-artifacts/review-blind-hunter-full-epic-7.md
+new file mode 100644
+index 0000000..557a0e4
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/review-blind-hunter-full-epic-7.md
+@@ -0,0 +1,11 @@
++# Blind Hunter Review Prompt - Full Epic 7
++
++Use the `bmad-review-adversarial-general` skill.
++
++You get only this diff artifact and no product/spec context:
++
++- `review-diff-full-epic-7.patch`
++
++Review only what the diff shows. Prioritize concrete bugs, regressions, broken assumptions, security leaks, build/runtime risks, and missing tests that are visible from the patch itself. Do not infer requirements outside the diff.
++
++Return findings ordered by severity. Include file path and changed code area for each finding.
+diff --git a/_bmad-output/implementation-artifacts/review-diff-full-epic-7.patch b/_bmad-output/implementation-artifacts/review-diff-full-epic-7.patch
+new file mode 100644
+index 0000000..1720f9a
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/review-diff-full-epic-7.patch
+@@ -0,0 +1,1848 @@
++diff --git a/_bmad-output/implementation-artifacts/spec-full-epic-7.md b/_bmad-output/implementation-artifacts/spec-full-epic-7.md
++index 67ae6e5..e53a60b 100644
++--- a/_bmad-output/implementation-artifacts/spec-full-epic-7.md
+++++ b/_bmad-output/implementation-artifacts/spec-full-epic-7.md
++@@ -2,7 +2,8 @@
++ title: 'Full Epic 7: Runtime Integration & MVP Acceptance Hardening'
++ type: 'feature'
++ created: '2026-05-15'
++-status: 'in-progress'
+++status: 'done'
+++baseline_commit: 'e20b548991f9b5474b8271a4408cbc8912504ae6'
++ context:
++   - '{project-root}/_bmad-output/implementation-artifacts/epic-7-context.md'
++   - '{project-root}/_bmad-output/planning-artifacts/epics.md'
++@@ -55,16 +56,16 @@ context:
++ 
++ **Story 7.6: Redesign Dashboard IA, Telegram Connect, And Public Chain Config**
++ 
++-- [ ] Add or finalize a typed public chain config loader for `config/public-chains.json`.
++-- [ ] Migrate non-secret chain id, public RPC URL, explorer URL, native currency, and public contract address reads away from env-only usage.
++-- [ ] Keep env validation for secrets and credentials only; preserve legacy env fallback only if clearly labeled temporary.
++-- [ ] Build/refactor the frontend app shell with desktop left sidebar and mobile bottom navigation.
++-- [ ] Split the current dashboard into focused sections: Overview, Setup, Risk, Heartbeat, Rewards, Receipts, Demo, and Health.
++-- [ ] Add account/session controls for restoring, connected, disconnected, expired, disconnecting, and error states.
++-- [ ] Replace manual Telegram chat-id UX with Connect Telegram via bot deep link, one-time code, QR/link fallback, or equivalent callback flow.
++-- [ ] Replace custom UI surfaces with shadcn/ui-style primitives or local wrappers where practical.
++-- [ ] Update smoke checks or manual verification notes to cover desktop navigation, mobile navigation, disconnect/sign out, Telegram Connect, and public config loading.
++-- [ ] Update sprint status when implementation reaches review.
+++- [x] Add or finalize a typed public chain config loader for `config/public-chains.json`.
+++- [x] Migrate non-secret chain id, public RPC URL, explorer URL, native currency, and public contract address reads away from env-only usage.
+++- [x] Keep env validation for secrets and credentials only; preserve legacy env fallback only if clearly labeled temporary.
+++- [x] Build/refactor the frontend app shell with desktop left sidebar and mobile bottom navigation.
+++- [x] Split the current dashboard into focused sections: Overview, Setup, Risk, Heartbeat, Rewards, Receipts, Demo, and Health.
+++- [x] Add account/session controls for restoring, connected, disconnected, expired, disconnecting, and error states.
+++- [x] Replace manual Telegram chat-id UX with Connect Telegram via bot deep link, one-time code, QR/link fallback, or equivalent callback flow.
+++- [x] Replace custom UI surfaces with shadcn/ui-style primitives or local wrappers where practical.
+++- [x] Update smoke checks or manual verification notes to cover desktop navigation, mobile navigation, disconnect/sign out, Telegram Connect, and public config loading.
+++- [x] Update sprint status when implementation reaches review.
++ 
++ **Acceptance Criteria:**
++ 
++@@ -84,3 +85,34 @@ Run or update these as implementation allows:
++ - `pnpm --dir agent lint`
++ - `pnpm --dir agent test`
++ - local runtime smoke check covering agent health, frontend load, demo scenario, audit redaction, navigation, disconnect, Telegram Connect, and public chain config.
+++
+++## Implementation Notes
+++
+++- Added `agent/src/config/public-chain.ts` and `/api/public-chain` so public chain id, RPC, explorer, native currency, and public contract metadata load from `config/public-chains.json`.
+++- Updated agent config to use public config defaults while retaining env overrides only as legacy fallback for Somnia RPC/chain/contract values; secrets remain env-driven.
+++- Exposed Somnia adapter health and public chain metadata through `/api/health`.
+++- Reworked the frontend dashboard into focused sections with desktop sidebar navigation and mobile bottom navigation plus a More sheet.
+++- Replaced the user-facing Telegram chat-id form with a Telegram Connect code/deep-link panel.
+++- Added account restoration/disconnect state handling and wallet-specific state clearing on disconnect.
+++- Added `scripts/runtime-smoke.mjs` and `pnpm smoke:runtime` for local runtime smoke verification.
+++
+++## Verification Results
+++
+++- `pnpm --dir frontend lint` passed.
+++- `pnpm --dir agent lint` passed.
+++- `pnpm --dir agent test` passed: 13 files, 95 tests.
+++- `pnpm --dir agent build` passed.
+++- `pnpm --dir frontend build` passed after rerunning outside the sandbox; the initial sandbox run failed because Turbopack could not bind a local process/port under sandbox restrictions.
+++- Code review patch pass resolved 9/9 findings and re-ran `pnpm --dir frontend lint`, `pnpm --dir agent lint`, `pnpm --dir agent test`, `pnpm --dir agent build`, and `pnpm --dir frontend build`.
+++
+++### Review Findings
+++
+++- [x] [Review][Patch] Telegram Connect cannot complete a binding — `/api/telegram/connect/start` creates a code but does not persist a session, `/api/telegram/connect/status` always returns `waiting`, the frontend never polls status, and the removed chat-id form means users have no working way to bind Telegram. [agent/src/api/server.ts:394]
+++- [x] [Review][Patch] Telegram deep link is not a bot connect link — the returned `https://t.me/share/url` URL only opens Telegram sharing and does not target a bot `/start` flow or carry a token the backend can consume. [agent/src/api/server.ts:423]
+++- [x] [Review][Patch] Public chain config path depends on process cwd — `resolve(process.cwd(), "../config/public-chains.json")` only works when the agent starts from `/agent` and can fail from repo root, compiled output, or a service manager. [agent/src/config/public-chain.ts:7]
+++- [x] [Review][Patch] Public chain env overrides still drive public metadata — `SOMNIA_RPC_URL`, `SOMNIA_CHAIN_ID`, and `DEAD_MAN_SWITCH_CONTRACT_ADDRESS` override `config/public-chains.json`, which contradicts the requirement that public metadata come from config with env reserved for secrets/credentials. [agent/src/config/env.ts:242]
+++- [x] [Review][Patch] Public config contract schema/type mismatch — backend parsing requires `contracts.deadManSwitch` to exist while frontend API types it as optional. [agent/src/config/public-chain.ts:18]
+++- [x] [Review][Patch] Account/session behavior is incomplete — `expired` is declared but never set, there is no account/chain change listener, stale in-flight loads can repopulate wallet/demo state after mode switch or disconnect, and account state is rendered as raw status text. [frontend/src/features/dashboard/riskguard-dashboard.tsx:164]
+++- [x] [Review][Patch] Mobile More sheet remains open after primary navigation — tapping Overview/Setup/Risk/Receipts does not close the open More sheet. [frontend/src/features/dashboard/riskguard-dashboard.tsx:651]
+++- [x] [Review][Patch] shadcn/ui adoption requirement is largely bypassed — the patch adds custom raw controls for sidebar, More sheet, account status, Telegram Connect, forms, and alerts instead of local shadcn-style primitives or wrappers where practical. [frontend/src/features/dashboard/riskguard-dashboard.tsx:405]
+++- [x] [Review][Patch] Runtime smoke script misses required checks and allows degraded health — `pnpm smoke:runtime` does not exercise navigation, disconnect/sign out, or Telegram Connect, and `ok:false` health is reported as a successful degraded check. [scripts/runtime-smoke.mjs:33]
++diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
++index 5e05b1b..2ede752 100644
++--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
+++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
++@@ -1,5 +1,5 @@
++ # generated: 2026-05-11
++-# last_updated: 2026-05-14
+++# last_updated: 2026-05-15
++ # project: Somnia RiskGuard Agent
++ # project_key: NOKEY
++ # tracking_system: file-system
++@@ -35,7 +35,7 @@
++ # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
++ 
++ generated: 2026-05-11
++-last_updated: 2026-05-14
+++last_updated: 2026-05-15
++ project: Somnia RiskGuard Agent
++ project_key: NOKEY
++ tracking_system: file-system
++@@ -92,11 +92,11 @@ development_status:
++   6-5-show-operator-health-and-secret-safe-logs: review
++   epic-6-retrospective: optional
++ 
++-  epic-7: in-progress
++-  7-1-run-agent-jobs-in-normal-runtime: review
++-  7-2-add-local-runtime-smoke-checks: backlog
++-  7-3-make-demo-testnet-capability-honest: backlog
++-  7-4-wire-or-explicitly-gate-somnia-agent-kit-execution: backlog
++-  7-5-finish-dashboard-operational-ux: review
++-  7-6-redesign-dashboard-ia-telegram-connect-and-public-chain-config: backlog
+++  epic-7: done
+++  7-1-run-agent-jobs-in-normal-runtime: done
+++  7-2-add-local-runtime-smoke-checks: done
+++  7-3-make-demo-testnet-capability-honest: done
+++  7-4-wire-or-explicitly-gate-somnia-agent-kit-execution: done
+++  7-5-finish-dashboard-operational-ux: done
+++  7-6-redesign-dashboard-ia-telegram-connect-and-public-chain-config: done
++   epic-7-retrospective: optional
++diff --git a/_bmad-output/planning-artifacts/ux-design-specification.md b/_bmad-output/planning-artifacts/ux-design-specification.md
++index b5edb6f..5e70967 100644
++--- a/_bmad-output/planning-artifacts/ux-design-specification.md
+++++ b/_bmad-output/planning-artifacts/ux-design-specification.md
++@@ -17,9 +17,15 @@ stepsCompleted:
++ lastStep: 14
++ workflowStatus: complete
++ completedAt: '2026-05-14'
+++lastUpdated: '2026-05-15'
++ inputDocuments:
++   - _bmad-output/planning-artifacts/prd.md
++   - _bmad-output/planning-artifacts/prd-validation-report.md
+++revisionDocuments:
+++  - _bmad-output/planning-artifacts/sprint-change-proposal-2026-05-14.md
+++  - _bmad-output/implementation-artifacts/epic-7-context.md
+++  - _bmad-output/implementation-artifacts/spec-full-epic-7.md
+++  - _bmad-output/implementation-artifacts/7-6-redesign-dashboard-ia-telegram-connect-and-public-chain-config.md
++ ---
++ 
++ # UX Design Specification Somnia RiskGuard Agent
++@@ -33,6 +39,18 @@ inputDocuments:
++ 
++ ## Executive Summary
++ 
+++### 2026-05-15 Revision Alignment
+++
+++This revision aligns the UX specification with Epic 7 and Story 7.6. The dashboard must now be treated as a focused multi-section operational app, not a single page that accumulates every workflow. Desktop uses a persistent left sidebar. Mobile uses a bottom navigation bar with a More sheet or menu for lower-frequency sections. Overview summarizes guardian state and next safe action; detailed setup, risk, heartbeat, reward, receipt, demo, and health workflows live in their own sections.
+++
+++Telegram setup must be a Connect Telegram flow, not a manual chat-id form. The primary user path should use a bot deep link, one-time code, QR/link fallback, or equivalent callback flow, with waiting, connected, expired, failed, disconnect, and reconnect states. Direct chat-id entry may exist only as an internal or legacy fallback.
+++
+++Account and session behavior must feel like a normal web app. The UI must explicitly handle restoring, connected, disconnected, expired, error, and disconnecting states. Disconnect or sign out must clear wallet-specific dashboard state so one wallet's risk, setup, receipt, and demo state does not bleed into another wallet session.
+++
+++Public chain metadata is part of UX because users and operators need consistent mode, network, explorer, currency, and contract labels. Chain id, public RPC URL, explorer URL, native currency, and public contract addresses should come from `config/public-chains.json`; secrets and credentials remain environment-driven.
+++
+++The component model should default to shadcn/ui-style primitives or local wrappers for navigation, forms, account menus, dialogs, sheets, tabs, tables, badges, alerts, tooltips, toasts, skeletons, and loading/error states.
+++
++ ### Project Vision
++ 
++ Somnia RiskGuard Agent is a safety-first Web3 guardian for users who cannot continuously monitor their Somnia wallets. The UX must make constrained autonomy feel understandable and trustworthy: the agent watches portfolio risk, explains what matters, sends Telegram actions, claims only bounded rewards, and exposes heartbeat and Dead Man's Switch states without implying unrestricted control or financial advice.
++@@ -423,9 +441,41 @@ RiskGuard should rely on Tailwind and shadcn/ui primitives for app shell/sidebar
++ 
++ Build custom components from design-system primitives and shared tokens. Prioritize status clarity, keyboard accessibility, and dense dashboard composition. Every custom component should support dark and light mode, semantic state labels, and copy-safe handling for wallet addresses and transaction hashes.
++ 
+++### shadcn/ui Component Plan
+++
+++#### Components And Variants
+++
+++Use project-local shadcn/ui-style primitives as the default implementation vocabulary. The dashboard shell should use a `Sidebar` or local sidebar wrapper on desktop, a bottom navigation composition on mobile, `Sheet` for More navigation, `DropdownMenu` for the account menu, `Button` variants for primary/secondary/destructive/ghost actions, `Badge` variants for mode and status labels, `Alert` for blocked or failed-closed states, `Tabs` for local route subviews, `Table` for receipt and health detail views, `Dialog` or `Sheet` for confirmation and connection flows, `Tooltip` for icon-only controls, `Toast` for short-lived action feedback, `Skeleton` for loading summaries, and `Form`, `Input`, `Select`, `Switch`, and numeric inputs for setup configuration.
+++
+++Product-specific compositions should wrap those primitives: App Shell Navigation, Account And Session Control, Telegram Connect Panel, Guardian Status Panel, Risk Score Circle, Wallet Role Chip, Safety Receipt, Safety Timeline, Heartbeat Timer, Dead Man's Switch Status, Reward Policy Summary, Demo Scenario Control, and Subsystem Health Row.
+++
+++#### Interaction States
+++
+++Every route and major component must cover loading, empty, ready, pending, disabled, error, failed-closed, and API-unavailable states where relevant. Account controls must cover signed out, restoring, connected, disconnected, expired, disconnecting, failed, and wallet-switch states. Telegram Connect must cover not connected, code generated, waiting for confirmation, expired code, connected, failed, disconnecting, disconnected, and reconnecting. Execution-capable actions must show adapter-disabled, simulation-backed, demo-fixture-backed, and Somnia Testnet-backed states at the point of action.
+++
+++#### Responsive Behavior
+++
+++Desktop uses persistent left navigation with Overview, Setup, Risk, Heartbeat, Rewards, Receipts, Demo, and Health. Mobile uses bottom navigation for the highest-frequency sections and a More `Sheet` or menu for lower-frequency sections. Overview remains a summary on all breakpoints. Dense tables become compact lists on mobile, and operator health details should move behind tabs or disclosure controls.
+++
+++#### Accessibility Requirements
+++
+++Use semantic landmarks for the app shell, route content, and navigation. Icon-only controls need accessible labels and tooltips. Focus rings must be visible in dark and light mode. Status cannot rely on color alone; every state needs text and, where useful, an icon. Dialogs and sheets must trap focus correctly and return focus to the triggering control. Copy buttons for addresses and transaction hashes must announce success without changing layout.
+++
+++#### Implementation Location Hints
+++
+++Reusable primitives belong in `frontend/src/components/ui`. Product compositions belong under `frontend/src/features/dashboard` and `frontend/src/features/settings`. Route composition belongs under `frontend/src/app`. Shared public chain metadata should be read from `config/public-chains.json` through typed loaders rather than duplicated constants. Frontend API calls should keep using typed response shapes and should not expose secrets or private-key material.
+++
+++#### Navigation Placement
+++
+++Desktop sidebar placement: Overview, Setup, Risk, Heartbeat, Rewards, Receipts, Demo, Health. Mobile bottom nav placement should prioritize Overview, Setup, Risk, Receipts, and More; More exposes Heartbeat, Rewards, Demo, and Health when space is constrained. Beneficiary mode may use a focused simplified route that inherits account and mode labeling but avoids operator-heavy navigation.
+++
++ ### Implementation Roadmap
++ 
++-Phase 1 should build App Shell Navigation, Account And Session Control, Telegram Connect Panel, Guardian Status Panel, Risk Score Circle, Wallet Role Chip, Safety Receipt, and Safety Timeline. Phase 2 should add Heartbeat Timer, Dead Man's Switch Status, Reward Policy Summary, and Subsystem Health Row. Phase 3 should add Demo Scenario Control and richer operator diagnostics.
+++Phase 1 should build App Shell Navigation, Account And Session Control, Telegram Connect Panel, Guardian Status Panel, Risk Score Circle, Wallet Role Chip, Safety Receipt, and Safety Timeline. Phase 1 also includes the public chain config display contract: all network, explorer, native currency, and public contract labels are read from `config/public-chains.json`.
+++
+++Phase 2 should add Heartbeat Timer, Dead Man's Switch Status, Reward Policy Summary, and Subsystem Health Row. Phase 2 must make runtime truth visible: API unavailable, adapter disabled, simulation-backed, demo-fixture-backed, and Somnia Testnet-backed states are explicit.
+++
+++Phase 3 should add Demo Scenario Control and richer operator diagnostics, including smoke/manual verification coverage for desktop navigation, mobile navigation, disconnect/sign out, Telegram Connect, public chain config loading, and mode labeling.
++ 
++ ## UX Consistency Patterns
++ 
++diff --git a/agent/src/api/server.test.ts b/agent/src/api/server.test.ts
++index e64f95f..91655f6 100644
++--- a/agent/src/api/server.test.ts
+++++ b/agent/src/api/server.test.ts
++@@ -105,6 +105,7 @@ beforeEach(async () => {
++     telegramAlerts,
++     heartbeats,
++     rewards,
+++    publicChain: createTestConfig().publicChain,
++     health: () => ({ ok: true })
++   });
++   server.listen(0, "127.0.0.1");
++@@ -254,6 +255,56 @@ describe("agent setup API", () => {
++     expect(payload.data.totalValueUsd).toBe("1");
++   });
++ 
+++  it("returns public chain metadata without secrets", async () => {
+++    const response = await fetch(`${baseUrl}/api/public-chain`);
+++    const payload = await response.json();
+++
+++    expect(response.status).toBe(200);
+++    expect(payload.data.chainId).toBe(50312);
+++    expect(payload.data.nativeCurrency.symbol).toBe("STT");
+++    expect(JSON.stringify(payload)).not.toContain("AGENT_PRIVATE_KEY");
+++  });
+++
+++  it("moves Telegram Connect sessions from waiting to connected", async () => {
+++    await fetch(`${baseUrl}/api/users`, {
+++      method: "POST",
+++      body: JSON.stringify({
+++        walletAddress: wallet.address,
+++        message,
+++        signature
+++      })
+++    });
+++
+++    const startResponse = await fetch(`${baseUrl}/api/telegram/connect/start`, {
+++      method: "POST",
+++      body: JSON.stringify({ walletAddress: wallet.address })
+++    });
+++    const startPayload = await startResponse.json();
+++
+++    expect(startResponse.status).toBe(201);
+++    expect(startPayload.data.status).toBe("waiting");
+++    expect(startPayload.data.botDeepLink).toContain("t.me/RiskGuardBot");
+++
+++    const confirmResponse = await fetch(`${baseUrl}/api/telegram/connect/confirm`, {
+++      method: "POST",
+++      body: JSON.stringify({
+++        code: startPayload.data.code,
+++        chatId: "987654321",
+++        telegramUserId: "123456"
+++      })
+++    });
+++    const confirmPayload = await confirmResponse.json();
+++
+++    expect(confirmResponse.status).toBe(200);
+++    expect(confirmPayload.data.status).toBe("connected");
+++    expect(confirmPayload.data.connected).toBe(true);
+++    expect(telegramAlerts.linkChat).toHaveBeenCalledWith({
+++      walletAddress: wallet.address,
+++      chatId: "987654321",
+++      telegramUserId: "123456"
+++    });
+++  });
+++
++   it("reports server misconfiguration when latest-state repositories are missing", async () => {
++     const setupService = new SetupService(
++       new UsersRepository(dataDirectory),
++diff --git a/agent/src/api/server.ts b/agent/src/api/server.ts
++index e5b7008..0b174b5 100644
++--- a/agent/src/api/server.ts
+++++ b/agent/src/api/server.ts
++@@ -7,6 +7,7 @@ import { ZodError } from "zod";
++ import { failure, sendJson, success } from "./response.js";
++ import type { SetupService } from "../services/setup.service.js";
++ import { setupWalletRequestSchema } from "../services/setup.service.js";
+++import type { PublicChainMetadata } from "../config/public-chain.js";
++ import type { AuditEventsRepository } from "../persistence/audit-events.repository.js";
++ import type { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
++ import type { RiskSnapshotsRepository } from "../persistence/risk-snapshots.repository.js";
++@@ -91,6 +92,14 @@ class ServerDependencyError extends Error {
++   }
++ }
++ 
+++interface TelegramConnectSession {
+++  walletAddress: string;
+++  code: string;
+++  expiresAt: string;
+++  status: "waiting" | "connected" | "expired" | "failed";
+++  binding?: unknown;
+++}
+++
++ function parseOptionalWalletAddress(value: string | null): string | undefined {
++   if (!value) {
++     return undefined;
++@@ -167,10 +176,37 @@ export interface AgentApiDependencies {
++   telegramAlerts?: TelegramAlertService;
++   heartbeats?: HeartbeatService;
++   rewards?: RewardClaimService;
+++  publicChain?: PublicChainMetadata;
++   health?: () => Promise<unknown> | unknown;
++ }
++ 
++ export function createAgentApiServer(dependencies: AgentApiDependencies): Server {
+++  const telegramConnectSessions = new Map<string, TelegramConnectSession>();
+++
+++  const sessionForWallet = (walletAddress: string) =>
+++    [...telegramConnectSessions.values()]
+++      .filter((session) => session.walletAddress === walletAddress)
+++      .sort((left, right) => Date.parse(right.expiresAt) - Date.parse(left.expiresAt))[0];
+++
+++  const serializeTelegramConnectSession = (session: TelegramConnectSession) => {
+++    const expired = session.status === "waiting" && Date.parse(session.expiresAt) <= Date.now();
+++
+++    if (expired) {
+++      session.status = "expired";
+++      telegramConnectSessions.set(session.code, session);
+++    }
+++
+++    return {
+++      walletAddress: session.walletAddress,
+++      code: session.code,
+++      expiresAt: session.expiresAt,
+++      status: session.status,
+++      connected: session.status === "connected",
+++      ...(session.binding ? { binding: session.binding } : {}),
+++      botDeepLink: `https://t.me/RiskGuardBot?start=${encodeURIComponent(session.code)}`
+++    };
+++  };
+++
++   return createServer(async (request, response) => {
++     applyCorsHeaders(request, response);
++ 
++@@ -241,6 +277,14 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
++         return;
++       }
++ 
+++      if (request.method === "GET" && url.pathname === "/api/public-chain") {
+++        if (!dependencies.publicChain) {
+++          throw new ServerDependencyError("Public chain metadata is not configured");
+++        }
+++        sendJson(response, 200, success(dependencies.publicChain, requestId));
+++        return;
+++      }
+++
++       if (request.method === "POST" && url.pathname === "/api/demo/scenarios") {
++         if (!dependencies.demoScenarios) {
++           throw new ServerDependencyError("Demo scenario service is not configured");
++@@ -381,6 +425,100 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
++         return;
++       }
++ 
+++      if (request.method === "POST" && url.pathname === "/api/telegram/connect/start") {
+++        if (!dependencies.telegramAlerts) {
+++          throw new ServerDependencyError("Telegram alert service is not configured");
+++        }
+++
+++        const body = await readJsonBody(request);
+++        const walletAddress = parseOptionalWalletAddress(
+++          typeof body === "object" && body && "walletAddress" in body
+++            ? String((body as { walletAddress?: unknown }).walletAddress ?? "")
+++            : null
+++        );
+++
+++        if (!walletAddress) {
+++          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
+++          return;
+++        }
+++
+++        const code = randomUUID().slice(0, 8).toUpperCase();
+++        const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+++        const session: TelegramConnectSession = {
+++          walletAddress,
+++          code,
+++          expiresAt,
+++          status: "waiting"
+++        };
+++        telegramConnectSessions.set(code, session);
+++        sendJson(
+++          response,
+++          201,
+++          success(serializeTelegramConnectSession(session), requestId)
+++        );
+++        return;
+++      }
+++
+++      if (request.method === "GET" && url.pathname === "/api/telegram/connect/status") {
+++        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
+++
+++        if (!walletAddress) {
+++          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
+++          return;
+++        }
+++
+++        const session = sessionForWallet(walletAddress);
+++
+++        if (!session) {
+++          sendJson(response, 404, failure("not_found", "No Telegram Connect session is active"));
+++          return;
+++        }
+++
+++        sendJson(response, 200, success(serializeTelegramConnectSession(session), requestId));
+++        return;
+++      }
+++
+++      if (request.method === "POST" && url.pathname === "/api/telegram/connect/confirm") {
+++        if (!dependencies.telegramAlerts) {
+++          throw new ServerDependencyError("Telegram alert service is not configured");
+++        }
+++
+++        const body = await readJsonBody(request);
+++        const code = typeof body === "object" && body && "code" in body
+++          ? String((body as { code?: unknown }).code ?? "").toUpperCase()
+++          : "";
+++        const chatId = typeof body === "object" && body && "chatId" in body
+++          ? String((body as { chatId?: unknown }).chatId ?? "")
+++          : "";
+++        const telegramUserId = typeof body === "object" && body && "telegramUserId" in body
+++          ? String((body as { telegramUserId?: unknown }).telegramUserId ?? "")
+++          : undefined;
+++        const session = telegramConnectSessions.get(code);
+++
+++        if (!session) {
+++          sendJson(response, 404, failure("not_found", "Telegram Connect code was not found"));
+++          return;
+++        }
+++
+++        if (Date.parse(session.expiresAt) <= Date.now()) {
+++          session.status = "expired";
+++          telegramConnectSessions.set(session.code, session);
+++          sendJson(response, 410, failure("telegram_connect_expired", "Telegram Connect code expired"));
+++          return;
+++        }
+++
+++        const binding = await dependencies.telegramAlerts.linkChat({
+++          walletAddress: session.walletAddress,
+++          chatId,
+++          ...(telegramUserId ? { telegramUserId } : {})
+++        });
+++        session.status = "connected";
+++        session.binding = binding;
+++        telegramConnectSessions.set(session.code, session);
+++        sendJson(response, 200, success(serializeTelegramConnectSession(session), requestId));
+++        return;
+++      }
+++
++       if (request.method === "POST" && url.pathname === "/api/telegram/bindings") {
++         if (!dependencies.telegramAlerts) {
++           throw new ServerDependencyError("Telegram alert service is not configured");
++diff --git a/agent/src/config/env.test.ts b/agent/src/config/env.test.ts
++index dc18fae..3e885e9 100644
++--- a/agent/src/config/env.test.ts
+++++ b/agent/src/config/env.test.ts
++@@ -1,3 +1,5 @@
+++import { chdir, cwd } from "node:process";
+++
++ import { describe, expect, it } from "vitest";
++ import { Wallet } from "ethers";
++ 
++@@ -71,23 +73,45 @@ describe("agent runtime config", () => {
++       expect(error).toBeInstanceOf(ConfigValidationError);
++       const message = formatConfigError(error as ConfigValidationError);
++ 
++-      expect(message).toContain("SOMNIA_RPC_URL");
++       expect(message).toContain("AGENT_PRIVATE_KEY");
+++      expect(message).not.toContain("SOMNIA_RPC_URL");
++       expect(message).not.toContain("undefined");
++     }
++   });
++ 
+++  it("loads non-secret public chain metadata from config/public-chains.json", () => {
+++    const config = validateConfig({
+++      ...validEnv,
+++      SOMNIA_RPC_URL: undefined,
+++      SOMNIA_CHAIN_ID: undefined,
+++      DEAD_MAN_SWITCH_CONTRACT_ADDRESS: undefined
+++    });
+++
+++    expect(config.publicChain.key).toBe("somnia-testnet");
+++    expect(config.somnia.rpcUrl).toBe("https://dream-rpc.somnia.network");
+++    expect(config.somnia.chainId).toBe(50312);
+++    expect(config.publicChain.nativeCurrency.symbol).toBe("STT");
+++  });
+++
+++  it("loads public chain metadata independently of process cwd", () => {
+++    const previousCwd = cwd();
+++    chdir(previousCwd.endsWith("/agent") ? ".." : previousCwd);
+++
+++    try {
+++      const config = validateConfig(validEnv);
+++      expect(config.publicChain.key).toBe("somnia-testnet");
+++    } finally {
+++      chdir(previousCwd);
+++    }
+++  });
+++
++   it.each([
++-    ["SOMNIA_RPC_URL", "not-a-url"],
++-    ["SOMNIA_CHAIN_ID", "0"],
++-    ["SOMNIA_CHAIN_ID", `${Number.MAX_SAFE_INTEGER + 2}`],
++     ["AGENT_WALLET_ADDRESS", "0x123"],
++     ["AGENT_PRIVATE_KEY", "0x123"],
++     ["AGENT_PRIVATE_KEY", `0x${"0".repeat(64)}`],
++     ["RISK_SCORE_ALERT_THRESHOLD", "101"],
++     ["HEARTBEAT_INTERVAL_SECONDS", "0"],
++-    ["AUTO_CLAIM_ENABLED", "sometimes"],
++-    ["DEAD_MAN_SWITCH_CONTRACT_ADDRESS", "0xabc"]
+++    ["AUTO_CLAIM_ENABLED", "sometimes"]
++   ])("rejects malformed %s", (key, value) => {
++     expect(() => validateConfig({ ...validEnv, [key]: value })).toThrow(
++       ConfigValidationError
++@@ -156,7 +180,7 @@ describe("agent runtime config", () => {
++   it("can validate an explicit env source without reading process.env", () => {
++     const config = loadConfig({ env: validEnv, loadDotenv: false });
++ 
++-    expect(config.somnia.rpcUrl).toBe(validEnv.SOMNIA_RPC_URL);
+++    expect(config.somnia.rpcUrl).toBe("https://dream-rpc.somnia.network");
++   });
++ 
++   it("uses an explicit dotenv path when provided", () => {
++diff --git a/agent/src/config/env.ts b/agent/src/config/env.ts
++index a3e7326..ca9db20 100644
++--- a/agent/src/config/env.ts
+++++ b/agent/src/config/env.ts
++@@ -4,6 +4,8 @@ import { config as loadDotenvFile } from "dotenv";
++ import { getAddress, Wallet } from "ethers";
++ import { z } from "zod";
++ 
+++import { loadPublicChainMetadata, PublicChainConfigError } from "./public-chain.js";
+++
++ const ethereumAddressSchema = z
++   .string()
++   .regex(/^0x[a-fA-F0-9]{40}$/, "Must be a valid EVM address")
++@@ -110,6 +112,14 @@ const rawEnvSchema = z
++   LOG_LEVEL: z
++     .enum(["trace", "debug", "info", "warn", "error", "fatal"])
++     .default("info"),
+++  PUBLIC_CHAIN_KEY: requiredNonEmptyString("PUBLIC_CHAIN_KEY"),
+++  PUBLIC_CHAIN_NAME: requiredNonEmptyString("PUBLIC_CHAIN_NAME"),
+++  PUBLIC_CHAIN_EXPLORER_URL: z.string().url("Must be a valid URL"),
+++  PUBLIC_CHAIN_NATIVE_CURRENCY_NAME: requiredNonEmptyString("PUBLIC_CHAIN_NATIVE_CURRENCY_NAME"),
+++  PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL: requiredNonEmptyString("PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL"),
+++  PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS: integerFromString("PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS").pipe(
+++    z.number().int().nonnegative()
+++  ),
++   SOMNIA_RPC_URL: z.string().url("Must be a valid URL"),
++   SOMNIA_CHAIN_ID: integerFromString("SOMNIA_CHAIN_ID").pipe(
++     z.number().int().positive()
++@@ -143,6 +153,22 @@ const rawEnvSchema = z
++   TELEGRAM_WEBHOOK_SECRET: optionalNonEmptyString
++ })
++   .superRefine((env, context) => {
+++    if (!env.SOMNIA_RPC_URL) {
+++      context.addIssue({
+++        code: z.ZodIssueCode.custom,
+++        message: "Must be configured through config/public-chains.json or SOMNIA_RPC_URL legacy override",
+++        path: ["SOMNIA_RPC_URL"]
+++      });
+++    }
+++
+++    if (!env.SOMNIA_CHAIN_ID || Number(env.SOMNIA_CHAIN_ID) <= 0) {
+++      context.addIssue({
+++        code: z.ZodIssueCode.custom,
+++        message: "Must be configured through config/public-chains.json or SOMNIA_CHAIN_ID legacy override",
+++        path: ["SOMNIA_CHAIN_ID"]
+++      });
+++    }
+++
++     if (env.AGENT_PRIVATE_KEY && env.AGENT_WALLET_ADDRESS) {
++       let derivedAddress: string;
++ 
++@@ -186,12 +212,27 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
++   logLevel: env.LOG_LEVEL,
++   somnia: {
++     rpcUrl: env.SOMNIA_RPC_URL,
++-    chainId: env.SOMNIA_CHAIN_ID,
+++    chainId: Number(env.SOMNIA_CHAIN_ID),
++     agentWalletAddress: env.AGENT_WALLET_ADDRESS,
++     agentPrivateKey: env.AGENT_PRIVATE_KEY,
++     monitoredWalletAddress: env.MONITORED_WALLET_ADDRESS,
++     deadManSwitchContractAddress: env.DEAD_MAN_SWITCH_CONTRACT_ADDRESS
++   },
+++  publicChain: {
+++    key: env.PUBLIC_CHAIN_KEY,
+++    name: env.PUBLIC_CHAIN_NAME,
+++    rpcUrl: env.SOMNIA_RPC_URL,
+++    chainId: Number(env.SOMNIA_CHAIN_ID),
+++    blockExplorerUrl: env.PUBLIC_CHAIN_EXPLORER_URL,
+++    nativeCurrency: {
+++      name: env.PUBLIC_CHAIN_NATIVE_CURRENCY_NAME,
+++      symbol: env.PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL,
+++      decimals: Number(env.PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS)
+++    },
+++    contracts: {
+++      deadManSwitch: env.DEAD_MAN_SWITCH_CONTRACT_ADDRESS
+++    }
+++  },
++   llm: {
++     groq: {
++       apiKey: env.GROQ_API_KEY,
++@@ -234,6 +275,13 @@ export class ConfigValidationError extends Error {
++   }
++ }
++ 
+++export class PublicConfigValidationError extends Error {
+++  public constructor(message: string) {
+++    super(message);
+++    this.name = "PublicConfigValidationError";
+++  }
+++}
+++
++ export interface LoadConfigOptions {
++   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
++   loadDotenv?: boolean;
++@@ -243,7 +291,32 @@ export interface LoadConfigOptions {
++ export function validateConfig(
++   env: NodeJS.ProcessEnv | Record<string, string | undefined>
++ ): AgentConfig {
++-  const result = agentEnvSchema.safeParse(env);
+++  let publicChain;
+++
+++  try {
+++    publicChain = loadPublicChainMetadata(env.PUBLIC_CHAIN_KEY);
+++  } catch (error) {
+++    if (error instanceof PublicChainConfigError) {
+++      throw new PublicConfigValidationError(error.message);
+++    }
+++
+++    throw error;
+++  }
+++
+++  const envWithPublicDefaults = {
+++    ...env,
+++    SOMNIA_RPC_URL: publicChain.rpcUrl,
+++    SOMNIA_CHAIN_ID: String(publicChain.chainId),
+++    DEAD_MAN_SWITCH_CONTRACT_ADDRESS: publicChain.contracts.deadManSwitch,
+++    PUBLIC_CHAIN_KEY: publicChain.key,
+++    PUBLIC_CHAIN_NAME: publicChain.name,
+++    PUBLIC_CHAIN_EXPLORER_URL: publicChain.blockExplorerUrl,
+++    PUBLIC_CHAIN_NATIVE_CURRENCY_NAME: publicChain.nativeCurrency.name,
+++    PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL: publicChain.nativeCurrency.symbol,
+++    PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS: String(publicChain.nativeCurrency.decimals)
+++  };
+++
+++  const result = agentEnvSchema.safeParse(envWithPublicDefaults);
++ 
++   if (!result.success) {
++     throw new ConfigValidationError(result.error.issues);
++diff --git a/agent/src/main.test.ts b/agent/src/main.test.ts
++index c262e99..6a8fcf4 100644
++--- a/agent/src/main.test.ts
+++++ b/agent/src/main.test.ts
++@@ -55,7 +55,8 @@ describe("agent startup", () => {
++     await runCli({ env: {}, loadDotenv: false });
++ 
++     expect(consoleError).toHaveBeenCalledOnce();
++-    expect(consoleError.mock.calls[0]?.[0]).toContain("SOMNIA_RPC_URL");
+++    expect(consoleError.mock.calls[0]?.[0]).toContain("AGENT_PRIVATE_KEY");
+++    expect(consoleError.mock.calls[0]?.[0]).not.toContain("SOMNIA_RPC_URL");
++     expect(consoleError.mock.calls[0]?.[0]).not.toContain("ConfigValidationError");
++     expect(consoleError.mock.calls[0]?.[0]).not.toContain("at ");
++     expect(process.exitCode).toBe(1);
++diff --git a/agent/src/main.ts b/agent/src/main.ts
++index 8f9b3aa..593a5db 100644
++--- a/agent/src/main.ts
+++++ b/agent/src/main.ts
++@@ -5,6 +5,7 @@ import {
++   ConfigValidationError,
++   formatConfigError,
++   loadConfig,
+++  PublicConfigValidationError,
++   type AgentConfig,
++   type LoadConfigOptions
++ } from "./config/env.js";
++@@ -162,9 +163,12 @@ export async function startAgentRuntime(
++     telegramAlerts,
++     heartbeats,
++     rewards,
+++    publicChain: config.publicChain,
++     health: async () => ({
++       ok: true,
++-      telegram: await telegramAlerts.health()
+++      telegram: await telegramAlerts.health(),
+++      somnia: await somnia.health(),
+++      publicChain: config.publicChain
++     })
++   });
++ 
++@@ -199,7 +203,9 @@ export async function startAgentRuntime(
++     {
++       apiPort,
++       apiHost: "0.0.0.0",
++-      telegram: await telegramAlerts.health()
+++      telegram: await telegramAlerts.health(),
+++      somnia: await somnia.health(),
+++      publicChain: config.publicChain.key
++     },
++     "agent runtime started"
++   );
++@@ -304,6 +310,12 @@ export async function runCli(options: MainOptions = {}): Promise<void> {
++       return;
++     }
++ 
+++    if (error instanceof PublicConfigValidationError) {
+++      console.error(`Agent public chain configuration is invalid:\n- ${error.message}`);
+++      process.exitCode = 1;
+++      return;
+++    }
+++
++     throw error;
++   }
++ }
++diff --git a/frontend/src/app/globals.css b/frontend/src/app/globals.css
++index 5f1011d..7029814 100644
++--- a/frontend/src/app/globals.css
+++++ b/frontend/src/app/globals.css
++@@ -45,6 +45,10 @@ button:disabled {
++   opacity: 0.55;
++ }
++ 
+++a {
+++  color: inherit;
+++}
+++
++ input {
++   width: 100%;
++   min-width: 0;
++@@ -62,6 +66,88 @@ button:focus-visible {
++   outline-offset: 2px;
++ }
++ 
+++.rg-app-shell {
+++  display: grid;
+++  grid-template-columns: 248px minmax(0, 1fr);
+++  min-height: 100vh;
+++}
+++
+++.rg-sidebar {
+++  position: sticky;
+++  top: 0;
+++  height: 100vh;
+++  border-right: 1px solid var(--border);
+++  background: rgb(10 10 15 / 92%);
+++  padding: 20px 14px;
+++}
+++
+++.sidebar-brand,
+++.rg-sidebar nav,
+++.sidebar-meta,
+++.account-status,
+++.connect-panel,
+++.connect-code {
+++  display: grid;
+++}
+++
+++.sidebar-brand {
+++  grid-template-columns: auto 1fr;
+++  gap: 8px;
+++  align-items: center;
+++  font-weight: 800;
+++  margin-bottom: 18px;
+++}
+++
+++.rg-sidebar nav {
+++  gap: 6px;
+++}
+++
+++.rg-sidebar button,
+++.mobile-bottom-nav button {
+++  display: flex;
+++  align-items: center;
+++  gap: 9px;
+++  border: 1px solid transparent;
+++  border-radius: 8px;
+++  background: transparent;
+++  color: var(--muted);
+++  min-height: 40px;
+++  padding: 0 10px;
+++  text-align: left;
+++}
+++
+++.rg-sidebar button.active,
+++.mobile-bottom-nav button.active {
+++  border-color: rgb(192 38 211 / 42%);
+++  background: rgb(192 38 211 / 14%);
+++  color: var(--text);
+++}
+++
+++.sidebar-meta {
+++  position: absolute;
+++  right: 14px;
+++  bottom: 20px;
+++  left: 14px;
+++  gap: 4px;
+++  border: 1px solid var(--border);
+++  border-radius: 8px;
+++  padding: 10px;
+++  background: #0d0d13;
+++}
+++
+++.sidebar-meta span,
+++.account-status span,
+++.connect-code span,
+++.connect-code small {
+++  color: var(--muted);
+++  font-size: 0.74rem;
+++}
+++
+++.sidebar-meta strong,
+++.account-status strong {
+++  overflow-wrap: anywhere;
+++}
+++
++ .rg-shell {
++   position: relative;
++   width: min(1480px, calc(100% - 32px));
++@@ -123,6 +209,15 @@ button:focus-visible {
++   justify-content: flex-end;
++ }
++ 
+++.account-status {
+++  gap: 2px;
+++  min-width: 150px;
+++  border: 1px solid var(--border);
+++  border-radius: 8px;
+++  background: #0d0d13;
+++  padding: 7px 10px;
+++}
+++
++ .mode-switch {
++   display: grid;
++   grid-template-columns: repeat(2, 1fr);
++@@ -138,7 +233,8 @@ button:focus-visible {
++ .secondary-button,
++ form button,
++ .scenario-button,
++-.floating-refresh {
+++.floating-refresh,
+++.ui-button {
++   border: 1px solid transparent;
++   border-radius: 8px;
++   color: var(--text);
++@@ -159,7 +255,8 @@ form button,
++ .primary-button,
++ .secondary-button,
++ form button,
++-.floating-refresh {
+++.floating-refresh,
+++.ui-button {
++   display: inline-flex;
++   align-items: center;
++   justify-content: center;
++@@ -176,11 +273,33 @@ form button,
++ 
++ .secondary-button,
++ form button,
++-.floating-refresh {
+++.floating-refresh,
+++.ui-button-secondary {
++   background: #181820;
++   border-color: var(--border);
++ }
++ 
+++.ui-button-primary {
+++  background: var(--purple-strong);
+++  box-shadow: 0 0 24px rgb(192 38 211 / 22%);
+++}
+++
+++.ui-button-ghost {
+++  background: transparent;
+++}
+++
+++.ui-badge {
+++  display: inline-flex;
+++  align-items: center;
+++  width: fit-content;
+++  border: 1px solid var(--border);
+++  border-radius: 999px;
+++  padding: 4px 8px;
+++  color: var(--soft);
+++  font-family: "JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+++  font-size: 0.74rem;
+++}
+++
++ .notice {
++   border: 1px solid var(--border);
++   border-radius: 8px;
++@@ -459,6 +578,40 @@ label {
++   width: 16px;
++ }
++ 
+++.connect-panel {
+++  gap: 10px;
+++  border: 1px solid var(--border);
+++  border-radius: 8px;
+++  background: #0d0d13;
+++  padding: 12px;
+++}
+++
+++.connect-panel p {
+++  margin: 4px 0 0;
+++}
+++
+++.connect-code {
+++  gap: 4px;
+++  border: 1px solid rgb(34 211 238 / 32%);
+++  border-radius: 8px;
+++  padding: 10px;
+++}
+++
+++.connect-code strong {
+++  color: var(--cyan);
+++  font-family: "JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+++  font-size: 1.2rem;
+++}
+++
+++.connect-code a {
+++  display: inline-flex;
+++  align-items: center;
+++  gap: 5px;
+++  color: var(--cyan);
+++  margin-top: 4px;
+++  text-decoration: none;
+++}
+++
++ .scenario-grid {
++   grid-template-columns: repeat(2, minmax(0, 1fr));
++ }
++@@ -535,6 +688,14 @@ label {
++   z-index: 5;
++ }
++ 
+++.mobile-bottom-nav {
+++  display: none;
+++}
+++
+++.mobile-more-sheet {
+++  display: none;
+++}
+++
++ .spin {
++   animation: spin 0.9s linear infinite;
++ }
++@@ -570,11 +731,81 @@ label {
++   .signal,
++   .status-strip,
++   .scenario-button,
++-  .mode-switch {
+++  .mode-switch,
+++  .account-status,
+++  .connect-panel,
+++  .sidebar-meta {
++     background: #ffffff;
++   }
++ }
++ 
+++@media (max-width: 1023px) {
+++  .rg-app-shell {
+++    display: block;
+++  }
+++
+++  .rg-sidebar {
+++    display: none;
+++  }
+++
+++  .mobile-bottom-nav {
+++    position: fixed;
+++    right: 10px;
+++    bottom: 10px;
+++    left: 10px;
+++    z-index: 10;
+++    display: grid;
+++    grid-template-columns: repeat(5, minmax(0, 1fr));
+++    gap: 4px;
+++    border: 1px solid var(--border);
+++    border-radius: 8px;
+++    background: rgb(10 10 15 / 96%);
+++    padding: 6px;
+++  }
+++
+++  .mobile-more-sheet {
+++    position: fixed;
+++    right: 10px;
+++    bottom: 76px;
+++    left: 10px;
+++    z-index: 11;
+++    display: grid;
+++    gap: 6px;
+++    border: 1px solid var(--border);
+++    border-radius: 8px;
+++    background: rgb(17 17 21 / 98%);
+++    padding: 10px;
+++  }
+++
+++  .mobile-more-sheet button {
+++    display: flex;
+++    align-items: center;
+++    gap: 8px;
+++    min-height: 42px;
+++    border: 1px solid var(--border);
+++    border-radius: 8px;
+++    background: #0d0d13;
+++    color: var(--text);
+++    padding: 0 10px;
+++  }
+++
+++  .mobile-more-sheet button.active {
+++    border-color: rgb(192 38 211 / 42%);
+++    background: rgb(192 38 211 / 14%);
+++  }
+++
+++  .mobile-bottom-nav button {
+++    justify-content: center;
+++    min-height: 48px;
+++    padding: 0 4px;
+++    font-size: 0.72rem;
+++  }
+++
+++  .mobile-bottom-nav button span {
+++    display: none;
+++  }
+++}
+++
++ @media (max-width: 1180px) {
++   .rg-overview,
++   .rg-grid {
++@@ -590,6 +821,7 @@ label {
++   .rg-shell {
++     width: min(100% - 20px, 640px);
++     padding-top: 18px;
+++    padding-bottom: 96px;
++   }
++ 
++   .rg-header,
++diff --git a/frontend/src/features/dashboard/riskguard-dashboard.tsx b/frontend/src/features/dashboard/riskguard-dashboard.tsx
++index bf81904..820bf52 100644
++--- a/frontend/src/features/dashboard/riskguard-dashboard.tsx
+++++ b/frontend/src/features/dashboard/riskguard-dashboard.tsx
++@@ -1,6 +1,6 @@
++ "use client";
++ 
++-import { useCallback, useEffect, useMemo, useState } from "react";
+++import { useCallback, useEffect, useMemo, useRef, useState } from "react";
++ import type { CSSProperties, FormEvent, ReactNode } from "react";
++ import {
++   Activity,
++@@ -10,11 +10,14 @@ import {
++   CircleDollarSign,
++   Clock3,
++   Cpu,
+++  FileText,
++   KeyRound,
++   Link2,
++   Loader2,
+++  Menu,
++   RadioTower,
++   RefreshCw,
+++  Send,
++   Shield,
++   ShieldAlert,
++   Sparkles,
++@@ -30,19 +33,38 @@ import {
++   type HeartbeatStatus,
++   type Mode,
++   type PortfolioSnapshot,
+++  type PublicChainMetadata,
++   type Readiness,
++   type RewardStatus,
++-  type RiskSnapshot
+++  type RiskSnapshot,
+++  type TelegramConnectSession
++ } from "@/lib/agent-api";
++ import {
++   connectBrowserWallet,
++   disconnectBrowserWallet,
+++  restoreBrowserWallet,
++   signWalletMessage,
+++  subscribeBrowserWalletChanges,
++   type BrowserWalletState
++ } from "@/lib/wallet";
+++import { Badge } from "@/components/ui/badge";
+++import { Button } from "@/components/ui/button";
++ import { GuardianSettings } from "@/features/settings/guardian-settings";
++ 
++ type Notice = { tone: "ok" | "warn" | "bad"; message: string };
+++type DashboardSection = "overview" | "setup" | "risk" | "heartbeat" | "rewards" | "receipts" | "demo" | "health";
+++type AccountStatus = "restoring" | "connected" | "disconnected" | "disconnecting" | "expired" | "error";
+++
+++const navItems: Array<{ id: DashboardSection; label: string; icon: ReactNode; primaryMobile?: boolean }> = [
+++  { id: "overview", label: "Overview", icon: <Shield size={17} />, primaryMobile: true },
+++  { id: "setup", label: "Setup", icon: <KeyRound size={17} />, primaryMobile: true },
+++  { id: "risk", label: "Risk", icon: <ShieldAlert size={17} />, primaryMobile: true },
+++  { id: "heartbeat", label: "Heartbeat", icon: <Clock3 size={17} /> },
+++  { id: "rewards", label: "Rewards", icon: <CircleDollarSign size={17} /> },
+++  { id: "receipts", label: "Receipts", icon: <FileText size={17} />, primaryMobile: true },
+++  { id: "demo", label: "Demo", icon: <Sparkles size={17} /> },
+++  { id: "health", label: "Health", icon: <Cpu size={17} /> }
+++];
++ 
++ const scenarios: Array<{
++   id: DemoScenarioResult["scenario"];
++@@ -132,10 +154,18 @@ function errorMessage(error: unknown) {
++   return "Request failed";
++ }
++ 
+++function hasOkFlag(value: unknown): value is { ok: boolean } {
+++  return Boolean(value && typeof value === "object" && "ok" in value);
+++}
+++
++ export function RiskGuardDashboard() {
+++  const [activeSection, setActiveSection] = useState<DashboardSection>("overview");
+++  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+++  const [accountStatus, setAccountStatus] = useState<AccountStatus>("restoring");
++   const [wallet, setWallet] = useState<BrowserWalletState | null>(null);
++   const [demoWalletAddress, setDemoWalletAddress] = useState<string>();
++   const [mode, setMode] = useState<Mode>("simulation");
+++  const [publicChain, setPublicChain] = useState<PublicChainMetadata | null>(null);
++   const [readiness, setReadiness] = useState<Readiness | null>(null);
++   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
++   const [risk, setRisk] = useState<RiskSnapshot | null>(null);
++@@ -143,9 +173,11 @@ export function RiskGuardDashboard() {
++   const [rewards, setRewards] = useState<RewardStatus | null>(null);
++   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
++   const [events, setEvents] = useState<AuditEvent[]>([]);
+++  const [telegramSession, setTelegramSession] = useState<TelegramConnectSession | null>(null);
++   const [notice, setNotice] = useState<Notice | null>(null);
++   const [loading, setLoading] = useState(false);
++   const [actionLoading, setActionLoading] = useState<string | null>(null);
+++  const loadRequestRef = useRef(0);
++ 
++   const activeWalletAddress = mode === "simulation"
++     ? demoWalletAddress
++@@ -175,11 +207,23 @@ export function RiskGuardDashboard() {
++     return [...latestClaim, ...fromAudit].slice(0, 8);
++   }, [events, rewards]);
++ 
+++  const clearWalletScopedState = useCallback(() => {
+++    setPortfolio(null);
+++    setRisk(null);
+++    setHeartbeat(null);
+++    setRewards(null);
+++    setEvents([]);
+++    setTelegramSession(null);
+++  }, []);
+++
++   const loadData = useCallback(async () => {
+++    const requestId = loadRequestRef.current + 1;
+++    loadRequestRef.current = requestId;
++     setLoading(true);
++     try {
++       const walletAddress = activeWalletAddress;
++       const [
+++        publicChainResult,
++         readinessResult,
++         portfolioResult,
++         riskResult,
++@@ -188,6 +232,7 @@ export function RiskGuardDashboard() {
++         heartbeatResult,
++         rewardsResult
++       ] = await Promise.allSettled([
+++        agentApi.getPublicChain(),
++         agentApi.getReadiness(),
++         walletAddress || mode === "simulation" ? agentApi.getPortfolio(walletAddress) : Promise.resolve(null),
++         walletAddress || mode === "simulation" ? agentApi.getRisk(walletAddress) : Promise.resolve(null),
++@@ -196,11 +241,20 @@ export function RiskGuardDashboard() {
++         walletAddress ? agentApi.getHeartbeat(walletAddress) : Promise.resolve(null),
++         walletAddress ? agentApi.getRewards(walletAddress) : Promise.resolve(null)
++       ]);
+++      const failedReads: string[] = [];
+++
+++      if (requestId !== loadRequestRef.current) {
+++        return;
+++      }
++ 
+++      if (publicChainResult.status === "fulfilled") {
+++        setPublicChain(publicChainResult.value);
+++      } else {
+++        failedReads.push("public chain");
+++      }
++       if (readinessResult.status === "fulfilled") {
++         setReadiness(readinessResult.value);
++       }
++-      const failedReads: string[] = [];
++ 
++       if (portfolioResult.status === "fulfilled") {
++         const nextPortfolio = mode === "testnet" && portfolioResult.value?.source === "demo"
++@@ -252,9 +306,14 @@ export function RiskGuardDashboard() {
++         });
++       }
++     } catch (error) {
+++      if (requestId !== loadRequestRef.current) {
+++        return;
+++      }
++       setNotice({ tone: "bad", message: errorMessage(error) });
++     } finally {
++-      setLoading(false);
+++      if (requestId === loadRequestRef.current) {
+++        setLoading(false);
+++      }
++     }
++   }, [activeWalletAddress, mode]);
++ 
++@@ -262,13 +321,77 @@ export function RiskGuardDashboard() {
++     void loadData();
++   }, [loadData]);
++ 
+++  useEffect(() => {
+++    let mounted = true;
+++
+++    restoreBrowserWallet()
+++      .then((restored) => {
+++        if (!mounted) {
+++          return;
+++        }
+++
+++        setWallet(restored);
+++        setAccountStatus(restored ? "connected" : "disconnected");
+++      })
+++      .catch(() => {
+++        if (!mounted) {
+++          return;
+++        }
+++
+++        setAccountStatus("error");
+++      });
+++
+++    return () => {
+++      mounted = false;
+++    };
+++  }, []);
+++
+++  useEffect(() => subscribeBrowserWalletChanges(() => {
+++    loadRequestRef.current += 1;
+++    restoreBrowserWallet()
+++      .then((restored) => {
+++        setWallet(restored);
+++        setAccountStatus(restored ? "connected" : "expired");
+++        clearWalletScopedState();
+++      })
+++      .catch(() => {
+++        setWallet(null);
+++        setAccountStatus("error");
+++        clearWalletScopedState();
+++      });
+++  }), [clearWalletScopedState]);
+++
+++  useEffect(() => {
+++    if (!telegramSession || telegramSession.status !== "waiting") {
+++      return;
+++    }
+++
+++    const timer = setInterval(() => {
+++      void agentApi.getTelegramConnectStatus(telegramSession.walletAddress)
+++        .then((session) => {
+++          setTelegramSession(session);
+++          if (session.status === "connected") {
+++            setNotice({ tone: "ok", message: "Telegram is connected." });
+++            void loadData();
+++          } else if (session.status === "expired") {
+++            setNotice({ tone: "warn", message: "Telegram Connect code expired. Start a new connection." });
+++          }
+++        })
+++        .catch(() => undefined);
+++    }, 3_000);
+++
+++    return () => clearInterval(timer);
+++  }, [loadData, telegramSession]);
+++
++   async function handleConnectWallet() {
++     setActionLoading("wallet");
++     try {
++       const nextWallet = await connectBrowserWallet();
++       setWallet(nextWallet);
+++      setAccountStatus("connected");
++       setNotice({ tone: "ok", message: "Browser wallet connected. Backend agent wallet remains separate." });
++     } catch (error) {
+++      setAccountStatus("error");
++       setNotice({ tone: "bad", message: errorMessage(error) });
++     } finally {
++       setActionLoading(null);
++@@ -277,15 +400,16 @@ export function RiskGuardDashboard() {
++ 
++   async function handleDisconnectWallet() {
++     setActionLoading("wallet");
+++    setAccountStatus("disconnecting");
++     try {
++       await disconnectBrowserWallet();
++       setWallet(null);
++-      setPortfolio(null);
++-      setRisk(null);
++-      setHeartbeat(null);
++-      setRewards(null);
+++      loadRequestRef.current += 1;
+++      clearWalletScopedState();
+++      setAccountStatus("disconnected");
++       setNotice({ tone: "ok", message: "Browser wallet disconnected from this dashboard." });
++     } catch (error) {
+++      setAccountStatus("error");
++       setNotice({ tone: "bad", message: errorMessage(error) });
++     } finally {
++       setActionLoading(null);
++@@ -342,22 +466,18 @@ export function RiskGuardDashboard() {
++     }
++   }
++ 
++-  async function handleTelegramSubmit(event: FormEvent<HTMLFormElement>) {
++-    event.preventDefault();
+++  async function handleTelegramConnect() {
++     const walletAddress = activeWalletAddress;
++     if (!walletAddress) {
++-      setNotice({ tone: "warn", message: "Connect or seed a wallet before linking Telegram." });
+++      setNotice({ tone: "warn", message: "Connect or seed a wallet before starting Telegram Connect." });
++       return;
++     }
++ 
++-    const form = new FormData(event.currentTarget);
++     setActionLoading("telegram");
++     try {
++-      await agentApi.linkTelegram({
++-        walletAddress,
++-        chatId: String(form.get("chatId") ?? "")
++-      });
++-      setNotice({ tone: "ok", message: "Telegram chat binding saved." });
+++      const session = await agentApi.startTelegramConnect({ walletAddress });
+++      setTelegramSession(session);
+++      setNotice({ tone: "ok", message: "Telegram Connect started. Send the one-time code to the bot." });
++       await loadData();
++     } catch (error) {
++       setNotice({ tone: "bad", message: errorMessage(error) });
++@@ -412,53 +532,86 @@ export function RiskGuardDashboard() {
++   }
++ 
++   return (
++-    <main className="rg-shell">
++-      <header className="rg-header">
++-        <div>
++-          <div className="rg-kicker"><Shield size={14} /> Somnia RiskGuard AgentCore</div>
++-          <h1>Guardian Command Center</h1>
++-          <p>Always-on portfolio safety, heartbeat protection, policy receipts, and operator visibility.</p>
++-        </div>
++-        <div className="rg-header-actions">
++-          <div className="mode-switch" aria-label="Reality mode">
++-            <button
++-              className={mode === "simulation" ? "active" : ""}
++-              onClick={() => setMode("simulation")}
+++    <main className="rg-app-shell">
+++      <aside className="rg-sidebar" aria-label="Primary sections">
+++        <div className="sidebar-brand"><Shield size={18} /> RiskGuard</div>
+++        <nav>
+++          {navItems.map((item) => (
+++            <Button
+++              className={activeSection === item.id ? "active" : ""}
+++              key={item.id}
+++              onClick={() => setActiveSection(item.id)}
++               type="button"
+++              variant="ghost"
++             >
++-              Simulation
++-            </button>
++-            <button
++-              className={mode === "testnet" ? "active" : ""}
++-              onClick={() => setMode("testnet")}
+++              {item.icon}
+++              {item.label}
+++            </Button>
+++          ))}
+++        </nav>
+++        <div className="sidebar-meta">
+++          <span>{publicChain?.name ?? "Public chain loading"}</span>
+++          <Badge>{mode === "simulation" ? "Simulation" : "Somnia Testnet"}</Badge>
+++        </div>
+++      </aside>
+++
+++      <div className="rg-shell">
+++        <header className="rg-header">
+++          <div>
+++            <div className="rg-kicker"><Shield size={14} /> Somnia RiskGuard AgentCore</div>
+++            <h1>{navItems.find((item) => item.id === activeSection)?.label ?? "Overview"}</h1>
+++            <p>Focused operational dashboard for setup, risk, heartbeat, rewards, receipts, demo, and health.</p>
+++          </div>
+++          <div className="rg-header-actions">
+++            <div className="account-status" aria-label="Account state">
+++              <span>{accountStatus}</span>
+++              <strong>{wallet ? formatAddress(wallet.address) : "no browser wallet"}</strong>
+++            </div>
+++            <div className="mode-switch" aria-label="Reality mode">
+++              <Button
+++                className={mode === "simulation" ? "active" : ""}
+++                onClick={() => setMode("simulation")}
+++                type="button"
+++                variant="ghost"
+++              >
+++                Simulation
+++              </Button>
+++              <Button
+++                className={mode === "testnet" ? "active" : ""}
+++                onClick={() => setMode("testnet")}
+++                type="button"
+++                variant="ghost"
+++              >
+++                Testnet
+++              </Button>
+++            </div>
+++            <Button
+++              className="primary-button"
+++              onClick={wallet ? handleDisconnectWallet : handleConnectWallet}
++               type="button"
+++              variant="primary"
++             >
++-              Testnet
++-            </button>
+++              {actionLoading === "wallet"
+++                ? <Loader2 className="spin" size={16} />
+++                : wallet ? <XCircle size={16} /> : <Wallet size={16} />}
+++              {wallet ? "Disconnect" : "Connect Wallet"}
+++            </Button>
++           </div>
++-          <button
++-            className="primary-button"
++-            onClick={wallet ? handleDisconnectWallet : handleConnectWallet}
++-            type="button"
++-          >
++-            {actionLoading === "wallet"
++-              ? <Loader2 className="spin" size={16} />
++-              : wallet ? <XCircle size={16} /> : <Wallet size={16} />}
++-            {wallet ? `Disconnect ${formatAddress(wallet.address)}` : "Connect Wallet"}
++-          </button>
++-        </div>
++-      </header>
+++        </header>
++ 
++-      {notice ? <div className={`notice ${notice.tone}`}>{notice.message}</div> : null}
+++        {notice ? <div className={`notice ${notice.tone}`}>{notice.message}</div> : null}
++ 
++-      <section className="rg-overview">
++-        <GuardianStatus ready={guardianReady} readiness={readiness} wallet={wallet} mode={mode} />
++-        <RiskScore score={riskScore} tone={riskTone} risk={risk} />
++-        <HeartbeatPanel heartbeat={heartbeat} />
++-        <RewardPanel rewards={rewards} />
++-      </section>
+++        {activeSection === "overview" ? (
+++          <section className="rg-overview">
+++            <GuardianStatus ready={guardianReady} readiness={readiness} wallet={wallet} mode={mode} />
+++            <RiskScore score={riskScore} tone={riskTone} risk={risk} />
+++            <HeartbeatPanel heartbeat={heartbeat} />
+++            <RewardPanel rewards={rewards} />
+++          </section>
+++        ) : null}
++ 
++-      <section className="rg-grid">
+++        <section className="rg-grid">
+++        {activeSection === "risk" ? (
++         <section className="panel portfolio-panel">
++           <PanelHeading icon={<Activity size={17} />} title="Portfolio Watch" action={loading ? "refreshing" : portfolio?.source ?? "no data"} />
++           <div className="portfolio-total">{formatUsd(portfolio?.totalValueUsd)}</div>
++@@ -480,47 +633,61 @@ export function RiskGuardDashboard() {
++             ))}
++           </div>
++         </section>
+++        ) : null}
++ 
+++        {activeSection === "setup" ? (
++         <section className="panel">
++           <PanelHeading icon={<KeyRound size={17} />} title="Configuration" action="signed where required" />
++           <GuardianSettings
++             actionLoading={actionLoading}
+++            telegramSession={telegramSession}
++             onHeartbeatSubmit={handleHeartbeatSubmit}
++             onRegisterWallet={handleRegisterWallet}
++             onRewardsSubmit={handleRewardsSubmit}
++-            onTelegramSubmit={handleTelegramSubmit}
+++            onTelegramConnect={handleTelegramConnect}
++           />
++         </section>
+++        ) : null}
++ 
+++        {activeSection === "demo" ? (
++         <section className="panel demo-panel">
++           <PanelHeading icon={<Sparkles size={17} />} title="Demo Scenario Control" action={mode} />
++           <p className="muted">Deterministic simulation states are seeded through the agent API and then shown from the same read models as live status.</p>
++           <div className="scenario-grid">
++             {scenarios.map((scenario) => (
++-              <button
+++              <Button
++                 className="scenario-button"
++                 disabled={mode !== "simulation" || actionLoading === scenario.id}
++                 key={scenario.id}
++                 onClick={() => void handleRunDemo(scenario.id)}
++                 type="button"
+++                variant="secondary"
++               >
++                 <span>{scenario.label}</span>
++                 <small>{actionLoading === scenario.id ? "Running..." : scenario.detail}</small>
++-              </button>
+++              </Button>
++             ))}
++           </div>
++         </section>
+++        ) : null}
++ 
+++        {activeSection === "health" ? (
++         <section className="panel">
++           <PanelHeading icon={<Cpu size={17} />} title="Operator Health" action="secret-safe" />
++           <div className="health-list">
++             <HealthRow icon={<RadioTower size={15} />} label="Agent API" value={health ? health.ok === false ? "degraded" : "reachable" : "unavailable"} tone={health ? health.ok === false ? "bad" : "ok" : "warn"} />
++             <HealthRow icon={<Bot size={15} />} label="Telegram" value={readableMetadata(health?.telegram)} tone={health?.telegram ? "ok" : "warn"} />
+++            <HealthRow icon={<Send size={15} />} label="Somnia adapter" value={readableMetadata(health?.somnia)} tone={hasOkFlag(health?.somnia) && health.somnia.ok ? "ok" : "warn"} />
++             <HealthRow icon={<Shield size={15} />} label="Signer" value={readiness?.agentWallet.ready ? formatAddress(readiness.agentWallet.walletAddress) : "missing"} tone={readiness?.agentWallet.ready ? "ok" : "bad"} />
++-            <HealthRow icon={<Link2 size={15} />} label="Chain" value={readiness?.agentWallet.chainId ? `chain ${readiness.agentWallet.chainId}` : "unknown"} tone="neutral" />
+++            <HealthRow icon={<Link2 size={15} />} label="Chain" value={publicChain ? `${publicChain.name} (${publicChain.chainId})` : "unknown"} tone="neutral" />
++           </div>
++         </section>
+++        ) : null}
+++
+++        {activeSection === "heartbeat" ? <HeartbeatPanel heartbeat={heartbeat} /> : null}
+++        {activeSection === "rewards" ? <RewardPanel rewards={rewards} /> : null}
++ 
+++        {activeSection === "receipts" ? (
++         <section className="panel timeline-panel">
++           <PanelHeading icon={<Clock3 size={17} />} title="Safety Receipts" action={`${receipts.length} recent`} />
++           <div className="timeline">
++@@ -540,11 +707,60 @@ export function RiskGuardDashboard() {
++             {receipts.length === 0 ? <p className="muted">No receipts yet. Run a demo scenario or save settings.</p> : null}
++           </div>
++         </section>
++-      </section>
+++        ) : null}
+++        </section>
+++
+++        <section className="mobile-bottom-nav" aria-label="Mobile sections">
+++          {navItems.filter((item) => item.primaryMobile).map((item) => (
+++            <Button
+++              className={activeSection === item.id ? "active" : ""}
+++              key={item.id}
+++              onClick={() => {
+++                setActiveSection(item.id);
+++                setMobileMoreOpen(false);
+++              }}
+++              type="button"
+++              variant="ghost"
+++            >
+++              {item.icon}
+++              <span>{item.label}</span>
+++            </Button>
+++          ))}
+++          <Button
+++            className={navItems.some((item) => !item.primaryMobile && item.id === activeSection) ? "active" : ""}
+++            onClick={() => setMobileMoreOpen((open) => !open)}
+++            type="button"
+++            variant="ghost"
+++          >
+++            <Menu size={17} />
+++            <span>More</span>
+++          </Button>
+++        </section>
+++
+++        {mobileMoreOpen ? (
+++          <section className="mobile-more-sheet" aria-label="More sections">
+++            {navItems.filter((item) => !item.primaryMobile).map((item) => (
+++              <Button
+++                className={activeSection === item.id ? "active" : ""}
+++                key={item.id}
+++                onClick={() => {
+++                  setActiveSection(item.id);
+++                  setMobileMoreOpen(false);
+++                }}
+++                type="button"
+++                variant="secondary"
+++              >
+++                {item.icon}
+++                {item.label}
+++              </Button>
+++            ))}
+++          </section>
+++        ) : null}
++ 
++-      <button className="floating-refresh" onClick={() => void loadData()} type="button">
++-        <RefreshCw size={16} /> Refresh
++-      </button>
+++        <Button className="floating-refresh" onClick={() => void loadData()} type="button" variant="secondary">
+++          <RefreshCw size={16} /> Refresh
+++        </Button>
+++      </div>
++     </main>
++   );
++ }
++diff --git a/frontend/src/features/settings/guardian-settings.tsx b/frontend/src/features/settings/guardian-settings.tsx
++index 7d93153..e31cdec 100644
++--- a/frontend/src/features/settings/guardian-settings.tsx
+++++ b/frontend/src/features/settings/guardian-settings.tsx
++@@ -1,33 +1,53 @@
++ import type { FormEvent } from "react";
++-import { Loader2, Shield } from "lucide-react";
+++import { ExternalLink, Loader2, Send, Shield } from "lucide-react";
+++
+++import { Badge } from "@/components/ui/badge";
+++import { Button } from "@/components/ui/button";
+++import type { TelegramConnectSession } from "@/lib/agent-api";
++ 
++ export function GuardianSettings({
++   actionLoading,
+++  telegramSession,
++   onRegisterWallet,
++-  onTelegramSubmit,
+++  onTelegramConnect,
++   onHeartbeatSubmit,
++   onRewardsSubmit
++ }: {
++   actionLoading: string | null;
+++  telegramSession: TelegramConnectSession | null;
++   onRegisterWallet: () => void;
++-  onTelegramSubmit: (event: FormEvent<HTMLFormElement>) => void;
+++  onTelegramConnect: () => void;
++   onHeartbeatSubmit: (event: FormEvent<HTMLFormElement>) => void;
++   onRewardsSubmit: (event: FormEvent<HTMLFormElement>) => void;
++ }) {
++   return (
++     <div className="form-stack">
++-      <button className="secondary-button" onClick={onRegisterWallet} type="button">
+++      <Button className="secondary-button" onClick={onRegisterWallet} type="button" variant="secondary">
++         {actionLoading === "register" ? <Loader2 className="spin" size={15} /> : <Shield size={15} />}
++         Register monitored wallet
++-      </button>
+++      </Button>
++ 
++-      <form onSubmit={onTelegramSubmit}>
++-        <label htmlFor="chatId">Telegram Chat ID</label>
++-        <div className="inline-form">
++-          <input id="chatId" name="chatId" placeholder="987654321" />
++-          <button type="submit">{actionLoading === "telegram" ? "Saving" : "Link"}</button>
+++      <section className="connect-panel" aria-label="Telegram connection">
+++        <div>
+++          <label>Telegram Connect</label>
+++          <p className="muted">Start a bot/code flow. Manual chat-id entry is reserved for internal fallback only.</p>
++         </div>
++-      </form>
+++        <Button onClick={onTelegramConnect} type="button" variant="secondary">
+++          {actionLoading === "telegram" ? <Loader2 className="spin" size={15} /> : <Send size={15} />}
+++          Connect Telegram
+++        </Button>
+++        {telegramSession ? (
+++          <div className="connect-code">
+++            <span>One-time code</span>
+++            <strong>{telegramSession.code}</strong>
+++            <Badge>{telegramSession.status}</Badge>
+++            <small>Expires {new Date(telegramSession.expiresAt).toLocaleTimeString()}</small>
+++            <a href={telegramSession.botDeepLink} rel="noreferrer" target="_blank">
+++              Open bot link <ExternalLink size={13} />
+++            </a>
+++          </div>
+++        ) : null}
+++      </section>
++ 
++       <form onSubmit={onHeartbeatSubmit}>
++         <label htmlFor="beneficiaryAddress">Beneficiary wallet</label>
++@@ -37,7 +57,7 @@ export function GuardianSettings({
++           <input aria-label="Grace seconds" name="graceSeconds" type="number" min="1" defaultValue="3600" />
++           <input aria-label="Timelock seconds" name="timelockSeconds" type="number" min="1" defaultValue="86400" />
++         </div>
++-        <button type="submit">{actionLoading === "heartbeat" ? "Saving" : "Save Heartbeat"}</button>
+++        <Button type="submit" variant="secondary">{actionLoading === "heartbeat" ? "Saving" : "Save Heartbeat"}</Button>
++       </form>
++ 
++       <form onSubmit={onRewardsSubmit}>
++@@ -49,7 +69,7 @@ export function GuardianSettings({
++           <input aria-label="Minimum reward value USD" name="minRewardValueUsd" type="number" min="0" step="0.01" defaultValue="1" />
++           <input aria-label="Maximum gas USD" name="maxClaimGasUsd" type="number" min="0" step="0.01" defaultValue="2" />
++         </div>
++-        <button type="submit">{actionLoading === "rewards" ? "Saving" : "Save Reward Policy"}</button>
+++        <Button type="submit" variant="secondary">{actionLoading === "rewards" ? "Saving" : "Save Reward Policy"}</Button>
++       </form>
++     </div>
++   );
++diff --git a/frontend/src/lib/agent-api.ts b/frontend/src/lib/agent-api.ts
++index a6828a6..80db772 100644
++--- a/frontend/src/lib/agent-api.ts
+++++ b/frontend/src/lib/agent-api.ts
++@@ -44,6 +44,31 @@ export interface Readiness {
++   };
++ }
++ 
+++export interface PublicChainMetadata {
+++  key: string;
+++  name: string;
+++  chainId: number;
+++  rpcUrl: string;
+++  blockExplorerUrl: string;
+++  nativeCurrency: {
+++    name: string;
+++    symbol: string;
+++    decimals: number;
+++  };
+++  contracts: {
+++    deadManSwitch?: string;
+++  };
+++}
+++
+++export interface TelegramConnectSession {
+++  walletAddress: string;
+++  code: string;
+++  expiresAt: string;
+++  status: "waiting" | "connected" | "expired" | "failed";
+++  connected: boolean;
+++  botDeepLink: string;
+++}
+++
++ export interface UserRecord {
++   userId: string;
++   walletAddress: string;
++@@ -190,6 +215,7 @@ function walletQuery(walletAddress?: string) {
++ 
++ export const agentApi = {
++   getReadiness: () => request<Readiness>("/api/setup/readiness"),
+++  getPublicChain: () => request<PublicChainMetadata>("/api/public-chain"),
++   registerWallet: (body: { walletAddress: string; message: string; signature: string }) =>
++     request<UserRecord>("/api/users", {
++       method: "POST",
++@@ -231,6 +257,18 @@ export const agentApi = {
++       method: "POST",
++       body: JSON.stringify(body)
++     }),
+++  startTelegramConnect: (body: { walletAddress: string }) =>
+++    request<TelegramConnectSession>("/api/telegram/connect/start", {
+++      method: "POST",
+++      body: JSON.stringify(body)
+++    }),
+++  getTelegramConnectStatus: (walletAddress: string) =>
+++    request<TelegramConnectSession>(`/api/telegram/connect/status${walletQuery(walletAddress)}`),
+++  confirmTelegramConnect: (body: { code: string; chatId: string; telegramUserId?: string }) =>
+++    request<TelegramConnectSession>("/api/telegram/connect/confirm", {
+++      method: "POST",
+++      body: JSON.stringify(body)
+++    }),
++   getHealth: () => request<Record<string, unknown>>("/api/health"),
++   getAuditEvents: (limit = 20) =>
++     request<{ events: AuditEvent[] }>(`/api/audit-events/recent?limit=${limit}`),
++diff --git a/frontend/src/lib/wallet.ts b/frontend/src/lib/wallet.ts
++index ddf4e16..e9f6803 100644
++--- a/frontend/src/lib/wallet.ts
+++++ b/frontend/src/lib/wallet.ts
++@@ -3,6 +3,8 @@ export interface InjectedEthereumProvider {
++     method: string;
++     params?: unknown[];
++   }): Promise<T>;
+++  on?(event: "accountsChanged" | "chainChanged", handler: (...args: unknown[]) => void): void;
+++  removeListener?(event: "accountsChanged" | "chainChanged", handler: (...args: unknown[]) => void): void;
++ }
++ 
++ export interface BrowserWalletState {
++@@ -42,6 +44,27 @@ export async function connectBrowserWallet(): Promise<BrowserWalletState> {
++   return { address, chainId };
++ }
++ 
+++export async function restoreBrowserWallet(): Promise<BrowserWalletState | null> {
+++  if (typeof window === "undefined" || !window.ethereum) {
+++    return null;
+++  }
+++
+++  const accounts = await window.ethereum.request<string[]>({
+++    method: "eth_accounts"
+++  });
+++  const address = accounts[0];
+++
+++  if (!address) {
+++    return null;
+++  }
+++
+++  const chainId = await window.ethereum.request<string>({
+++    method: "eth_chainId"
+++  });
+++
+++  return { address, chainId };
+++}
+++
++ export async function signWalletMessage(message: string): Promise<string> {
++   const provider = getProvider();
++   const accounts = await provider.request<string[]>({
++@@ -71,3 +94,20 @@ export async function disconnectBrowserWallet(): Promise<void> {
++     // Some wallets do not expose programmatic disconnect; the UI still clears local state.
++   }
++ }
+++
+++export function subscribeBrowserWalletChanges(onChange: () => void): () => void {
+++  if (typeof window === "undefined" || !window.ethereum?.on) {
+++    return () => {};
+++  }
+++
+++  const handleAccountsChanged = () => onChange();
+++  const handleChainChanged = () => onChange();
+++
+++  window.ethereum.on("accountsChanged", handleAccountsChanged);
+++  window.ethereum.on("chainChanged", handleChainChanged);
+++
+++  return () => {
+++    window.ethereum?.removeListener?.("accountsChanged", handleAccountsChanged);
+++    window.ethereum?.removeListener?.("chainChanged", handleChainChanged);
+++  };
+++}
++diff --git a/package.json b/package.json
++index 3a57302..2533f0c 100644
++--- a/package.json
+++++ b/package.json
++@@ -15,6 +15,7 @@
++     "test:agent": "pnpm --dir agent test",
++     "test:contracts": "pnpm --dir contracts test",
++     "lint": "pnpm -r lint",
+++    "smoke:runtime": "node scripts/runtime-smoke.mjs",
++     "format:contracts": "pnpm --dir contracts format"
++   }
++ }
++diff --git a/_bmad-output/implementation-artifacts/review-acceptance-auditor-full-epic-7.md b/_bmad-output/implementation-artifacts/review-acceptance-auditor-full-epic-7.md
++new file mode 100644
++index 0000000..1e74da9
++--- /dev/null
+++++ b/_bmad-output/implementation-artifacts/review-acceptance-auditor-full-epic-7.md
++@@ -0,0 +1,17 @@
+++# Acceptance Auditor Review Prompt - Full Epic 7
+++
+++Use the `bmad-review-adversarial-general` skill with acceptance-audit stance.
+++
+++Inputs:
+++
+++- Diff: `review-diff-full-epic-7.patch`
+++- Spec: `spec-full-epic-7.md`
+++- Context docs from spec frontmatter:
+++  - `epic-7-context.md`
+++  - `../planning-artifacts/epics.md`
+++  - `../planning-artifacts/ux-design-specification.md`
+++  - `../../.agents/skills/shadcn-ui-design-system/SKILL.md`
+++
+++Check the patch against every acceptance criterion and implementation rule in the spec/context. Pay special attention to dashboard IA, mobile bottom navigation plus More sheet, Telegram Connect replacing manual chat-id UX, public chain metadata from `config/public-chains.json`, demo/testnet labeling, Somnia adapter gating, and verification claims.
+++
+++Return findings ordered by severity with exact acceptance criterion or rule violated.
++diff --git a/_bmad-output/implementation-artifacts/review-blind-hunter-full-epic-7.md b/_bmad-output/implementation-artifacts/review-blind-hunter-full-epic-7.md
++new file mode 100644
++index 0000000..557a0e4
++--- /dev/null
+++++ b/_bmad-output/implementation-artifacts/review-blind-hunter-full-epic-7.md
++@@ -0,0 +1,11 @@
+++# Blind Hunter Review Prompt - Full Epic 7
+++
+++Use the `bmad-review-adversarial-general` skill.
+++
+++You get only this diff artifact and no product/spec context:
+++
+++- `review-diff-full-epic-7.patch`
+++
+++Review only what the diff shows. Prioritize concrete bugs, regressions, broken assumptions, security leaks, build/runtime risks, and missing tests that are visible from the patch itself. Do not infer requirements outside the diff.
+++
+++Return findings ordered by severity. Include file path and changed code area for each finding.
+diff --git a/_bmad-output/implementation-artifacts/review-edge-case-hunter-full-epic-7.md b/_bmad-output/implementation-artifacts/review-edge-case-hunter-full-epic-7.md
+new file mode 100644
+index 0000000..fd54ff5
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/review-edge-case-hunter-full-epic-7.md
+@@ -0,0 +1,12 @@
++# Edge Case Hunter Review Prompt - Full Epic 7
++
++Use the `bmad-review-edge-case-hunter` skill.
++
++Inputs:
++
++- Diff: `review-diff-full-epic-7.patch`
++- Project read access: repository root
++
++Walk the changed runtime/config/API/dashboard paths for unhandled branching paths and boundary conditions. Focus on public chain config fallback behavior, Telegram Connect session behavior, account restore/disconnect states, dashboard section navigation, demo/testnet truthfulness, and smoke script failure modes.
++
++Return only real unhandled edge cases. Include file path, trigger condition, expected behavior, and current observed/likely behavior.
+diff --git a/agent/src/config/public-chain.ts b/agent/src/config/public-chain.ts
+new file mode 100644
+index 0000000..a009c8f
+--- /dev/null
++++ b/agent/src/config/public-chain.ts
+@@ -0,0 +1,87 @@
++import { readFileSync } from "node:fs";
++import { fileURLToPath } from "node:url";
++
++import { getAddress } from "ethers";
++import { z } from "zod";
++
++const publicChainConfigPath = fileURLToPath(
++  new URL("../../../config/public-chains.json", import.meta.url)
++);
++
++const optionalAddressSchema = z.preprocess(
++  (value) => (value === "" ? undefined : value),
++  z
++    .string()
++    .regex(/^0x[a-fA-F0-9]{40}$/, "Must be a valid EVM address")
++    .transform((value) => getAddress(value))
++    .optional()
++);
++
++const publicChainSchema = z.object({
++  name: z.string().trim().min(1),
++  chainId: z.number().int().positive(),
++  rpcUrl: z.string().url(),
++  blockExplorerUrl: z.string().url(),
++  nativeCurrency: z.object({
++    name: z.string().trim().min(1),
++    symbol: z.string().trim().min(1),
++    decimals: z.number().int().nonnegative()
++  }),
++  contracts: z.object({
++    deadManSwitch: optionalAddressSchema
++  }).default({})
++});
++
++const publicChainConfigSchema = z.object({
++  defaultChain: z.string().trim().min(1),
++  chains: z.record(z.string().trim().min(1), publicChainSchema)
++});
++
++export type PublicChain = z.infer<typeof publicChainSchema>;
++
++export interface PublicChainMetadata extends PublicChain {
++  key: string;
++}
++
++export class PublicChainConfigError extends Error {
++  public constructor(message: string) {
++    super(message);
++    this.name = "PublicChainConfigError";
++  }
++}
++
++export function loadPublicChainMetadata(chainKey?: string): PublicChainMetadata {
++  let raw: unknown;
++
++  try {
++    raw = JSON.parse(readFileSync(publicChainConfigPath, "utf8"));
++  } catch (error) {
++    throw new PublicChainConfigError(
++      `Public chain config could not be loaded from config/public-chains.json: ${
++        error instanceof Error ? error.message : "unknown error"
++      }`
++    );
++  }
++
++  const parsed = publicChainConfigSchema.safeParse(raw);
++
++  if (!parsed.success) {
++    throw new PublicChainConfigError(
++      `Public chain config is invalid: ${parsed.error.issues
++        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
++        .join("; ")}`
++    );
++  }
++
++  const key = chainKey ?? parsed.data.defaultChain;
++  const chain = parsed.data.chains[key];
++
++  if (!chain) {
++    throw new PublicChainConfigError(`Public chain config has no chain named ${key}`);
++  }
++
++  return {
++    key,
++    ...chain
++  };
++}
+diff --git a/frontend/src/components/ui/badge.tsx b/frontend/src/components/ui/badge.tsx
+new file mode 100644
+index 0000000..5a5ade0
+--- /dev/null
++++ b/frontend/src/components/ui/badge.tsx
+@@ -0,0 +1,7 @@
++import type { HTMLAttributes } from "react";
++
++import { cn } from "@/lib/utils";
++
++export function Badge({ className, ...props }: HTMLAttributes<HTMLSpanElement>) {
++  return <span className={cn("ui-badge", className)} {...props} />;
++}
+diff --git a/frontend/src/components/ui/button.tsx b/frontend/src/components/ui/button.tsx
+new file mode 100644
+index 0000000..f861339
+--- /dev/null
++++ b/frontend/src/components/ui/button.tsx
+@@ -0,0 +1,18 @@
++import type { ButtonHTMLAttributes } from "react";
++
++import { cn } from "@/lib/utils";
++
++type ButtonVariant = "primary" | "secondary" | "ghost";
++
++export function Button({
++  className,
++  variant = "secondary",
++  ...props
++}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
++  return (
++    <button
++      className={cn("ui-button", `ui-button-${variant}`, className)}
++      {...props}
++    />
++  );
++}
+diff --git a/scripts/runtime-smoke.mjs b/scripts/runtime-smoke.mjs
+new file mode 100644
+index 0000000..3cee817
+--- /dev/null
++++ b/scripts/runtime-smoke.mjs
+@@ -0,0 +1,100 @@
++const agentBaseUrl = process.env.AGENT_API_URL ?? "http://127.0.0.1:3001";
++const frontendUrl = process.env.FRONTEND_URL ?? "http://127.0.0.1:3000";
++
++async function readJson(path, init) {
++  const response = await fetch(`${agentBaseUrl}${path}`, {
++    ...init,
++    headers: {
++      "content-type": "application/json",
++      ...init?.headers
++    }
++  });
++  const payload = await response.json().catch(() => undefined);
++
++  if (!response.ok) {
++    throw new Error(`${path} returned ${response.status}: ${JSON.stringify(payload)}`);
++  }
++
++  return payload?.data;
++}
++
++function assertNoSecretLeak(value) {
++  const serialized = JSON.stringify(value).toLowerCase();
++  const leaked = ["private_key", "agent_private_key", "groq_api_key", "deepseek_api_key", "telegram_bot_token"]
++    .some((needle) => serialized.includes(needle));
++
++  if (leaked) {
++    throw new Error("Smoke check detected a secret-looking key in API output");
++  }
++}
++
++const checks = [];
++
++checks.push(["agent health", async () => {
++  const health = await readJson("/api/health");
++  assertNoSecretLeak(health);
++  if (health.ok === false) {
++    throw new Error("Agent health returned ok:false");
++  }
++  return "ok";
++}]);
++
++checks.push(["public chain", async () => {
++  const chain = await readJson("/api/public-chain");
++  if (!chain.chainId || !chain.rpcUrl || !chain.nativeCurrency?.symbol) {
++    throw new Error("Public chain metadata is incomplete");
++  }
++  return `${chain.name} (${chain.chainId})`;
++}]);
++
++checks.push(["demo scenario", async () => {
++  const result = await readJson("/api/demo/scenarios", {
++    method: "POST",
++    body: JSON.stringify({ scenario: "setup_ready" })
++  });
++  if (result.mode !== "simulation") {
++    throw new Error("Demo scenario did not report simulation mode");
++  }
++  return result.walletAddress;
++}]);
++
++checks.push(["audit redaction", async () => {
++  const result = await readJson("/api/audit-events/recent?limit=10");
++  assertNoSecretLeak(result);
++  return `${result.events.length} events`;
++}]);
++
++checks.push(["frontend http", async () => {
++  const response = await fetch(frontendUrl);
++  const html = await response.text();
++  if (!response.ok) {
++    throw new Error(`Frontend returned ${response.status}`);
++  }
++  for (const label of ["Overview", "Setup", "Risk", "Receipts"]) {
++    if (!html.includes(label)) {
++      throw new Error(`Frontend shell is missing ${label} navigation`);
++    }
++  }
++  return response.status;
++}]);
++
++checks.push(["telegram connect", async () => {
++  const result = await readJson("/api/telegram/connect/start", {
++    method: "POST",
++    body: JSON.stringify({ walletAddress: "0x1111111111111111111111111111111111111111" })
++  });
++  if (!result.code || result.status !== "waiting" || !result.botDeepLink.includes("t.me/")) {
++    throw new Error("Telegram Connect start response is incomplete");
++  }
++  return result.status;
++}]);
++
++for (const [name, run] of checks) {
++  try {
++    const detail = await run();
++    console.log(`ok - ${name}: ${detail}`);
++  } catch (error) {
++    console.error(`not ok - ${name}: ${error instanceof Error ? error.message : String(error)}`);
++    process.exitCode = 1;
++  }
++}

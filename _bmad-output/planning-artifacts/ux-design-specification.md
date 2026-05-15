@@ -17,9 +17,15 @@ stepsCompleted:
 lastStep: 14
 workflowStatus: complete
 completedAt: '2026-05-14'
+lastUpdated: '2026-05-15'
 inputDocuments:
   - _bmad-output/planning-artifacts/prd.md
   - _bmad-output/planning-artifacts/prd-validation-report.md
+revisionDocuments:
+  - _bmad-output/planning-artifacts/sprint-change-proposal-2026-05-14.md
+  - _bmad-output/implementation-artifacts/epic-7-context.md
+  - _bmad-output/implementation-artifacts/spec-full-epic-7.md
+  - _bmad-output/implementation-artifacts/7-6-redesign-dashboard-ia-telegram-connect-and-public-chain-config.md
 ---
 
 # UX Design Specification Somnia RiskGuard Agent
@@ -32,6 +38,18 @@ inputDocuments:
 <!-- UX design content will be appended sequentially through collaborative workflow steps -->
 
 ## Executive Summary
+
+### 2026-05-15 Revision Alignment
+
+This revision aligns the UX specification with Epic 7 and Story 7.6. The dashboard must now be treated as a focused multi-section operational app, not a single page that accumulates every workflow. Desktop uses a persistent left sidebar. Mobile uses a bottom navigation bar with a More sheet or menu for lower-frequency sections. Overview summarizes guardian state and next safe action; detailed setup, risk, heartbeat, reward, receipt, demo, and health workflows live in their own sections.
+
+Telegram setup must be a Connect Telegram flow, not a manual chat-id form. The primary user path should use a bot deep link, one-time code, QR/link fallback, or equivalent callback flow, with waiting, connected, expired, failed, disconnect, and reconnect states. Direct chat-id entry may exist only as an internal or legacy fallback.
+
+Account and session behavior must feel like a normal web app. The UI must explicitly handle restoring, connected, disconnected, expired, error, and disconnecting states. Disconnect or sign out must clear wallet-specific dashboard state so one wallet's risk, setup, receipt, and demo state does not bleed into another wallet session.
+
+Public chain metadata is part of UX because users and operators need consistent mode, network, explorer, currency, and contract labels. Chain id, public RPC URL, explorer URL, native currency, and public contract addresses should come from `config/public-chains.json`; secrets and credentials remain environment-driven.
+
+The component model should default to shadcn/ui-style primitives or local wrappers for navigation, forms, account menus, dialogs, sheets, tabs, tables, badges, alerts, tooltips, toasts, skeletons, and loading/error states.
 
 ### Project Vision
 
@@ -423,9 +441,41 @@ RiskGuard should rely on Tailwind and shadcn/ui primitives for app shell/sidebar
 
 Build custom components from design-system primitives and shared tokens. Prioritize status clarity, keyboard accessibility, and dense dashboard composition. Every custom component should support dark and light mode, semantic state labels, and copy-safe handling for wallet addresses and transaction hashes.
 
+### shadcn/ui Component Plan
+
+#### Components And Variants
+
+Use project-local shadcn/ui-style primitives as the default implementation vocabulary. The dashboard shell should use a `Sidebar` or local sidebar wrapper on desktop, a bottom navigation composition on mobile, `Sheet` for More navigation, `DropdownMenu` for the account menu, `Button` variants for primary/secondary/destructive/ghost actions, `Badge` variants for mode and status labels, `Alert` for blocked or failed-closed states, `Tabs` for local route subviews, `Table` for receipt and health detail views, `Dialog` or `Sheet` for confirmation and connection flows, `Tooltip` for icon-only controls, `Toast` for short-lived action feedback, `Skeleton` for loading summaries, and `Form`, `Input`, `Select`, `Switch`, and numeric inputs for setup configuration.
+
+Product-specific compositions should wrap those primitives: App Shell Navigation, Account And Session Control, Telegram Connect Panel, Guardian Status Panel, Risk Score Circle, Wallet Role Chip, Safety Receipt, Safety Timeline, Heartbeat Timer, Dead Man's Switch Status, Reward Policy Summary, Demo Scenario Control, and Subsystem Health Row.
+
+#### Interaction States
+
+Every route and major component must cover loading, empty, ready, pending, disabled, error, failed-closed, and API-unavailable states where relevant. Account controls must cover signed out, restoring, connected, disconnected, expired, disconnecting, failed, and wallet-switch states. Telegram Connect must cover not connected, code generated, waiting for confirmation, expired code, connected, failed, disconnecting, disconnected, and reconnecting. Execution-capable actions must show adapter-disabled, simulation-backed, demo-fixture-backed, and Somnia Testnet-backed states at the point of action.
+
+#### Responsive Behavior
+
+Desktop uses persistent left navigation with Overview, Setup, Risk, Heartbeat, Rewards, Receipts, Demo, and Health. Mobile uses bottom navigation for the highest-frequency sections and a More `Sheet` or menu for lower-frequency sections. Overview remains a summary on all breakpoints. Dense tables become compact lists on mobile, and operator health details should move behind tabs or disclosure controls.
+
+#### Accessibility Requirements
+
+Use semantic landmarks for the app shell, route content, and navigation. Icon-only controls need accessible labels and tooltips. Focus rings must be visible in dark and light mode. Status cannot rely on color alone; every state needs text and, where useful, an icon. Dialogs and sheets must trap focus correctly and return focus to the triggering control. Copy buttons for addresses and transaction hashes must announce success without changing layout.
+
+#### Implementation Location Hints
+
+Reusable primitives belong in `frontend/src/components/ui`. Product compositions belong under `frontend/src/features/dashboard` and `frontend/src/features/settings`. Route composition belongs under `frontend/src/app`. Shared public chain metadata should be read from `config/public-chains.json` through typed loaders rather than duplicated constants. Frontend API calls should keep using typed response shapes and should not expose secrets or private-key material.
+
+#### Navigation Placement
+
+Desktop sidebar placement: Overview, Setup, Risk, Heartbeat, Rewards, Receipts, Demo, Health. Mobile bottom nav placement should prioritize Overview, Setup, Risk, Receipts, and More; More exposes Heartbeat, Rewards, Demo, and Health when space is constrained. Beneficiary mode may use a focused simplified route that inherits account and mode labeling but avoids operator-heavy navigation.
+
 ### Implementation Roadmap
 
-Phase 1 should build App Shell Navigation, Account And Session Control, Telegram Connect Panel, Guardian Status Panel, Risk Score Circle, Wallet Role Chip, Safety Receipt, and Safety Timeline. Phase 2 should add Heartbeat Timer, Dead Man's Switch Status, Reward Policy Summary, and Subsystem Health Row. Phase 3 should add Demo Scenario Control and richer operator diagnostics.
+Phase 1 should build App Shell Navigation, Account And Session Control, Telegram Connect Panel, Guardian Status Panel, Risk Score Circle, Wallet Role Chip, Safety Receipt, and Safety Timeline. Phase 1 also includes the public chain config display contract: all network, explorer, native currency, and public contract labels are read from `config/public-chains.json`.
+
+Phase 2 should add Heartbeat Timer, Dead Man's Switch Status, Reward Policy Summary, and Subsystem Health Row. Phase 2 must make runtime truth visible: API unavailable, adapter disabled, simulation-backed, demo-fixture-backed, and Somnia Testnet-backed states are explicit.
+
+Phase 3 should add Demo Scenario Control and richer operator diagnostics, including smoke/manual verification coverage for desktop navigation, mobile navigation, disconnect/sign out, Telegram Connect, public chain config loading, and mode labeling.
 
 ## UX Consistency Patterns
 

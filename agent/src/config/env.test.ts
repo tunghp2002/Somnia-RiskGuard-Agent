@@ -1,3 +1,5 @@
+import { chdir, cwd } from "node:process";
+
 import { describe, expect, it } from "vitest";
 import { Wallet } from "ethers";
 
@@ -71,23 +73,45 @@ describe("agent runtime config", () => {
       expect(error).toBeInstanceOf(ConfigValidationError);
       const message = formatConfigError(error as ConfigValidationError);
 
-      expect(message).toContain("SOMNIA_RPC_URL");
       expect(message).toContain("AGENT_PRIVATE_KEY");
+      expect(message).not.toContain("SOMNIA_RPC_URL");
       expect(message).not.toContain("undefined");
     }
   });
 
+  it("loads non-secret public chain metadata from config/public-chains.json", () => {
+    const config = validateConfig({
+      ...validEnv,
+      SOMNIA_RPC_URL: undefined,
+      SOMNIA_CHAIN_ID: undefined,
+      DEAD_MAN_SWITCH_CONTRACT_ADDRESS: undefined
+    });
+
+    expect(config.publicChain.key).toBe("somnia-testnet");
+    expect(config.somnia.rpcUrl).toBe("https://dream-rpc.somnia.network");
+    expect(config.somnia.chainId).toBe(50312);
+    expect(config.publicChain.nativeCurrency.symbol).toBe("STT");
+  });
+
+  it("loads public chain metadata independently of process cwd", () => {
+    const previousCwd = cwd();
+    chdir(previousCwd.endsWith("/agent") ? ".." : previousCwd);
+
+    try {
+      const config = validateConfig(validEnv);
+      expect(config.publicChain.key).toBe("somnia-testnet");
+    } finally {
+      chdir(previousCwd);
+    }
+  });
+
   it.each([
-    ["SOMNIA_RPC_URL", "not-a-url"],
-    ["SOMNIA_CHAIN_ID", "0"],
-    ["SOMNIA_CHAIN_ID", `${Number.MAX_SAFE_INTEGER + 2}`],
     ["AGENT_WALLET_ADDRESS", "0x123"],
     ["AGENT_PRIVATE_KEY", "0x123"],
     ["AGENT_PRIVATE_KEY", `0x${"0".repeat(64)}`],
     ["RISK_SCORE_ALERT_THRESHOLD", "101"],
     ["HEARTBEAT_INTERVAL_SECONDS", "0"],
-    ["AUTO_CLAIM_ENABLED", "sometimes"],
-    ["DEAD_MAN_SWITCH_CONTRACT_ADDRESS", "0xabc"]
+    ["AUTO_CLAIM_ENABLED", "sometimes"]
   ])("rejects malformed %s", (key, value) => {
     expect(() => validateConfig({ ...validEnv, [key]: value })).toThrow(
       ConfigValidationError
@@ -156,7 +180,7 @@ describe("agent runtime config", () => {
   it("can validate an explicit env source without reading process.env", () => {
     const config = loadConfig({ env: validEnv, loadDotenv: false });
 
-    expect(config.somnia.rpcUrl).toBe(validEnv.SOMNIA_RPC_URL);
+    expect(config.somnia.rpcUrl).toBe("https://dream-rpc.somnia.network");
   });
 
   it("uses an explicit dotenv path when provided", () => {

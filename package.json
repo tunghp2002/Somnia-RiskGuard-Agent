@@ -15,6 +15,7 @@
     "test:agent": "pnpm --dir agent test",
     "test:contracts": "pnpm --dir contracts test",
     "lint": "pnpm -r lint",
+    "smoke:runtime": "node scripts/runtime-smoke.mjs",
     "format:contracts": "pnpm --dir contracts format"
   }
 }

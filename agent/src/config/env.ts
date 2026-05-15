@@ -4,6 +4,8 @@ import { config as loadDotenvFile } from "dotenv";
 import { getAddress, Wallet } from "ethers";
 import { z } from "zod";
 
+import { loadPublicChainMetadata, PublicChainConfigError } from "./public-chain.js";
+
 const ethereumAddressSchema = z
   .string()
   .regex(/^0x[a-fA-F0-9]{40}$/, "Must be a valid EVM address")
@@ -110,6 +112,14 @@ const rawEnvSchema = z
   LOG_LEVEL: z
     .enum(["trace", "debug", "info", "warn", "error", "fatal"])
     .default("info"),
+  PUBLIC_CHAIN_KEY: requiredNonEmptyString("PUBLIC_CHAIN_KEY"),
+  PUBLIC_CHAIN_NAME: requiredNonEmptyString("PUBLIC_CHAIN_NAME"),
+  PUBLIC_CHAIN_EXPLORER_URL: z.string().url("Must be a valid URL"),
+  PUBLIC_CHAIN_NATIVE_CURRENCY_NAME: requiredNonEmptyString("PUBLIC_CHAIN_NATIVE_CURRENCY_NAME"),
+  PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL: requiredNonEmptyString("PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL"),
+  PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS: integerFromString("PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS").pipe(
+    z.number().int().nonnegative()
+  ),
   SOMNIA_RPC_URL: z.string().url("Must be a valid URL"),
   SOMNIA_CHAIN_ID: integerFromString("SOMNIA_CHAIN_ID").pipe(
     z.number().int().positive()
@@ -143,6 +153,22 @@ const rawEnvSchema = z
   TELEGRAM_WEBHOOK_SECRET: optionalNonEmptyString
 })
   .superRefine((env, context) => {
+    if (!env.SOMNIA_RPC_URL) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Must be configured through config/public-chains.json or SOMNIA_RPC_URL legacy override",
+        path: ["SOMNIA_RPC_URL"]
+      });
+    }
+
+    if (!env.SOMNIA_CHAIN_ID || Number(env.SOMNIA_CHAIN_ID) <= 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Must be configured through config/public-chains.json or SOMNIA_CHAIN_ID legacy override",
+        path: ["SOMNIA_CHAIN_ID"]
+      });
+    }
+
     if (env.AGENT_PRIVATE_KEY && env.AGENT_WALLET_ADDRESS) {
       let derivedAddress: string;
 
@@ -186,11 +212,26 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
   logLevel: env.LOG_LEVEL,
   somnia: {
     rpcUrl: env.SOMNIA_RPC_URL,
-    chainId: env.SOMNIA_CHAIN_ID,
+    chainId: Number(env.SOMNIA_CHAIN_ID),
     agentWalletAddress: env.AGENT_WALLET_ADDRESS,
     agentPrivateKey: env.AGENT_PRIVATE_KEY,
     monitoredWalletAddress: env.MONITORED_WALLET_ADDRESS,
     deadManSwitchContractAddress: env.DEAD_MAN_SWITCH_CONTRACT_ADDRESS
+  },
+  publicChain: {
+    key: env.PUBLIC_CHAIN_KEY,
+    name: env.PUBLIC_CHAIN_NAME,
+    rpcUrl: env.SOMNIA_RPC_URL,
+    chainId: Number(env.SOMNIA_CHAIN_ID),
+    blockExplorerUrl: env.PUBLIC_CHAIN_EXPLORER_URL,
+    nativeCurrency: {
+      name: env.PUBLIC_CHAIN_NATIVE_CURRENCY_NAME,
+      symbol: env.PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL,
+      decimals: Number(env.PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS)
+    },
+    contracts: {
+      deadManSwitch: env.DEAD_MAN_SWITCH_CONTRACT_ADDRESS
+    }
   },
   llm: {
     groq: {
@@ -234,6 +275,13 @@ export class ConfigValidationError extends Error {
   }
 }
 
+export class PublicConfigValidationError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = "PublicConfigValidationError";
+  }
+}
+
 export interface LoadConfigOptions {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
   loadDotenv?: boolean;
@@ -243,7 +291,32 @@ export interface LoadConfigOptions {
 export function validateConfig(
   env: NodeJS.ProcessEnv | Record<string, string | undefined>
 ): AgentConfig {
-  const result = agentEnvSchema.safeParse(env);
+  let publicChain;
+
+  try {
+    publicChain = loadPublicChainMetadata(env.PUBLIC_CHAIN_KEY);
+  } catch (error) {
+    if (error instanceof PublicChainConfigError) {
+      throw new PublicConfigValidationError(error.message);
+    }
+
+    throw error;
+  }
+
+  const envWithPublicDefaults = {
+    ...env,
+    SOMNIA_RPC_URL: publicChain.rpcUrl,
+    SOMNIA_CHAIN_ID: String(publicChain.chainId),
+    DEAD_MAN_SWITCH_CONTRACT_ADDRESS: publicChain.contracts.deadManSwitch,
+    PUBLIC_CHAIN_KEY: publicChain.key,
+    PUBLIC_CHAIN_NAME: publicChain.name,
+    PUBLIC_CHAIN_EXPLORER_URL: publicChain.blockExplorerUrl,
+    PUBLIC_CHAIN_NATIVE_CURRENCY_NAME: publicChain.nativeCurrency.name,
+    PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL: publicChain.nativeCurrency.symbol,
+    PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS: String(publicChain.nativeCurrency.decimals)
+  };
+
+  const result = agentEnvSchema.safeParse(envWithPublicDefaults);
 
   if (!result.success) {
     throw new ConfigValidationError(result.error.issues);

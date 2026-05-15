@@ -44,6 +44,31 @@ export interface Readiness {
   };
 }
 
+export interface PublicChainMetadata {
+  key: string;
+  name: string;
+  chainId: number;
+  rpcUrl: string;
+  blockExplorerUrl: string;
+  nativeCurrency: {
+    name: string;
+    symbol: string;
+    decimals: number;
+  };
+  contracts: {
+    deadManSwitch?: string;
+  };
+}
+
+export interface TelegramConnectSession {
+  walletAddress: string;
+  code: string;
+  expiresAt: string;
+  status: "waiting" | "connected" | "expired" | "failed";
+  connected: boolean;
+  botDeepLink: string;
+}
+
 export interface UserRecord {
   userId: string;
   walletAddress: string;
@@ -190,6 +215,7 @@ function walletQuery(walletAddress?: string) {
 
 export const agentApi = {
   getReadiness: () => request<Readiness>("/api/setup/readiness"),
+  getPublicChain: () => request<PublicChainMetadata>("/api/public-chain"),
   registerWallet: (body: { walletAddress: string; message: string; signature: string }) =>
     request<UserRecord>("/api/users", {
       method: "POST",
@@ -228,6 +254,18 @@ export const agentApi = {
     request<RewardStatus>(`/api/rewards/status${walletQuery(walletAddress)}`),
   linkTelegram: (body: { walletAddress: string; chatId: string }) =>
     request<unknown>("/api/telegram/bindings", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  startTelegramConnect: (body: { walletAddress: string }) =>
+    request<TelegramConnectSession>("/api/telegram/connect/start", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  getTelegramConnectStatus: (walletAddress: string) =>
+    request<TelegramConnectSession>(`/api/telegram/connect/status${walletQuery(walletAddress)}`),
+  confirmTelegramConnect: (body: { code: string; chatId: string; telegramUserId?: string }) =>
+    request<TelegramConnectSession>("/api/telegram/connect/confirm", {
       method: "POST",
       body: JSON.stringify(body)
     }),
