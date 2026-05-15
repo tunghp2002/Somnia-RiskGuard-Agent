@@ -98,4 +98,5 @@ development_status:
   7-3-make-demo-testnet-capability-honest: backlog
   7-4-wire-or-explicitly-gate-somnia-agent-kit-execution: backlog
   7-5-finish-dashboard-operational-ux: review
+  7-6-redesign-dashboard-ia-telegram-connect-and-public-chain-config: backlog
   epic-7-retrospective: optional

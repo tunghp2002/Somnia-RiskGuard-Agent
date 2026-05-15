@@ -67,8 +67,9 @@ The architecture must respect the project boundaries already defined in the repo
 - Telegram Bot API: alerts and quick action buttons
 - Somnia Testnet: primary chain environment
 - Local/demo simulation mode: deterministic Agentathon demo flows
+- Public chain config: committed `config/public-chains.json` for chain id, public RPC URL, explorer URL, native currency metadata, and public contract addresses
 
-The backend agent uses a dedicated environment-loaded agent wallet for safe actions. The frontend uses browser wallet connection only and must not request or store private keys. All chain IDs, RPC URLs, contract addresses, wallet addresses, provider keys, thresholds, and tokens must be environment-driven or user-configured through safe setup flows.
+The backend agent uses a dedicated environment-loaded agent wallet for safe actions. The frontend uses browser wallet connection only and must not request or store private keys. Secrets such as private keys, Telegram bot tokens, LLM API keys, and provider credentials remain environment-driven. Non-secret chain metadata such as chain id, public RPC URL, explorer URL, native currency metadata, and public contract addresses should be read from committed public config, with user-specific wallet/settings data stored through safe setup flows.
 
 ### Cross-Cutting Concerns Identified
 
@@ -184,7 +185,8 @@ pnpm is the single package manager for root workspace orchestration and JavaScri
 
 **Styling Solution:**
 - Tailwind CSS from Next.js starter.
-- shadcn/ui copied components for dashboard controls.
+- shadcn/ui copied components for app shell navigation, account menus, setup forms, dialogs/sheets, status panels, tables, toasts, and dashboard controls.
+- Desktop uses persistent left sidebar navigation; mobile uses bottom navigation with a More sheet/menu for lower-frequency sections.
 
 **Build Tooling:**
 - Next.js build pipeline for dashboard.
@@ -206,7 +208,7 @@ pnpm is the single package manager for root workspace orchestration and JavaScri
 - `viem` as an alternative typed Ethereum client where it improves read operations, ABI typing, or Anvil/local simulation ergonomics.
 
 **Code Organization:**
-- `/frontend`: setup and overview dashboard.
+- `/frontend`: multi-section setup and overview dashboard with routes/sections for Overview, Setup, Risk, Heartbeat, Rewards, Safety Receipts, Demo, and Health.
 - `/agent`: monitoring, risk analysis, Telegram, scheduling, policy gates, and execution services.
 - `/contracts`: Dead Man's Switch contract, Solidity tests, Foundry scripts, and minimal pnpm package wrapper.
 

@@ -1,0 +1,12 @@
+[agent]
+persistent_facts = [
+  "file:{project-root}/.agents/skills/shadcn-ui-design-system/SKILL.md",
+  "Frontend architecture decisions for this repo should preserve the configured shadcn/ui, Tailwind, Radix, and lucide stack unless there is a documented tradeoff.",
+  "Non-secret chain metadata belongs in `{project-root}/config/public-chains.json`; environment variables remain for secrets only, including private keys, bot tokens, LLM keys, and provider credentials.",
+  "Dashboard architecture should use route/section boundaries for Overview, Setup, Risk, Heartbeat, Rewards, Safety Receipts, Demo, and Health instead of a single all-in-one page.",
+]
+
+principles = [
+  "Keep UI architecture aligned to shadcn/ui primitives, local component ownership, and accessible interaction patterns.",
+  "Design auth, wallet connect, Telegram connect, and sign out/disconnect as explicit state machines with loading, success, expired, error, and disconnected states.",
+]

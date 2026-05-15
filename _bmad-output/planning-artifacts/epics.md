@@ -149,7 +149,7 @@ NFR17: Reward claim automation must skip execution when thresholds or policy che
 
 NFR18: Somnia RPC, LLM providers, Telegram, and smart contract integrations must expose health or failure state to the operator.
 
-NFR19: Chain ID, RPC URL, contract addresses, wallet addresses, and provider keys must be environment-driven.
+NFR19: Public chain metadata such as chain ID, public RPC URL, explorer URL, native currency metadata, and public contract addresses must be loaded from `config/public-chains.json` or an equivalent committed public config file; private keys, bot tokens, LLM keys, and provider credentials remain environment-driven.
 
 NFR20: Demo simulation mode must clearly distinguish simulated behavior from Somnia Testnet-backed behavior.
 
@@ -182,7 +182,8 @@ NFR28: The codebase must use typed configuration and validation to prevent inval
 - Use zod for runtime configuration, request validation, Telegram callback payloads, JSON persistence shape validation, and policy decision schemas.
 - Use pino for structured, secret-safe logs.
 - Use node-cron for scheduled monitoring, heartbeat checks, and reward-claim polling.
-- Use dotenv for local environment loading.
+- Use dotenv for local secret loading.
+- Use `config/public-chains.json` for non-secret Somnia chain metadata shared by agent and frontend.
 - Use lightweight JSON file persistence plus in-memory cache for MVP state.
 - Keep JSON data under `/agent/src/persistence/data` and access it only through repository helpers.
 - Use append-friendly audit event records for risk analysis, alerts, skipped actions, policy decisions, and transaction outcomes.
@@ -382,7 +383,7 @@ The team can trust that the marked-complete MVP works through the normal `pnpm d
 
 **User Outcome:** The dashboard and agent behave as a coherent product instead of separate implemented slices. Operators can run a deterministic demo, inspect live state, and know exactly which flows are simulation-backed versus Somnia Testnet-backed.
 
-**FRs covered:** FR8, FR13, FR14, FR23, FR31, FR35, FR36, FR38, FR39, FR41
+**FRs covered:** FR1, FR2, FR3, FR4, FR13, FR14, FR23, FR31, FR35, FR36, FR38, FR39, FR41
 
 **Epic size:** Medium
 
@@ -994,11 +995,11 @@ So that MVP autonomy stays inside safe boundaries.
 
 Users and judges can view setup state, portfolio/risk status, heartbeat state, recent actions, health checks, and deterministic demo scenarios.
 
-### Story 6.1: Build Dashboard Shell And Wallet Connection
+### Story 6.1: Build App Shell, Navigation, Auth, And Wallet Connection
 
 As a user,
-I want a dashboard shell with browser wallet connection,
-So that I can begin setup from a clear first screen.
+I want a dashboard shell with familiar sign in/out, browser wallet connection, and clear navigation,
+So that I can manage RiskGuard without everything being crammed into one screen.
 
 **Effort:** Medium
 
@@ -1008,7 +1009,12 @@ So that I can begin setup from a clear first screen.
 
 **Given** the frontend starts
 **When** the user opens the dashboard
-**Then** the page renders wallet connection, setup state, and demo/testnet mode visibility.
+**Then** the page renders an app shell with desktop left sidebar navigation, mobile bottom navigation, wallet/auth connection state, setup summary, and demo/testnet mode visibility.
+
+**Given** the user signs out or disconnects
+**When** the action completes
+**Then** local wallet/session state is cleared
+**And** the UI returns to a clear disconnected state without stale private or account data.
 
 **Given** a browser wallet is connected
 **When** the dashboard reads wallet state
@@ -1018,7 +1024,7 @@ So that I can begin setup from a clear first screen.
 ### Story 6.2: Add Configuration Forms For MVP Settings
 
 As a user,
-I want dashboard forms for risk, Telegram, heartbeat, beneficiary, and reward settings,
+I want focused setup screens for risk, Telegram, heartbeat, beneficiary, and reward settings,
 So that I can configure the agent without editing JSON manually.
 
 **Effort:** Large
@@ -1036,6 +1042,11 @@ So that I can configure the agent without editing JSON manually.
 **When** the dashboard refreshes
 **Then** current configuration readiness is displayed.
 
+**Given** the user configures Telegram
+**When** they choose Connect Telegram
+**Then** the dashboard starts a bot deep-link, one-time code, QR/link fallback, or equivalent callback flow
+**And** the user is not asked to manually type a Telegram chat id.
+
 ### Story 6.3: Display Portfolio, Risk, Heartbeat, And Recent Actions
 
 As a user,
@@ -1050,7 +1061,8 @@ So that I can understand portfolio risk and protection status at a glance.
 
 **Given** agent state is available
 **When** the dashboard loads
-**Then** it shows portfolio summary, Risk Score, latest explanation, heartbeat status, and recent actions.
+**Then** the Overview route shows a concise status summary
+**And** portfolio/risk, heartbeat, rewards, and recent actions are available in focused sections instead of a single overloaded page.
 
 **Given** data is loading or unavailable
 **When** the dashboard renders
@@ -1191,3 +1203,44 @@ So that I can operate the MVP without terminal inspection.
 **Given** the agent API is unavailable or partially failing
 **When** the dashboard loads
 **Then** the UI shows subsystem-specific unavailable states and keeps the page usable.
+
+### Story 7.6: Redesign Dashboard IA, Telegram Connect, And Public Chain Config
+
+As a user,
+I want RiskGuard organized as a focused multi-section app with smooth account controls, Telegram Connect, and public chain settings loaded from config,
+So that setup and operations feel like a polished web app instead of a single overloaded dashboard.
+
+**Effort:** Large
+
+**Requirements:** FR1, FR2, FR3, FR4, FR35, FR36, NFR19, NFR22, NFR24
+
+**Acceptance Criteria:**
+
+**Given** the user opens the frontend on desktop
+**When** the dashboard renders
+**Then** it uses a persistent left sidebar app shell with focused sections for Overview, Setup, Risk, Heartbeat, Rewards, Receipts, Demo, and Health
+**And** the Overview route summarizes status without containing every form and workflow.
+
+**Given** the user opens the frontend on mobile
+**When** the dashboard renders
+**Then** primary navigation appears as a bottom navigation bar
+**And** lower-frequency sections are available through a More sheet or menu.
+
+**Given** the user connects, disconnects, signs out, or returns with prior local state
+**When** the account state changes
+**Then** the UI shows clear restoring, connected, disconnected, expired, error, and disconnecting states
+**And** wallet-specific dashboard state is cleared on disconnect/sign out.
+
+**Given** the user configures Telegram
+**When** they choose Connect Telegram
+**Then** the dashboard starts a bot deep-link, one-time code, QR/link fallback, or equivalent callback flow
+**And** the user is not asked to manually type a Telegram chat id.
+
+**Given** chain metadata is needed by the frontend or agent
+**When** the app reads chain id, public RPC URL, explorer URL, native currency, or public contract addresses
+**Then** those values come from `config/public-chains.json`
+**And** environment variables are reserved for secrets and credentials.
+
+**Given** existing UI can be represented by shadcn/ui primitives
+**When** the redesign is implemented
+**Then** navigation, account menu, setup forms, dialogs/sheets, tabs, tables, badges, alerts, tooltips, toasts, and loading states use shadcn/ui-style components or local wrappers instead of one-off handcrafted UI.

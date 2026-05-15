@@ -1,0 +1,11 @@
+[workflow]
+persistent_facts = [
+  "file:{project-root}/.agents/skills/shadcn-ui-design-system/SKILL.md",
+  "For frontend quick-dev tasks in this repo, apply the shadcn/ui Design System implementation rules before editing UI.",
+  "Do not add more controls to the single dashboard screen; create or use focused sections behind desktop sidebar and mobile bottom navigation.",
+  "Use public chain metadata from `{project-root}/config/public-chains.json` instead of frontend or agent env vars when the value is not secret.",
+]
+
+activation_steps_append = [
+  "If the task touches frontend UI, inspect `frontend/components.json`, `frontend/src/components/ui`, `frontend/src/lib/utils.ts`, and nearby feature components before planning edits.",
+]

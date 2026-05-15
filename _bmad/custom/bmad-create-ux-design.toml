@@ -1,0 +1,11 @@
+[workflow]
+persistent_facts = [
+  "file:{project-root}/.agents/skills/shadcn-ui-design-system/SKILL.md",
+  "Every UX design artifact for this repo must include a shadcn/ui Component Plan unless the user explicitly opts out.",
+  "UX output must redesign RiskGuard as a multi-section dashboard app: desktop left sidebar, mobile bottom navigation, focused sections, and no all-in-one mega screen.",
+  "UX output must specify Telegram Connect instead of manual Telegram chat id entry, and must cover smooth auth/sign out/disconnect states.",
+]
+
+activation_steps_append = [
+  "Before drafting or updating the UX specification, load the shadcn-ui-design-system skill file and apply its UX Planning Rules and Output Expectations.",
+]

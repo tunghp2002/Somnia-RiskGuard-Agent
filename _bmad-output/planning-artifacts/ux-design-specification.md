@@ -57,7 +57,7 @@ The core experience is Guardian Status Review: users should instantly understand
 
 ### Platform Strategy
 
-The MVP should be a responsive web dashboard supported by Telegram action flows. The dashboard is the setup and overview surface; Telegram is the urgent action and reminder surface. Desktop should be prioritized for Agentathon demo and operator workflows, while mobile readability remains important for Telegram-linked status moments.
+The MVP should be a responsive web app supported by Telegram action flows. The web app must use a dashboard shell, not a single overloaded page: desktop uses a persistent left navigation rail/sidebar, while mobile uses a bottom navigation bar with compact route labels and icons. The Overview route is the status summary surface; setup, risk, heartbeat, rewards, Safety Receipts, demo controls, and operator health live in focused sections so the product remains manageable as features grow.
 
 ### Effortless Interactions
 
@@ -131,7 +131,7 @@ A fully custom design system would slow MVP delivery and add unnecessary impleme
 
 ### Implementation Approach
 
-Use standard dashboard primitives: buttons, icon buttons, inputs, forms, tabs, segmented controls, badges, alerts, dialogs, tables, timelines, and compact status panels. The layout should prioritize dashboard density and scanability over marketing-style presentation. Components should support readiness states, policy decisions, action receipts, wallet identities, deadlines, and environment labels.
+Use standard shadcn/ui dashboard primitives: app shell/sidebar navigation, bottom navigation, buttons, icon buttons, account menu, inputs, forms, tabs, segmented controls, badges, alerts, dialogs, sheets, tables, timelines, tooltips, toasts, and compact status panels. The layout should prioritize focused sections and scanability over an all-in-one command center. Components should support readiness states, policy decisions, action receipts, wallet identities, deadlines, environment labels, and connected/disconnected account states.
 
 ### Customization Strategy
 
@@ -177,7 +177,7 @@ Typography should be compact and disciplined. Dashboard headings should be small
 
 ### Spacing & Layout Foundation
 
-Use an 8px spacing system with dense, precise dashboard composition. The product should borrow restraint from Linear, calm dark-mode confidence from Arc, information density from Bloomberg Terminal, and clarity from Notion. Layout should prioritize Guardian Status, Risk Score, heartbeat timer, Dead Man's Switch state, reward automation, and recent Safety Receipts.
+Use an 8px spacing system with dense, precise dashboard composition. The product should borrow restraint from Linear, calm dark-mode confidence from Arc, information density from Bloomberg Terminal, and clarity from Notion. Layout should prioritize a stable app shell first: desktop sidebar, content header, account/connection controls, and route-specific content. Guardian Status, Risk Score, heartbeat timer, Dead Man's Switch state, reward automation, and recent Safety Receipts should be summarized on Overview and expanded in their dedicated sections.
 
 Cards should be used for individual functional modules, not nested decorative containers. Panels should feel engineered and stable, with subtle borders, minimal shadows, and clear hierarchy. The dashboard can be dense, but it must not feel like a trading terminal; every dense section needs a clear purpose and scanning path.
 
@@ -205,7 +205,7 @@ Guardian Command Center best balances user trust, demo clarity, and operational 
 
 ### Implementation Approach
 
-Use Guardian Command Center as the default dashboard layout. Add a Demo Storyboard tab for Agentathon presentation, a Beneficiary Safe Mode view for Dead Man's Switch recipients, and a Safety Receipts timeline on the main screen. Reserve Terminal Hybrid density for operator diagnostics only.
+Use Guardian Command Center as the default Overview route inside a multi-section app shell. Add dedicated routes or sections for Setup, Risk, Heartbeat, Rewards, Safety Receipts, Demo Storyboard, Beneficiary Safe Mode, and Operator Health. Reserve Terminal Hybrid density for operator diagnostics only. Do not place every module and form on the first screen.
 
 ## User Journey Flows
 
@@ -220,7 +220,7 @@ flowchart TD
   C -- No --> C1[Show network guidance]
   C1 --> B
   C -- Yes --> D[Register monitored wallet with signature]
-  D --> E[Configure Telegram binding]
+  D --> E[Connect Telegram through bot link or one-time code]
   E --> F[Configure heartbeat and beneficiary]
   F --> G[Configure reward claim thresholds]
   G --> H[Review wallet roles]
@@ -318,9 +318,33 @@ Minimize steps before the first clear readiness signal. Use progressive disclosu
 
 ### Design System Components
 
-RiskGuard should rely on Tailwind and shadcn-style primitives for buttons, inputs, switches, sliders, tabs, dialogs, alerts, badges, tables, tooltips, form fields, panels, separators, and scroll areas. These components cover standard dashboard interaction needs and keep implementation fast.
+RiskGuard should rely on Tailwind and shadcn/ui primitives for app shell/sidebar navigation, mobile bottom navigation, buttons, inputs, switches, sliders, tabs, dialogs, sheets, dropdown menus, alerts, badges, tables, tooltips, form fields, panels, separators, toasts, scroll areas, skeletons, and account menus. These components cover standard dashboard interaction needs and keep implementation fast.
 
 ### Custom Components
+
+#### App Shell Navigation
+
+**Purpose:** Prevent feature overload by giving every major workflow a clear place.  
+**Usage:** Global shell across authenticated dashboard routes.  
+**Anatomy:** Desktop left sidebar, mobile bottom navigation, route title, account menu, connection status, reality-mode badge.  
+**States:** Active route, collapsed desktop, mobile selected, disconnected, session restoring, API unavailable.  
+**Accessibility:** Navigation landmarks, keyboard focus order, icon labels, and current-page indication.
+
+#### Account And Session Control
+
+**Purpose:** Make login, wallet connection, Telegram connection, and sign out/disconnect feel familiar and reliable.  
+**Usage:** Header/account menu and setup flow.  
+**Anatomy:** Connected wallet identity, Telegram status, menu actions, disconnect/sign out action, expired-session prompt.  
+**States:** Signed out, wallet connected, Telegram connected, partially configured, restoring, expired, disconnecting, failed.  
+**Accessibility:** Menu actions must be keyboard reachable and have explicit text labels.
+
+#### Telegram Connect Panel
+
+**Purpose:** Bind Telegram without requiring users to know or type a chat id.  
+**Usage:** Setup route and account/notification settings.  
+**Anatomy:** Connect button, bot deep link, one-time code or QR/link fallback, connected Telegram identity, reconnect and disconnect actions.  
+**States:** Not connected, code generated, waiting for bot confirmation, connected, expired, failed, disconnected.  
+**Accessibility:** Code is copyable, status is text-labeled, and instructions are concise.
 
 #### Guardian Status Panel
 
@@ -401,7 +425,7 @@ Build custom components from design-system primitives and shared tokens. Priorit
 
 ### Implementation Roadmap
 
-Phase 1 should build Guardian Status Panel, Risk Score Circle, Wallet Role Chip, Safety Receipt, and Safety Timeline. Phase 2 should add Heartbeat Timer, Dead Man's Switch Status, Reward Policy Summary, and Subsystem Health Row. Phase 3 should add Demo Scenario Control and richer operator diagnostics.
+Phase 1 should build App Shell Navigation, Account And Session Control, Telegram Connect Panel, Guardian Status Panel, Risk Score Circle, Wallet Role Chip, Safety Receipt, and Safety Timeline. Phase 2 should add Heartbeat Timer, Dead Man's Switch Status, Reward Policy Summary, and Subsystem Health Row. Phase 3 should add Demo Scenario Control and richer operator diagnostics.
 
 ## UX Consistency Patterns
 
@@ -419,15 +443,15 @@ Feedback should use both text and semantic badge/icon treatment. Color alone is 
 
 ### Form Patterns
 
-Configuration forms should use progressive sections: wallet identity, Telegram, heartbeat/beneficiary, reward policy, and demo settings. Each form should show validation inline and use checksum-normalized wallet addresses. Numeric thresholds should include units, such as USD or seconds, and safe defaults where possible. Forms should avoid asking for private keys and should explicitly state that user private keys are never requested.
+Configuration forms should use progressive sections: wallet identity, Telegram connection, heartbeat/beneficiary, reward policy, and demo settings. Each form should show validation inline and use checksum-normalized wallet addresses. Telegram setup must use a connect flow through bot deep link, one-time code, QR/link fallback, or equivalent callback; do not ask the user to manually type a Telegram chat id. Numeric thresholds should include units, such as USD or seconds, and safe defaults where possible. Forms should avoid asking for private keys and should explicitly state that user private keys are never requested.
 
 Settings forms should show a review state before or after save, clarifying monitored wallet, agent wallet, beneficiary wallet, reward thresholds, and heartbeat timing.
 
 ### Navigation Patterns
 
-The main dashboard should use Guardian Command Center as the default route. Top-level navigation should include Dashboard, Demo, Beneficiary, and Operator/Health if implemented. Demo controls should be separated from normal user controls so simulated behavior does not blur into production behavior. Beneficiary mode should be accessible through a focused route or view with simplified navigation.
+The main dashboard should use Guardian Command Center as the default Overview route inside an app shell. Desktop navigation uses a left sidebar with Overview, Setup, Risk, Heartbeat, Rewards, Receipts, Demo, and Health. Mobile navigation uses a bottom bar for the highest-frequency sections, with less frequent sections available from a More sheet/menu. Demo controls should be separated from normal user controls so simulated behavior does not blur into production behavior. Beneficiary mode should be accessible through a focused route or view with simplified navigation.
 
-Within the dashboard, tabbed sections can organize Risk, Heartbeat, Rewards, Safety Receipts, and Health. The Guardian Status summary should remain the first visible element.
+Within each route, tabs can organize local subviews only; tabs should not substitute for global navigation. The Guardian Status summary should remain the first visible element on Overview, while detailed forms and diagnostics move to their dedicated sections.
 
 ### Additional Patterns
 
@@ -441,11 +465,11 @@ Simulation, demo fixture, and Somnia Testnet-backed behavior must be labeled at 
 
 ### Responsive Strategy
 
-RiskGuard should be desktop-prioritized but responsive. Desktop is the primary surface for setup, Guardian Command Center, demo mode, operator health, and dense Safety Receipt review. Wider screens should use multi-column layouts: Guardian Status and Risk Score first, supporting modules beside or below, and Safety Timeline visible without deep navigation.
+RiskGuard should be desktop-prioritized but responsive. Desktop is the primary surface for setup, Guardian Command Center, demo mode, operator health, and dense Safety Receipt review. Desktop must use persistent left navigation so users can move between workflows without scrolling through a mega-page. Wider screens should use multi-column layouts within each route: Guardian Status and Risk Score first on Overview, supporting modules beside or below, and Safety Timeline visible without deep navigation.
 
 Tablet should preserve dashboard scanability with fewer columns and larger touch targets. The Guardian Status Panel remains first, followed by Risk Score, Heartbeat, Dead Man's Switch, Rewards, and Safety Receipts.
 
-Mobile should focus on status and action, not full dashboard density. The first mobile view should show Guardian Status, active alert or deadline, one primary safe action, and recent Safety Receipt. Beneficiary mode must be especially mobile-friendly because Sarah may open it from a message.
+Mobile should focus on status and action, not full dashboard density. Mobile must use bottom navigation for primary sections and a More sheet/menu for lower-frequency areas. The first mobile view should show Guardian Status, active alert or deadline, one primary safe action, and recent Safety Receipt. Beneficiary mode must be especially mobile-friendly because Sarah may open it from a message.
 
 ### Breakpoint Strategy
 

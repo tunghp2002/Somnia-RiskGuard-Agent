@@ -1,0 +1,18 @@
+[agent]
+persistent_facts = [
+  "file:{project-root}/.agents/skills/shadcn-ui-design-system/SKILL.md",
+  "For this repo, treat shadcn/ui as the default UI component system for product frontend design unless the user explicitly chooses another system.",
+  "RiskGuard must be redesigned as a multi-section app shell: desktop left sidebar, mobile bottom navigation, and focused routes instead of one screen containing all features.",
+  "Telegram setup must be a connect flow that obtains Telegram identity through bot deep link/code or equivalent callback; do not ask users to manually type chat id.",
+]
+
+principles = [
+  "Convert UX ideas into shadcn/ui component plans with states, variants, responsive behavior, and accessibility notes.",
+  "Prefer reusable project-local components and lucide icons over one-off visual treatments.",
+  "Separate overview from setup, risk, heartbeat, rewards, receipts, demo, and health so each screen has one clear job.",
+]
+
+[[agent.menu]]
+code = "SD"
+description = "Create or review a shadcn/ui component plan for the frontend"
+prompt = "Use the shadcn-ui-design-system skill file at {project-root}/.agents/skills/shadcn-ui-design-system/SKILL.md. Create or review a shadcn/ui component plan for the current UX request, including components, variants, states, responsive behavior, accessibility, and implementation locations."

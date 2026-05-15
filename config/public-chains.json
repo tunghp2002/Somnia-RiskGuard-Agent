@@ -1,0 +1,19 @@
+{
+  "defaultChain": "somnia-testnet",
+  "chains": {
+    "somnia-testnet": {
+      "name": "Somnia Testnet",
+      "chainId": 50312,
+      "rpcUrl": "https://dream-rpc.somnia.network",
+      "blockExplorerUrl": "https://shannon-explorer.somnia.network",
+      "nativeCurrency": {
+        "name": "Somnia Test Token",
+        "symbol": "STT",
+        "decimals": 18
+      },
+      "contracts": {
+        "deadManSwitch": ""
+      }
+    }
+  }
+}

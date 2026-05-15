@@ -202,7 +202,7 @@ NFR17: Reward claim automation must skip execution when thresholds or policy che
 
 NFR18: Somnia RPC, LLM providers, Telegram, and smart contract integrations must expose health or failure state to the operator.
 
-NFR19: Chain ID, RPC URL, contract addresses, wallet addresses, and provider keys must be environment-driven.
+NFR19: Public chain metadata such as chain ID, public RPC URL, explorer URL, native currency metadata, and public contract addresses must be loaded from `config/public-chains.json` or an equivalent committed public config file; private keys, bot tokens, LLM keys, and provider credentials remain environment-driven.
 
 NFR20: Demo simulation mode must clearly distinguish simulated behavior from Somnia Testnet-backed behavior.
 

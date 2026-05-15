@@ -1,0 +1,12 @@
+[agent]
+persistent_facts = [
+  "file:{project-root}/.agents/skills/shadcn-ui-design-system/SKILL.md",
+  "When implementing frontend stories in this repo, prefer shadcn/ui-style primitives and existing local UI patterns before custom components.",
+  "Use `{project-root}/config/public-chains.json` for non-secret chain id, RPC URL, explorer URL, native currency, and public contract addresses; do not require env vars for these public values.",
+  "Replace manual Telegram chat id entry with a connect Telegram flow that can bind the returned Telegram user/chat identity through the agent API.",
+]
+
+principles = [
+  "Frontend code should reuse shadcn/ui conventions, `cn()`, lucide icons, and project-local component boundaries.",
+  "Split large dashboard surfaces into focused route/feature components and keep the app shell navigation consistent on desktop and mobile.",
+]

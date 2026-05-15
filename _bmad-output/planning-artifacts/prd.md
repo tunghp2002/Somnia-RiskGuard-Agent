@@ -73,7 +73,7 @@ The system reliably monitors portfolio state and relevant on-chain events throug
 - Reward claim automation only executes when configured value and gas thresholds pass.
 - Dead Man's Switch demo shows heartbeat configuration, expiry simulation, timelock behavior, and beneficiary path without unsafe fund movement.
 - Contract tests cover heartbeat renewal, expiry, timelock execution, unauthorized access, and false-trigger prevention.
-- No secrets are committed; all keys and tokens are loaded from environment variables.
+- No secrets are committed; private keys, bot tokens, LLM keys, and provider credentials are loaded from environment variables, while public chain metadata comes from a committed config file.
 
 ## Product Scope
 
@@ -125,7 +125,7 @@ This journey requires reward detection, gas/value threshold checks, transaction 
 
 ### Journey 5: Developer Demonstrates The Full Agentathon Flow
 
-The developer and hackathon participant prepares a judge-facing demo. The demo starts with the dashboard setup, showing wallet connection, risk settings, Telegram linking, heartbeat configuration, beneficiary setup, and environment-based configuration. The developer then triggers or simulates portfolio monitoring, shows AI risk analysis, receives a Telegram alert, and uses a quick action.
+The developer and hackathon participant prepares a judge-facing demo. The demo starts with the dashboard setup, showing wallet connection, risk settings, Telegram connect flow, heartbeat configuration, beneficiary setup, and public chain configuration loaded from the app config file. The developer then triggers or simulates portfolio monitoring, shows AI risk analysis, receives a Telegram alert, and uses a quick action.
 
 Next, the developer demonstrates reward claiming under safe thresholds. Finally, the developer simulates missed heartbeats and shows the Dead Man's Switch moving through reminder, expiry, timelock, and beneficiary visibility states. The demo ends with logs or dashboard history proving each agent action is traceable.
 
@@ -153,7 +153,8 @@ These journeys reveal the core capability areas required for the MVP: wallet con
 
 ### Technical Constraints
 
-- Secrets, private keys, bot tokens, RPC keys, and LLM API keys must only be loaded from environment variables.
+- Secrets, private keys, bot tokens, RPC provider credentials, and LLM API keys must only be loaded from environment variables.
+- Non-secret chain metadata such as chain ID, public RPC URL, explorer URL, native currency metadata, and public contract addresses should be loaded from a committed public config file, not from environment variables.
 - The agent must never log secrets or full private transaction payloads.
 - On-chain actions must be bounded by configurable allowlists, value thresholds, gas thresholds, and action-specific validation.
 - Telegram quick actions must be authenticated and protected against replay or unauthorized use.
@@ -214,7 +215,7 @@ The system must support Somnia Testnet as the primary chain environment and a lo
 
 - Primary network: Somnia Testnet.
 - Local/demo mode must support deterministic portfolio, reward, risk, heartbeat, and Dead Man's Switch scenarios.
-- Chain ID, RPC URL, contract addresses, and wallet addresses must be environment-driven.
+- Chain ID, public RPC URL, explorer URL, native currency metadata, and public contract addresses must be loaded from `config/public-chains.json` or an equivalent committed public config file. Secrets and credentials remain environment-driven.
 - The agent must use ethers.js v6 for provider, signer, contract, and transaction interactions.
 - The system must fail closed when RPC configuration, chain ID, signer, or contract address validation fails.
 
@@ -389,7 +390,7 @@ Somnia RiskGuard evolves into a personal AI financial advisor and inheritance pr
 
 ### Security
 
-- Secrets, private keys, bot tokens, RPC keys, and LLM API keys must only be loaded from environment variables.
+- Secrets, private keys, bot tokens, RPC provider credentials, and LLM API keys must only be loaded from environment variables.
 - The frontend must never request, store, or transmit user private keys.
 - The backend agent wallet must be separated from the user's browser wallet.
 - LLM output must never directly authorize transactions.
@@ -409,7 +410,7 @@ Somnia RiskGuard evolves into a personal AI financial advisor and inheritance pr
 ### Integration
 
 - Somnia RPC, LLM providers, Telegram, and smart contract integrations must expose health or failure state to the operator.
-- Chain ID, RPC URL, contract addresses, wallet addresses, and provider keys must be environment-driven.
+- Public chain metadata such as chain ID, public RPC URL, explorer URL, native currency metadata, and public contract addresses must come from `config/public-chains.json` or an equivalent committed public config file. Wallet-specific settings and provider credentials remain environment-driven or user-configured through safe setup flows.
 - Demo simulation mode must clearly distinguish simulated behavior from Somnia Testnet-backed behavior.
 - The agent and dashboard must read contract state consistently for heartbeat, expiry, timelock, beneficiary, and execution status.
 
