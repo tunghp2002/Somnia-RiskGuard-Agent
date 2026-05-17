@@ -531,6 +531,22 @@ export function RiskGuardDashboard() {
     }
   }
 
+  async function handleAnalyzeRisk() {
+    setActionLoading("risk-analysis");
+    try {
+      const nextRisk = await agentApi.analyzeRisk(
+        activeWalletAddress ? { walletAddress: activeWalletAddress } : {}
+      );
+      setRisk(nextRisk);
+      setNotice({ tone: "ok", message: `${nextRisk.provider} generated a fresh risk analysis.` });
+      await loadData();
+    } catch (error) {
+      setNotice({ tone: "bad", message: errorMessage(error) });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   return (
     <main className="rg-app-shell">
       <aside className="rg-sidebar" aria-label="Primary sections">
@@ -604,7 +620,13 @@ export function RiskGuardDashboard() {
         {activeSection === "overview" ? (
           <section className="rg-overview">
             <GuardianStatus ready={guardianReady} readiness={readiness} wallet={wallet} mode={mode} />
-            <RiskScore score={riskScore} tone={riskTone} risk={risk} />
+            <RiskScore
+              actionLoading={actionLoading}
+              onAnalyzeRisk={handleAnalyzeRisk}
+              score={riskScore}
+              tone={riskTone}
+              risk={risk}
+            />
             <HeartbeatPanel heartbeat={heartbeat} />
             <RewardPanel rewards={rewards} />
           </section>
@@ -612,6 +634,14 @@ export function RiskGuardDashboard() {
 
         <section className="rg-grid">
         {activeSection === "risk" ? (
+        <>
+        <RiskScore
+          actionLoading={actionLoading}
+          onAnalyzeRisk={handleAnalyzeRisk}
+          score={riskScore}
+          tone={riskTone}
+          risk={risk}
+        />
         <section className="panel portfolio-panel">
           <PanelHeading icon={<Activity size={17} />} title="Portfolio Watch" action={loading ? "refreshing" : portfolio?.source ?? "no data"} />
           <div className="portfolio-total">{formatUsd(portfolio?.totalValueUsd)}</div>
@@ -633,6 +663,7 @@ export function RiskGuardDashboard() {
             ))}
           </div>
         </section>
+        </>
         ) : null}
 
         {activeSection === "setup" ? (
@@ -796,10 +827,14 @@ function GuardianStatus({
 }
 
 function RiskScore({
+  actionLoading,
+  onAnalyzeRisk,
   score,
   tone,
   risk
 }: {
+  actionLoading: string | null;
+  onAnalyzeRisk: () => void;
   score: number;
   tone: "ok" | "warn" | "bad";
   risk: RiskSnapshot | null;
@@ -817,6 +852,16 @@ function RiskScore({
           <span key={step}>{step}</span>
         ))}
       </div>
+      <Button
+        className="secondary-button"
+        disabled={actionLoading === "risk-analysis"}
+        onClick={onAnalyzeRisk}
+        type="button"
+        variant="secondary"
+      >
+        {actionLoading === "risk-analysis" ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />}
+        Analyze with AI
+      </Button>
     </section>
   );
 }

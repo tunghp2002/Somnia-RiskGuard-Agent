@@ -225,6 +225,11 @@ export const agentApi = {
     request<PortfolioSnapshot | null>(`/api/portfolios/latest${walletQuery(walletAddress)}`),
   getRisk: (walletAddress?: string) =>
     request<RiskSnapshot | null>(`/api/risk-snapshots/latest${walletQuery(walletAddress)}`),
+  analyzeRisk: (body: { walletAddress?: string }) =>
+    request<RiskSnapshot>("/api/risk-snapshots/analyze", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
   getHeartbeat: (walletAddress: string) =>
     request<HeartbeatStatus | null>(`/api/heartbeats/status${walletQuery(walletAddress)}`),
   configureHeartbeat: (body: {

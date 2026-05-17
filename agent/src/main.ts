@@ -41,6 +41,7 @@ import { DemoScenarioService } from "./services/demo-scenario.service.js";
 import { HeartbeatService } from "./services/heartbeat.service.js";
 import { RewardClaimService } from "./services/reward-claim.service.js";
 import { TelegramAlertService } from "./services/telegram-alert.service.js";
+import { TelegramConnectService } from "./services/telegram-connect.service.js";
 import { PortfolioService } from "./services/portfolio.service.js";
 import { PortfolioMonitorJob } from "./jobs/portfolio-monitor.job.js";
 import { HeartbeatJob } from "./jobs/heartbeat.job.js";
@@ -108,6 +109,7 @@ export async function startAgentRuntime(
     telegramClient,
     audit
   );
+  const telegramConnect = new TelegramConnectService(telegramAlerts);
   const setupService = new SetupService(users, config, audit);
   const heartbeatReminderNotifier = new TelegramHeartbeatReminderNotifier(
     telegramBindings,
@@ -165,8 +167,10 @@ export async function startAgentRuntime(
     riskSnapshots,
     demoScenarios,
     telegramAlerts,
+    telegramConnect,
     heartbeats,
     rewards,
+    riskScore,
     publicChain: config.publicChain,
     health: async () => ({
       ok: true,
@@ -199,6 +203,12 @@ export async function startAgentRuntime(
         chatId: update.chatId,
         ...(update.telegramUserId ? { telegramUserId: update.telegramUserId } : {}),
         data: update.data
+      }),
+    handleTextMessage: async (update) =>
+      telegramConnect.confirmFromText({
+        chatId: update.chatId,
+        ...(update.telegramUserId ? { telegramUserId: update.telegramUserId } : {}),
+        text: update.text
       }),
     logger
   });

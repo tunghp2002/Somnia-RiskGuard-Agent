@@ -23,12 +23,20 @@ export interface TelegramCallbackUpdate {
   data: string;
 }
 
+export interface TelegramTextUpdate {
+  updateId: number;
+  chatId: string;
+  telegramUserId?: string;
+  text: string;
+}
+
 export interface TelegramPollingHandle {
   stop(): void;
 }
 
 export interface StartTelegramPollingOptions {
   handleCallback(update: TelegramCallbackUpdate): Promise<{ ok: boolean; message: string }>;
+  handleTextMessage?(update: TelegramTextUpdate): Promise<{ ok: boolean; message: string }>;
   intervalMs?: number;
   logger?: Pick<Console, "error" | "info">;
 }
@@ -117,15 +125,23 @@ export class TelegramBotApiClient implements TelegramClient {
             offset = Math.max(offset, update.update_id + 1);
             const callbackUpdate = this.toCallbackUpdate(update);
 
-            if (!callbackUpdate) {
+            if (callbackUpdate) {
+              const result = await options.handleCallback(callbackUpdate);
+              await this.answerCallbackQuery(
+                callbackUpdate.callbackQueryId,
+                result.message
+              );
               continue;
             }
 
-            const result = await options.handleCallback(callbackUpdate);
-            await this.answerCallbackQuery(
-              callbackUpdate.callbackQueryId,
-              result.message
-            );
+            const textUpdate = this.toTextUpdate(update);
+            if (textUpdate && options.handleTextMessage) {
+              const result = await options.handleTextMessage(textUpdate);
+              await this.sendMessage({
+                chatId: textUpdate.chatId,
+                text: result.message
+              });
+            }
           }
         } catch (error) {
           options.logger?.error(
@@ -162,7 +178,7 @@ export class TelegramBotApiClient implements TelegramClient {
         body: JSON.stringify({
           offset,
           timeout: 25,
-          allowed_updates: ["callback_query"]
+          allowed_updates: ["callback_query", "message"]
         })
       }
     );
@@ -214,10 +230,32 @@ export class TelegramBotApiClient implements TelegramClient {
       data: callback.data
     };
   }
+
+  private toTextUpdate(update: TelegramRawUpdate): TelegramTextUpdate | undefined {
+    const message = update.message;
+    const chatId = message?.chat?.id;
+    const telegramUserId = message?.from?.id;
+
+    if (!message?.text || chatId === undefined) {
+      return undefined;
+    }
+
+    return {
+      updateId: update.update_id,
+      chatId: chatId.toString(),
+      ...(telegramUserId === undefined ? {} : { telegramUserId: telegramUserId.toString() }),
+      text: message.text
+    };
+  }
 }
 
 interface TelegramRawUpdate {
   update_id: number;
+  message?: {
+    from?: { id?: number };
+    chat?: { id?: number };
+    text?: string;
+  };
   callback_query?: {
     id?: string;
     from?: { id?: number };
