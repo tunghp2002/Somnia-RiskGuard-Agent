@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  SomniaAgentKitClient,
   SomniaExecutionDisabledError,
   SomniaIntegrationUnavailableError,
   createSomniaAgentKitClient
@@ -73,7 +74,7 @@ describe("Somnia Agent Kit integration boundary", () => {
   });
 
   it("fails tool calls when no adapter is configured", async () => {
-    const client = createSomniaAgentKitClient(config);
+    const client = new SomniaAgentKitClient(config);
 
     await expect(
       client.callTool({
@@ -97,7 +98,7 @@ describe("Somnia Agent Kit integration boundary", () => {
   });
 
   it("reports disabled subsystem health when no adapter is configured", async () => {
-    const client = createSomniaAgentKitClient(config);
+    const client = new SomniaAgentKitClient(config);
 
     await expect(client.health()).resolves.toMatchObject({
       subsystem: "somnia-agent-kit",

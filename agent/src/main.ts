@@ -28,7 +28,10 @@ import {
   type TelegramPollingHandle
 } from "./integrations/telegram/telegram.client.js";
 import { EthersDeadManSwitchStateReader } from "./integrations/somnia/deadman-switch.client.js";
-import { createSomniaAgentKitClient } from "./integrations/somnia/somnia-agent-kit.client.js";
+import {
+  createSomniaAgentKitClient,
+  type SomniaAgentKitClient
+} from "./integrations/somnia/somnia-agent-kit.client.js";
 import { AuditService } from "./services/audit.service.js";
 import { TelegramHeartbeatReminderNotifier } from "./services/heartbeat-reminder-notifier.js";
 import { TelegramRewardClaimNotifier } from "./services/reward-claim-notifier.js";
@@ -57,6 +60,7 @@ export interface AgentRuntime {
 export interface StartAgentRuntimeOptions {
   apiPort?: number;
   telegramClient?: TelegramClient;
+  somniaClient?: SomniaAgentKitClient;
   startJobs?: boolean;
 }
 
@@ -88,7 +92,7 @@ export async function startAgentRuntime(
   const alerts = new AlertsRepository();
   const actionNonces = new ActionNoncesRepository();
   const telegramClient = options.telegramClient ?? createTelegramClient(config);
-  const somnia = createSomniaAgentKitClient(config);
+  const somnia = options.somniaClient ?? createSomniaAgentKitClient(config);
   const riskScore = new RiskScoreService(config, riskSnapshots, audit, {
     primary: new GroqClient(config),
     fallback: new DeepSeekClient(config)

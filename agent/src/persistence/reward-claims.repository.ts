@@ -15,6 +15,7 @@ const moneyStringSchema = z
   .string()
   .regex(/^\d+(\.\d+)?$/)
   .refine((value) => Number(value) >= 0, "Must be non-negative");
+const hexDataSchema = z.string().regex(/^0x[a-fA-F0-9]*$/);
 
 export const rewardSettingsSchema = z.object({
   rewardSettingsId: z.string().uuid(),
@@ -34,6 +35,7 @@ export const rewardFixtureSchema = z.object({
   valueUsd: moneyStringSchema,
   gasUsd: moneyStringSchema,
   target: addressSchema,
+  calldata: hexDataSchema.optional(),
   calldataSummary: z.string().min(1),
   claimable: z.boolean(),
   createdAt: z.string().datetime(),
@@ -82,6 +84,7 @@ export interface SaveRewardFixtureInput {
   valueUsd: string;
   gasUsd: string;
   target: string;
+  calldata?: string;
   calldataSummary: string;
   claimable?: boolean;
   now?: string;
@@ -180,6 +183,7 @@ export class RewardClaimsRepository {
         valueUsd: input.valueUsd,
         gasUsd: input.gasUsd,
         target,
+        ...(input.calldata ? { calldata: input.calldata } : {}),
         calldataSummary: input.calldataSummary,
         claimable: input.claimable ?? true,
         createdAt: existing?.createdAt ?? now,

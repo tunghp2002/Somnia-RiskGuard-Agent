@@ -20,6 +20,7 @@ const addressSchema = z
   .transform((value) => getAddress(value));
 
 const moneyNumberSchema = z.number().nonnegative();
+const hexDataSchema = z.string().regex(/^0x[a-fA-F0-9]*$/);
 
 export const rewardSettingsRequestSchema = z
   .object({
@@ -38,6 +39,7 @@ export const rewardFixtureRequestSchema = z
     valueUsd: moneyNumberSchema,
     gasUsd: moneyNumberSchema,
     target: addressSchema,
+    calldata: hexDataSchema.optional(),
     calldataSummary: z.string().min(1),
     claimable: z.boolean().optional()
   })
@@ -144,6 +146,7 @@ export class RewardClaimService {
       valueUsd: parsed.valueUsd.toString(),
       gasUsd: parsed.gasUsd.toString(),
       target: parsed.target,
+      ...(parsed.calldata ? { calldata: parsed.calldata } : {}),
       calldataSummary: parsed.calldataSummary,
       ...(parsed.claimable === undefined ? {} : { claimable: parsed.claimable }),
       now: this.now().toISOString()
@@ -379,6 +382,7 @@ export class RewardClaimService {
         stateChanging: true,
         policyDecision,
         target: fixture.target,
+        ...(fixture.calldata ? { calldata: fixture.calldata } : {}),
         calldataSummary: fixture.calldataSummary,
         args: {
           walletAddress: fixture.walletAddress,

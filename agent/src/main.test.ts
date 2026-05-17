@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ConfigValidationError } from "./config/env.js";
+import { createSomniaAgentKitClient } from "./integrations/somnia/somnia-agent-kit.client.js";
 import type { TelegramClient } from "./integrations/telegram/telegram.client.js";
 import { main } from "./main.js";
 import { runCli } from "./main.js";
@@ -64,9 +65,15 @@ describe("agent startup", () => {
 
   it("starts API health and Telegram polling in the default runtime", async () => {
     const telegramClient = new FakePollingTelegramClient();
+    const config = createTestConfig();
+    const somniaClient = createSomniaAgentKitClient(config, {
+      callTool: vi.fn(),
+      health: vi.fn().mockResolvedValue({ ok: true })
+    });
     const runtime = await startAgentRuntime(createTestConfig(), {
       apiPort: 0,
-      telegramClient
+      telegramClient,
+      somniaClient
     });
 
     try {
