@@ -49,54 +49,67 @@ import {
 } from "@/lib/wallet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { GuardianSettings } from "@/features/settings/guardian-settings";
+import { GuardianSettings, InheritanceSettings } from "@/features/settings/guardian-settings";
 
 type Notice = { tone: "ok" | "warn" | "bad"; message: string };
-type DashboardSection = "overview" | "setup" | "risk" | "heartbeat" | "rewards" | "receipts" | "demo" | "health";
+type DashboardSection = "overview" | "setup" | "inheritance" | "risk" | "heartbeat" | "rewards" | "receipts" | "demo" | "health";
 type AccountStatus = "restoring" | "connected" | "disconnected" | "disconnecting" | "expired" | "error";
 
 const navItems: Array<{ id: DashboardSection; label: string; icon: ReactNode; primaryMobile?: boolean }> = [
   { id: "overview", label: "Overview", icon: <Shield size={17} />, primaryMobile: true },
   { id: "setup", label: "Setup", icon: <KeyRound size={17} />, primaryMobile: true },
+  { id: "inheritance", label: "Inheritance", icon: <Wallet size={17} />, primaryMobile: true },
   { id: "risk", label: "Risk", icon: <ShieldAlert size={17} />, primaryMobile: true },
   { id: "heartbeat", label: "Heartbeat", icon: <Clock3 size={17} /> },
   { id: "rewards", label: "Rewards", icon: <CircleDollarSign size={17} /> },
-  { id: "receipts", label: "Receipts", icon: <FileText size={17} />, primaryMobile: true },
+  { id: "receipts", label: "Receipts", icon: <FileText size={17} /> },
   { id: "demo", label: "Demo", icon: <Sparkles size={17} /> },
   { id: "health", label: "Health", icon: <Cpu size={17} /> }
 ];
+
+const sectionDescriptions: Record<DashboardSection, string> = {
+  overview: "Live account posture across setup, risk, heartbeat, rewards, and receipts.",
+  setup: "Connect the monitored wallet, Telegram alerts, and reward policy.",
+  inheritance: "Design the dead-man switch timing and beneficiary release plan for protected funds.",
+  risk: "Analyze portfolio exposure, risk signals, and safe next steps.",
+  heartbeat: "Track renewal deadlines, grace period, and beneficiary execution readiness.",
+  rewards: "Tune auto-claim policy bounds and inspect recent reward decisions.",
+  receipts: "Review signed safety receipts and agent audit events.",
+  demo: "Seed deterministic simulation states for product walkthroughs.",
+  health: "Inspect operator services, signer readiness, and Somnia connectivity."
+};
 
 const scenarios: Array<{
   id: DemoScenarioResult["scenario"];
   label: string;
   detail: string;
 }> = [
-  {
-    id: "setup_ready",
-    label: "Setup Ready",
-    detail: "Register demo wallet and show readiness"
-  },
-  {
-    id: "risk_alert",
-    label: "Risk Alert",
-    detail: "Seed high Risk Score and safety steps"
-  },
-  {
-    id: "reward_claim",
-    label: "Reward Policy",
-    detail: "Show a policy skip receipt"
-  },
-  {
-    id: "missed_heartbeat",
-    label: "Missed Heartbeat",
-    detail: "Expose DMS/timelock visibility"
-  },
-  {
-    id: "full_demo",
-    label: "Full Demo",
-    detail: "Run all deterministic states"
-  }
-];
+    {
+      id: "setup_ready",
+      label: "Setup Ready",
+      detail: "Register demo wallet and show readiness"
+    },
+    {
+      id: "risk_alert",
+      label: "Risk Alert",
+      detail: "Seed high Risk Score and safety steps"
+    },
+    {
+      id: "reward_claim",
+      label: "Reward Policy",
+      detail: "Show a policy skip receipt"
+    },
+    {
+      id: "missed_heartbeat",
+      label: "Missed Heartbeat",
+      detail: "Expose DMS/timelock visibility"
+    },
+    {
+      id: "full_demo",
+      label: "Full Demo",
+      detail: "Run all deterministic states"
+    }
+  ];
 
 function formatAddress(address?: string) {
   if (!address) {
@@ -158,6 +171,15 @@ function hasOkFlag(value: unknown): value is { ok: boolean } {
   return Boolean(value && typeof value === "object" && "ok" in value);
 }
 
+function durationToSeconds(form: FormData, prefix: "interval" | "grace" | "timelock", fallbackDays: number) {
+  const days = Number(form.get(`${prefix}Days`) ?? fallbackDays);
+  const hours = Number(form.get(`${prefix}Hours`) ?? 0);
+  const safeDays = Number.isFinite(days) ? Math.max(0, days) : fallbackDays;
+  const safeHours = Number.isFinite(hours) ? Math.max(0, hours) : 0;
+
+  return Math.round((safeDays * 24 * 60 * 60) + (safeHours * 60 * 60));
+}
+
 export function RiskGuardDashboard() {
   const [activeSection, setActiveSection] = useState<DashboardSection>("overview");
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
@@ -196,12 +218,12 @@ export function RiskGuardDashboard() {
     }));
     const latestClaim = rewards?.latestClaim
       ? [{
-          id: rewards.latestClaim.createdAt,
-          title: `reward ${rewards.latestClaim.status}`,
-          status: rewards.latestClaim.status,
-          detail: rewards.latestClaim.reason ?? `${rewards.latestClaim.protocol} ${rewards.latestClaim.rewardToken}`,
-          createdAt: rewards.latestClaim.createdAt
-        }]
+        id: rewards.latestClaim.createdAt,
+        title: `reward ${rewards.latestClaim.status}`,
+        status: rewards.latestClaim.status,
+        detail: rewards.latestClaim.reason ?? `${rewards.latestClaim.protocol} ${rewards.latestClaim.rewardToken}`,
+        createdAt: rewards.latestClaim.createdAt
+      }]
       : [];
 
     return [...latestClaim, ...fromAudit].slice(0, 8);
@@ -444,20 +466,53 @@ export function RiskGuardDashboard() {
     }
 
     const form = new FormData(event.currentTarget);
+    const beneficiaryAddresses = form
+      .getAll("beneficiaryAddress")
+      .map((value) => String(value).trim())
+      .filter(Boolean);
+    const shareTotal = form
+      .getAll("sharePercent")
+      .reduce((total, value) => total + Number(value || 0), 0);
+    const intervalSeconds = Number(form.get("intervalSeconds") ?? durationToSeconds(form, "interval", 30));
+    const graceSeconds = Number(form.get("graceSeconds") ?? durationToSeconds(form, "grace", 7));
+    const timelockSeconds = Number(form.get("timelockSeconds") ?? durationToSeconds(form, "timelock", 2));
+
+    if (beneficiaryAddresses.length === 0) {
+      setNotice({ tone: "warn", message: "Add at least one recipient wallet address." });
+      return;
+    }
+
+    if (Math.abs(shareTotal - 100) > 0.001) {
+      setNotice({ tone: "warn", message: "Recipient shares must add up to exactly 100%." });
+      return;
+    }
+
+    if ([intervalSeconds, graceSeconds, timelockSeconds].some((seconds) => seconds < 86_400)) {
+      setNotice({ tone: "warn", message: "Each timing rule must be at least 1 day to match the contract." });
+      return;
+    }
+
+    const primaryBeneficiaryAddress = beneficiaryAddresses[0] ?? "";
+
     setActionLoading("heartbeat");
     try {
       const message = `Configure heartbeat: ${wallet.address}`;
       const signature = await signWalletMessage(message);
       await agentApi.configureHeartbeat({
         walletAddress: wallet.address,
-        beneficiaryAddress: String(form.get("beneficiaryAddress") ?? ""),
-        intervalSeconds: Number(form.get("intervalSeconds") ?? 86400),
-        graceSeconds: Number(form.get("graceSeconds") ?? 3600),
-        timelockSeconds: Number(form.get("timelockSeconds") ?? 86400),
+        beneficiaryAddress: primaryBeneficiaryAddress,
+        intervalSeconds,
+        graceSeconds,
+        timelockSeconds,
         message,
         signature
       });
-      setNotice({ tone: "ok", message: "Heartbeat settings saved with signed proof." });
+      setNotice({
+        tone: "ok",
+        message: beneficiaryAddresses.length > 1
+          ? "Inheritance plan saved for monitoring. Current agent API stores the primary recipient; the full weighted list is ready for the contract flow."
+          : "Inheritance heartbeat settings saved with signed proof."
+      });
       await loadData();
     } catch (error) {
       setNotice({ tone: "bad", message: errorMessage(error) });
@@ -576,7 +631,7 @@ export function RiskGuardDashboard() {
           <div>
             <div className="rg-kicker"><Shield size={14} /> Somnia RiskGuard AgentCore</div>
             <h1>{navItems.find((item) => item.id === activeSection)?.label ?? "Overview"}</h1>
-            <p>Focused operational dashboard for setup, risk, heartbeat, rewards, receipts, demo, and health.</p>
+            <p>{sectionDescriptions[activeSection]}</p>
           </div>
           <div className="rg-header-actions">
             <div className="account-status" aria-label="Account state">
@@ -633,112 +688,121 @@ export function RiskGuardDashboard() {
         ) : null}
 
         <section className="rg-grid">
-        {activeSection === "risk" ? (
-        <>
-        <RiskScore
-          actionLoading={actionLoading}
-          onAnalyzeRisk={handleAnalyzeRisk}
-          score={riskScore}
-          tone={riskTone}
-          risk={risk}
-        />
-        <section className="panel portfolio-panel">
-          <PanelHeading icon={<Activity size={17} />} title="Portfolio Watch" action={loading ? "refreshing" : portfolio?.source ?? "no data"} />
-          <div className="portfolio-total">{formatUsd(portfolio?.totalValueUsd)}</div>
-          <div className="asset-list">
-            {(portfolio?.assets ?? []).slice(0, 4).map((asset) => (
-              <div className="asset-row" key={asset.symbol}>
-                <span>{asset.symbol}</span>
-                <span>{asset.balance}</span>
-                <strong>{formatUsd(asset.valueUsd)}</strong>
-              </div>
-            ))}
-            {!portfolio ? <p className="muted">No portfolio snapshot yet. Run a simulation scenario or start the agent monitor.</p> : null}
-          </div>
-          <div className="signal-list">
-            {(portfolio?.riskSignals ?? []).map((signal) => (
-              <span className={`signal ${signal.severity}`} key={`${signal.signalType}-${signal.description}`}>
-                {signal.severity}: {signal.description}
-              </span>
-            ))}
-          </div>
-        </section>
-        </>
-        ) : null}
-
-        {activeSection === "setup" ? (
-        <section className="panel">
-          <PanelHeading icon={<KeyRound size={17} />} title="Configuration" action="signed where required" />
-          <GuardianSettings
-            actionLoading={actionLoading}
-            telegramSession={telegramSession}
-            onHeartbeatSubmit={handleHeartbeatSubmit}
-            onRegisterWallet={handleRegisterWallet}
-            onRewardsSubmit={handleRewardsSubmit}
-            onTelegramConnect={handleTelegramConnect}
-          />
-        </section>
-        ) : null}
-
-        {activeSection === "demo" ? (
-        <section className="panel demo-panel">
-          <PanelHeading icon={<Sparkles size={17} />} title="Demo Scenario Control" action={mode} />
-          <p className="muted">Deterministic simulation states are seeded through the agent API and then shown from the same read models as live status.</p>
-          <div className="scenario-grid">
-            {scenarios.map((scenario) => (
-              <Button
-                className="scenario-button"
-                disabled={mode !== "simulation" || actionLoading === scenario.id}
-                key={scenario.id}
-                onClick={() => void handleRunDemo(scenario.id)}
-                type="button"
-                variant="secondary"
-              >
-                <span>{scenario.label}</span>
-                <small>{actionLoading === scenario.id ? "Running..." : scenario.detail}</small>
-              </Button>
-            ))}
-          </div>
-        </section>
-        ) : null}
-
-        {activeSection === "health" ? (
-        <section className="panel">
-          <PanelHeading icon={<Cpu size={17} />} title="Operator Health" action="secret-safe" />
-          <div className="health-list">
-            <HealthRow icon={<RadioTower size={15} />} label="Agent API" value={health ? health.ok === false ? "degraded" : "reachable" : "unavailable"} tone={health ? health.ok === false ? "bad" : "ok" : "warn"} />
-            <HealthRow icon={<Bot size={15} />} label="Telegram" value={readableMetadata(health?.telegram)} tone={health?.telegram ? "ok" : "warn"} />
-            <HealthRow icon={<Send size={15} />} label="Somnia adapter" value={readableMetadata(health?.somnia)} tone={hasOkFlag(health?.somnia) && health.somnia.ok ? "ok" : "warn"} />
-            <HealthRow icon={<Shield size={15} />} label="Signer" value={readiness?.agentWallet.ready ? formatAddress(readiness.agentWallet.walletAddress) : "missing"} tone={readiness?.agentWallet.ready ? "ok" : "bad"} />
-            <HealthRow icon={<Link2 size={15} />} label="Chain" value={publicChain ? `${publicChain.name} (${publicChain.chainId})` : "unknown"} tone="neutral" />
-          </div>
-        </section>
-        ) : null}
-
-        {activeSection === "heartbeat" ? <HeartbeatPanel heartbeat={heartbeat} /> : null}
-        {activeSection === "rewards" ? <RewardPanel rewards={rewards} /> : null}
-
-        {activeSection === "receipts" ? (
-        <section className="panel timeline-panel">
-          <PanelHeading icon={<Clock3 size={17} />} title="Safety Receipts" action={`${receipts.length} recent`} />
-          <div className="timeline">
-            {receipts.map((receipt) => (
-              <article className="receipt" key={receipt.id}>
-                <span className={`receipt-dot ${classForStatus(receipt.status)}`} />
-                <div>
-                  <div className="receipt-title">
-                    <strong>{receipt.title}</strong>
-                    <span className={classForStatus(receipt.status)}>{receipt.status}</span>
-                  </div>
-                  <p>{receipt.detail}</p>
-                  <time>{formatDate(receipt.createdAt)}</time>
+          {activeSection === "risk" ? (
+            <>
+              <RiskScore
+                actionLoading={actionLoading}
+                onAnalyzeRisk={handleAnalyzeRisk}
+                score={riskScore}
+                tone={riskTone}
+                risk={risk}
+              />
+              <section className="panel portfolio-panel">
+                <PanelHeading icon={<Activity size={17} />} title="Portfolio Watch" action={loading ? "refreshing" : portfolio?.source ?? "no data"} />
+                <div className="portfolio-total">{formatUsd(portfolio?.totalValueUsd)}</div>
+                <div className="asset-list">
+                  {(portfolio?.assets ?? []).slice(0, 4).map((asset) => (
+                    <div className="asset-row" key={asset.symbol}>
+                      <span>{asset.symbol}</span>
+                      <span>{asset.balance}</span>
+                      <strong>{formatUsd(asset.valueUsd)}</strong>
+                    </div>
+                  ))}
+                  {!portfolio ? <p className="muted">No portfolio snapshot yet. Run a simulation scenario or start the agent monitor.</p> : null}
                 </div>
-              </article>
-            ))}
-            {receipts.length === 0 ? <p className="muted">No receipts yet. Run a demo scenario or save settings.</p> : null}
-          </div>
-        </section>
-        ) : null}
+                <div className="signal-list">
+                  {(portfolio?.riskSignals ?? []).map((signal) => (
+                    <span className={`signal ${signal.severity}`} key={`${signal.signalType}-${signal.description}`}>
+                      {signal.severity}: {signal.description}
+                    </span>
+                  ))}
+                </div>
+              </section>
+            </>
+          ) : null}
+
+          {activeSection === "setup" ? (
+            <section className="panel">
+              <PanelHeading icon={<KeyRound size={17} />} title="Configuration" action="signed where required" />
+              <GuardianSettings
+                actionLoading={actionLoading}
+                telegramSession={telegramSession}
+                onRegisterWallet={handleRegisterWallet}
+                onRewardsSubmit={handleRewardsSubmit}
+                onTelegramConnect={handleTelegramConnect}
+              />
+            </section>
+          ) : null}
+
+          {activeSection === "inheritance" ? (
+            <section className="inheritance-panel">
+              <InheritanceSettings
+                actionLoading={actionLoading}
+                walletAddress={activeWalletAddress}
+                onHeartbeatSubmit={handleHeartbeatSubmit}
+              />
+            </section>
+          ) : null}
+
+          {activeSection === "demo" ? (
+            <section className="panel demo-panel">
+              <PanelHeading icon={<Sparkles size={17} />} title="Demo Scenario Control" action={mode} />
+              <p className="muted">Deterministic simulation states are seeded through the agent API and then shown from the same read models as live status.</p>
+              <div className="scenario-grid">
+                {scenarios.map((scenario) => (
+                  <Button
+                    className="scenario-button"
+                    disabled={mode !== "simulation" || actionLoading === scenario.id}
+                    key={scenario.id}
+                    onClick={() => void handleRunDemo(scenario.id)}
+                    type="button"
+                    variant="secondary"
+                  >
+                    <span>{scenario.label}</span>
+                    <small>{actionLoading === scenario.id ? "Running..." : scenario.detail}</small>
+                  </Button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {activeSection === "health" ? (
+            <section className="panel">
+              <PanelHeading icon={<Cpu size={17} />} title="Operator Health" action="secret-safe" />
+              <div className="health-list">
+                <HealthRow icon={<RadioTower size={15} />} label="Agent API" value={health ? health.ok === false ? "degraded" : "reachable" : "unavailable"} tone={health ? health.ok === false ? "bad" : "ok" : "warn"} />
+                <HealthRow icon={<Bot size={15} />} label="Telegram" value={readableMetadata(health?.telegram)} tone={health?.telegram ? "ok" : "warn"} />
+                <HealthRow icon={<Send size={15} />} label="Somnia adapter" value={readableMetadata(health?.somnia)} tone={hasOkFlag(health?.somnia) && health.somnia.ok ? "ok" : "warn"} />
+                <HealthRow icon={<Shield size={15} />} label="Signer" value={readiness?.agentWallet.ready ? formatAddress(readiness.agentWallet.walletAddress) : "missing"} tone={readiness?.agentWallet.ready ? "ok" : "bad"} />
+                <HealthRow icon={<Link2 size={15} />} label="Chain" value={publicChain ? `${publicChain.name} (${publicChain.chainId})` : "unknown"} tone="neutral" />
+              </div>
+            </section>
+          ) : null}
+
+          {activeSection === "heartbeat" ? <HeartbeatPanel heartbeat={heartbeat} /> : null}
+          {activeSection === "rewards" ? <RewardPanel rewards={rewards} /> : null}
+
+          {activeSection === "receipts" ? (
+            <section className="panel timeline-panel">
+              <PanelHeading icon={<Clock3 size={17} />} title="Safety Receipts" action={`${receipts.length} recent`} />
+              <div className="timeline">
+                {receipts.map((receipt) => (
+                  <article className="receipt" key={receipt.id}>
+                    <span className={`receipt-dot ${classForStatus(receipt.status)}`} />
+                    <div>
+                      <div className="receipt-title">
+                        <strong>{receipt.title}</strong>
+                        <span className={classForStatus(receipt.status)}>{receipt.status}</span>
+                      </div>
+                      <p>{receipt.detail}</p>
+                      <time>{formatDate(receipt.createdAt)}</time>
+                    </div>
+                  </article>
+                ))}
+                {receipts.length === 0 ? <p className="muted">No receipts yet. Run a demo scenario or save settings.</p> : null}
+              </div>
+            </section>
+          ) : null}
         </section>
 
         <section className="mobile-bottom-nav" aria-label="Mobile sections">
