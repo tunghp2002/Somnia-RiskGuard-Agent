@@ -738,7 +738,7 @@ export function RiskGuardDashboard() {
             <section className="inheritance-panel">
               <InheritanceSettings
                 actionLoading={actionLoading}
-                walletAddress={activeWalletAddress}
+                walletAddress={wallet?.address ?? activeWalletAddress}
                 onHeartbeatSubmit={handleHeartbeatSubmit}
               />
             </section>

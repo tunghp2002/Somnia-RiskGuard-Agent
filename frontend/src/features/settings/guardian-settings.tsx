@@ -96,6 +96,8 @@ const initialBeneficiaries: BeneficiaryDraft[] = [
   { id: 1, address: "", sharePercent: 100, locked: false }
 ];
 
+const recipientColors = ["#a78bfa", "#22d3ee", "#34d399", "#f59e0b", "#fb7185", "#60a5fa", "#f472b6", "#c4b5fd"];
+
 type DurationDraft = {
   days: string;
   hours: string;
@@ -103,10 +105,12 @@ type DurationDraft = {
 
 const walletAddressPattern = /^0x[a-fA-F0-9]{40}$/;
 
-function clampNumber(value: string, min: number, max: number, allowDecimal = false) {
+function clampNumber(value: string, min: number, max: number, allowDecimal = false, maxDecimalPlaces = 5) {
   const cleaned = value.replace(allowDecimal ? /[^\d.]/g : /\D/g, "");
   const normalized = allowDecimal
-    ? cleaned.replace(/^(\d*\.?\d*).*$/, "$1")
+    ? cleaned
+      .replace(/(\..*)\./g, "$1")
+      .replace(new RegExp(`^(\\d*\\.?\\d{0,${maxDecimalPlaces}}).*$`), "$1")
     : cleaned;
 
   if (normalized === "") {
@@ -122,11 +126,42 @@ function clampNumber(value: string, min: number, max: number, allowDecimal = fal
 }
 
 function roundShare(value: number) {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return Math.round((value + Number.EPSILON) * 100_000) / 100_000;
 }
 
 function getShareInputValue(value: string) {
-  return Number(clampNumber(value, 0, 100, true) || 0);
+  return Number(clampNumber(value, 0, 100, true, 5) || 0);
+}
+
+function getRecipientColor(index: number) {
+  return recipientColors[index % recipientColors.length];
+}
+
+function formatDurationPreview(duration: DurationDraft) {
+  const days = Number(duration.days || 1);
+  const hours = Number(duration.hours || 0);
+
+  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+}
+
+function formatRecipientLabel(beneficiary: BeneficiaryDraft, index: number) {
+  const address = beneficiary.address.trim();
+
+  if (walletAddressPattern.test(address)) {
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  }
+
+  return `Recipient ${index + 1}`;
+}
+
+function formatAddressPreview(address?: string) {
+  const trimmedAddress = address?.trim() ?? "";
+
+  if (!walletAddressPattern.test(trimmedAddress)) {
+    return "Creator wallet";
+  }
+
+  return `${trimmedAddress.slice(0, 6)}...${trimmedAddress.slice(-4)}`;
 }
 
 function normalizeBeneficiaryShares(beneficiaries: BeneficiaryDraft[]) {
@@ -235,6 +270,23 @@ export function InheritanceSettings({
     () => roundShare(beneficiaries.reduce((total, beneficiary) => total + Number(beneficiary.sharePercent || 0), 0)),
     [beneficiaries]
   );
+  const allocationSegments = useMemo(() => {
+    let offset = 0;
+
+    return beneficiaries.map((beneficiary, index) => {
+      const share = Math.min(100, Math.max(0, roundShare(Number(beneficiary.sharePercent || 0))));
+      const segment = {
+        color: getRecipientColor(index),
+        id: beneficiary.id,
+        offset,
+        rest: roundShare(100 - share),
+        share
+      };
+
+      offset = roundShare(offset + share);
+      return segment;
+    });
+  }, [beneficiaries]);
   const lockedShareTotal = useMemo(
     () => beneficiaries
       .filter((beneficiary) => beneficiary.locked)
@@ -248,10 +300,14 @@ export function InheritanceSettings({
     : "";
   const isAllocationReady = !allocationError;
   const firstAddressError = beneficiaries
-    .map((beneficiary, index) => getBeneficiaryAddressError(beneficiary.address, index))
+    .map((beneficiary, index) => getBeneficiaryAddressError(beneficiary.address, index, walletAddress, beneficiaries, beneficiary.id))
     .find(Boolean) ?? "";
-  const canSaveInheritancePlan = isAllocationReady && !firstAddressError && actionLoading !== "heartbeat";
-  const submitBlockReason = firstAddressError || allocationError;
+  const firstShareError = beneficiaries
+    .map((beneficiary, index) => getBeneficiaryShareError(beneficiary.sharePercent, index))
+    .find(Boolean) ?? "";
+  const canSaveInheritancePlan = isAllocationReady && !firstAddressError && !firstShareError && actionLoading !== "heartbeat";
+  const submitBlockReason = firstAddressError || firstShareError || allocationError;
+  const hasCreatorWallet = walletAddressPattern.test(walletAddress?.trim() ?? "");
 
   function updateBeneficiary(id: number, patch: Partial<BeneficiaryDraft>) {
     setBeneficiaries((current) =>
@@ -348,17 +404,22 @@ export function InheritanceSettings({
             <div className="beneficiary-list">
               {beneficiaries.map((beneficiary, index) => (
                 <div className={beneficiary.locked ? "beneficiary-row beneficiary-row-locked" : "beneficiary-row"} key={beneficiary.id}>
-                  <div className="beneficiary-index">
+                  <div
+                    className="beneficiary-index"
+                    style={{
+                      "--recipient-color": getRecipientColor(index)
+                    } as CSSProperties}
+                  >
                     <UserPlus size={17} />
                     <span>{index + 1}</span>
                   </div>
                   <Field
-                    error={getBeneficiaryAddressError(beneficiary.address, index) || undefined}
+                    error={getBeneficiaryAddressError(beneficiary.address, index, walletAddress, beneficiaries, beneficiary.id) || undefined}
                     id={`beneficiary-address-${beneficiary.id}`}
                     label="Recipient wallet address"
                   >
                     <Input
-                      aria-invalid={Boolean(getBeneficiaryAddressError(beneficiary.address, index))}
+                      aria-invalid={Boolean(getBeneficiaryAddressError(beneficiary.address, index, walletAddress, beneficiaries, beneficiary.id))}
                       id={`beneficiary-address-${beneficiary.id}`}
                       name="beneficiaryAddress"
                       onChange={(event) => updateBeneficiary(beneficiary.id, { address: event.target.value })}
@@ -368,13 +429,14 @@ export function InheritanceSettings({
                     />
                   </Field>
                   <Field
+                    error={getBeneficiaryShareError(beneficiary.sharePercent, index) || undefined}
                     help="Percent of protected balances this recipient receives. Editing one unlocked recipient automatically rebalances the other unlocked recipients."
                     id={`beneficiary-share-${beneficiary.id}`}
                     label="Inheritance share"
                   >
                     <div className="input-with-unit">
                       <Input
-                        aria-invalid={false}
+                        aria-invalid={Boolean(getBeneficiaryShareError(beneficiary.sharePercent, index))}
                         disabled={beneficiary.locked}
                         id={`beneficiary-share-${beneficiary.id}`}
                         inputMode="decimal"
@@ -428,12 +490,31 @@ export function InheritanceSettings({
           <section className="preview-vault">
             <div className="preview-topline">
               <span><Radar size={15} /> Contract Preview</span>
-              <strong className={isAllocationReady ? "status-ok" : "status-warn"}>
-                {isAllocationReady ? "Balanced" : "Needs allocation"}
+              <strong className={hasCreatorWallet ? "status-ok" : "status-warn"}>
+                {formatAddressPreview(walletAddress)}
               </strong>
             </div>
 
-            <div className="vault-orbit" style={{ "--allocation": `${Math.min(shareTotal, 100)}%` } as CSSProperties}>
+            <div className="vault-orbit">
+              <svg aria-hidden="true" className="vault-allocation-ring" viewBox="0 0 120 120">
+                <circle className="vault-ring-track" cx="60" cy="60" r="52" pathLength="100" />
+                {allocationSegments.map((segment) => (
+                  <circle
+                    className="vault-ring-segment"
+                    cx="60"
+                    cy="60"
+                    key={segment.id}
+                    pathLength="100"
+                    r="52"
+                    style={{
+                      "--segment-color": segment.color,
+                      "--segment-offset": `${-segment.offset}`,
+                      "--segment-rest": segment.rest,
+                      "--segment-share": segment.share
+                    } as CSSProperties}
+                  />
+                ))}
+              </svg>
               <div>
                 <LockKeyhole size={30} />
                 <strong>{shareTotal}%</strong>
@@ -441,11 +522,24 @@ export function InheritanceSettings({
               </div>
             </div>
 
+            <div className="recipient-allocation-legend" aria-label="Recipient allocation legend">
+              {beneficiaries.map((beneficiary, index) => (
+                <span
+                  key={beneficiary.id}
+                  style={{ "--recipient-color": getRecipientColor(index) } as CSSProperties}
+                >
+                  <i aria-hidden="true" />
+                  <strong>{formatRecipientLabel(beneficiary, index)}</strong>
+                  <small>{beneficiary.sharePercent}%</small>
+                </span>
+              ))}
+            </div>
+
             <div className="preview-stat-grid">
               <span><Users size={16} /><strong>{beneficiaries.length}</strong><small>Recipients</small></span>
-              <span><CalendarClock size={16} /><strong>{intervalDuration.days || 1}d</strong><small>Renewal</small></span>
-              <span><Activity size={16} /><strong>{graceDuration.days || 1}d</strong><small>Grace</small></span>
-              <span><Fingerprint size={16} /><strong>{timelockDuration.days || 1}d</strong><small>Timelock</small></span>
+              <span><CalendarClock size={16} /><strong>{formatDurationPreview(intervalDuration)}</strong><small>Renewal</small></span>
+              <span><Activity size={16} /><strong>{formatDurationPreview(graceDuration)}</strong><small>Grace</small></span>
+              <span><Fingerprint size={16} /><strong>{formatDurationPreview(timelockDuration)}</strong><small>Timelock</small></span>
             </div>
 
             {submitBlockReason ? (
@@ -487,9 +581,16 @@ function Field({
   );
 }
 
-function getBeneficiaryAddressError(address: string, index: number) {
+function getBeneficiaryAddressError(
+  address: string,
+  index: number,
+  walletAddress?: string | undefined,
+  beneficiaries: BeneficiaryDraft[] = [],
+  currentId?: number
+) {
   const label = `Recipient ${index + 1}`;
   const trimmedAddress = address.trim();
+  const creatorAddress = walletAddress?.trim() ?? "";
 
   if (!trimmedAddress) {
     return `${label} address is required.`;
@@ -497,6 +598,39 @@ function getBeneficiaryAddressError(address: string, index: number) {
 
   if (!walletAddressPattern.test(trimmedAddress)) {
     return `${label} needs a valid 0x wallet address.`;
+  }
+
+  if (walletAddressPattern.test(creatorAddress) && trimmedAddress.toLowerCase() === creatorAddress.toLowerCase()) {
+    return `${label} cannot be the creator wallet.`;
+  }
+
+  const duplicateRecipientLabels = getDuplicateRecipientLabels(trimmedAddress, beneficiaries, currentId);
+
+  if (duplicateRecipientLabels.length > 0) {
+    return `${label} address duplicates ${duplicateRecipientLabels.join(", ")}.`;
+  }
+
+  return "";
+}
+
+function getDuplicateRecipientLabels(address: string, beneficiaries: BeneficiaryDraft[], currentId?: number) {
+  const normalizedAddress = address.toLowerCase();
+
+  return beneficiaries
+    .map((beneficiary, duplicateIndex) => ({
+      id: beneficiary.id,
+      isDuplicate: beneficiary.id !== currentId
+        && walletAddressPattern.test(beneficiary.address.trim())
+        && beneficiary.address.trim().toLowerCase() === normalizedAddress,
+      label: `Recipient ${duplicateIndex + 1}`
+    }))
+    .filter((beneficiary) => beneficiary.isDuplicate)
+    .map((beneficiary) => beneficiary.label);
+}
+
+function getBeneficiaryShareError(sharePercent: number, index: number) {
+  if (Number(sharePercent || 0) <= 0) {
+    return `Recipient ${index + 1} share must be greater than 0%.`;
   }
 
   return "";

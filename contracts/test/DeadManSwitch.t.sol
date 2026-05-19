@@ -145,6 +145,14 @@ contract DeadManSwitchTest {
         new SomniaDeadManSwitch(OWNER, _beneficiariesBadTotal(), 3 days, 1 days, 1 days);
     }
 
+    function testRejectsOwnerAndDuplicateBeneficiaryAddresses() public {
+        vm.expectRevert(SomniaDeadManSwitch.SameAddress.selector);
+        new SomniaDeadManSwitch(OWNER, _beneficiariesWithOwner(), 3 days, 1 days, 1 days);
+
+        vm.expectRevert(SomniaDeadManSwitch.SameAddress.selector);
+        new SomniaDeadManSwitch(OWNER, _beneficiariesWithDuplicate(), 3 days, 1 days, 1 days);
+    }
+
     function testTwoStepBeneficiariesChange() public {
         SomniaDeadManSwitch.Beneficiary[] memory next = _singleBeneficiaryC();
 
@@ -171,6 +179,16 @@ contract DeadManSwitchTest {
         vm.expectRevert(SomniaDeadManSwitch.DeadManSwitchActive.selector);
         vm.prank(OWNER);
         dms.proposeBeneficiaries(_singleBeneficiaryC());
+    }
+
+    function testRejectsInvalidProposedBeneficiaryAddresses() public {
+        vm.expectRevert(SomniaDeadManSwitch.SameAddress.selector);
+        vm.prank(OWNER);
+        dms.proposeBeneficiaries(_beneficiariesWithOwner());
+
+        vm.expectRevert(SomniaDeadManSwitch.SameAddress.selector);
+        vm.prank(OWNER);
+        dms.proposeBeneficiaries(_beneficiariesWithDuplicate());
     }
 
     function testTwoStepOwnershipTransfer() public {
@@ -411,6 +429,26 @@ contract DeadManSwitchTest {
         list = new SomniaDeadManSwitch.Beneficiary[](2);
         list[0] = SomniaDeadManSwitch.Beneficiary(BENEFICIARY_A, 6_000);
         list[1] = SomniaDeadManSwitch.Beneficiary(BENEFICIARY_B, 3_000);
+    }
+
+    function _beneficiariesWithOwner()
+        private
+        pure
+        returns (SomniaDeadManSwitch.Beneficiary[] memory list)
+    {
+        list = new SomniaDeadManSwitch.Beneficiary[](2);
+        list[0] = SomniaDeadManSwitch.Beneficiary(OWNER, 6_000);
+        list[1] = SomniaDeadManSwitch.Beneficiary(BENEFICIARY_B, 4_000);
+    }
+
+    function _beneficiariesWithDuplicate()
+        private
+        pure
+        returns (SomniaDeadManSwitch.Beneficiary[] memory list)
+    {
+        list = new SomniaDeadManSwitch.Beneficiary[](2);
+        list[0] = SomniaDeadManSwitch.Beneficiary(BENEFICIARY_A, 6_000);
+        list[1] = SomniaDeadManSwitch.Beneficiary(BENEFICIARY_A, 4_000);
     }
 
     function _singleBeneficiaryC()

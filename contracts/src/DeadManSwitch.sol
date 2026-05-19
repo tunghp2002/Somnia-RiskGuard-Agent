@@ -228,7 +228,7 @@ contract SomniaDeadManSwitch is ReentrancyGuard {
         uint256              initialTimelockPeriod
     ) {
         if (initialOwner == address(0)) revert ZeroAddress();
-        _validateBeneficiaries(initialBeneficiaries);
+        _validateBeneficiaries(initialBeneficiaries, initialOwner);
         _validateDuration(initialHeartbeatInterval);
         _validateDuration(initialGracePeriod);
         _validateDuration(initialTimelockPeriod);
@@ -313,7 +313,7 @@ contract SomniaDeadManSwitch is ReentrancyGuard {
      */
     function proposeBeneficiaries(Beneficiary[] calldata next) external onlyOwner {
         if (isExpired()) revert DeadManSwitchActive();
-        _validateBeneficiaries(next);
+        _validateBeneficiaries(next, owner);
 
         delete _pendingBeneficiaries;
         uint256 len = next.length;
@@ -632,13 +632,17 @@ contract SomniaDeadManSwitch is ReentrancyGuard {
         if (d < MIN_DURATION || d > MAX_DURATION) revert InvalidDuration();
     }
 
-    function _validateBeneficiaries(Beneficiary[] memory list) internal pure {
+    function _validateBeneficiaries(Beneficiary[] memory list, address ownerAddress) internal pure {
         uint256 len = list.length;
         if (len == 0 || len > MAX_BENEFICIARIES) revert TooManyBeneficiaries();
         uint256 total;
         for (uint256 i; i < len; ++i) {
             if (list[i].addr     == address(0)) revert ZeroAddress();
+            if (list[i].addr     == ownerAddress) revert SameAddress();
             if (list[i].shareBps == 0)          revert InvalidShares();
+            for (uint256 j = i + 1; j < len; ++j) {
+                if (list[i].addr == list[j].addr) revert SameAddress();
+            }
             total += list[i].shareBps;
         }
         if (total != BPS_TOTAL) revert InvalidShares();
