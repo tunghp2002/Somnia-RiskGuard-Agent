@@ -6,7 +6,10 @@ import { ZodError } from "zod";
 
 import { failure, sendJson, success } from "./response.js";
 import type { SetupService } from "../services/setup.service.js";
-import { setupWalletRequestSchema } from "../services/setup.service.js";
+import {
+  setupWalletRequestSchema,
+  userProfileUpdateRequestSchema
+} from "../services/setup.service.js";
 import type { PublicChainMetadata } from "../config/public-chain.js";
 import type { AuditEventsRepository } from "../persistence/audit-events.repository.js";
 import type { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
@@ -69,7 +72,7 @@ function applyCorsHeaders(request: IncomingMessage, response: Parameters<typeof 
     response.setHeader("Vary", "Origin");
   }
 
-  response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", corsRequestHeaders);
 }
 
@@ -204,6 +207,25 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         const body = setupWalletRequestSchema.parse(await readJsonBody(request));
         const user = await dependencies.setupService.registerMonitoredWallet(body);
         sendJson(response, 201, success(user, requestId));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/users/profile") {
+        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
+
+        if (!walletAddress) {
+          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
+          return;
+        }
+
+        sendJson(response, 200, success(await dependencies.setupService.getUserProfile(walletAddress) ?? null, requestId));
+        return;
+      }
+
+      if (request.method === "PATCH" && url.pathname === "/api/users/profile") {
+        const body = userProfileUpdateRequestSchema.parse(await readJsonBody(request));
+        const user = await dependencies.setupService.updateUserProfile(body);
+        sendJson(response, 200, success(user, requestId));
         return;
       }
 
@@ -488,6 +510,12 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         const telegramUserId = typeof body === "object" && body && "telegramUserId" in body
           ? String((body as { telegramUserId?: unknown }).telegramUserId ?? "")
           : undefined;
+        const telegramUsername = typeof body === "object" && body && "telegramUsername" in body
+          ? String((body as { telegramUsername?: unknown }).telegramUsername ?? "")
+          : undefined;
+        const telegramDisplayName = typeof body === "object" && body && "telegramDisplayName" in body
+          ? String((body as { telegramDisplayName?: unknown }).telegramDisplayName ?? "")
+          : undefined;
         const session = telegramConnect.get(code);
 
         if (!session) {
@@ -496,12 +524,24 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         }
 
         if (Date.parse(session.expiresAt) <= Date.now()) {
-          await telegramConnect.confirm({ code, chatId, ...(telegramUserId ? { telegramUserId } : {}) });
+          await telegramConnect.confirm({
+            code,
+            chatId,
+            ...(telegramUserId ? { telegramUserId } : {}),
+            ...(telegramUsername ? { telegramUsername } : {}),
+            ...(telegramDisplayName ? { telegramDisplayName } : {})
+          });
           sendJson(response, 410, failure("telegram_connect_expired", "Telegram Connect code expired"));
           return;
         }
 
-        const confirmed = await telegramConnect.confirm({ code, chatId, ...(telegramUserId ? { telegramUserId } : {}) });
+        const confirmed = await telegramConnect.confirm({
+          code,
+          chatId,
+          ...(telegramUserId ? { telegramUserId } : {}),
+          ...(telegramUsername ? { telegramUsername } : {}),
+          ...(telegramDisplayName ? { telegramDisplayName } : {})
+        });
         sendJson(response, 200, success(telegramConnect.serialize(confirmed ?? session), requestId));
         return;
       }

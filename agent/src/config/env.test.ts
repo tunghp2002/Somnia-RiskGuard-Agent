@@ -145,11 +145,11 @@ describe("agent runtime config", () => {
     ).toThrow(ConfigValidationError);
   });
 
-  it("rejects partial Telegram configuration", () => {
+  it("rejects Telegram chat ID without a bot token", () => {
     expect(() =>
       validateConfig({
         ...validEnv,
-        TELEGRAM_CHAT_ID: undefined
+        TELEGRAM_BOT_TOKEN: undefined
       })
     ).toThrow(ConfigValidationError);
   });

@@ -24,6 +24,7 @@ export const validEnv = {
   MAX_CLAIM_GAS_USD: "1",
   MIN_REWARD_VALUE_USD: "2",
   TELEGRAM_BOT_TOKEN: "123456:telegram_test_token",
+  TELEGRAM_BOT_USERNAME: "RiskGuardBot",
   TELEGRAM_CHAT_ID: "987654321",
   TELEGRAM_WEBHOOK_SECRET: "webhook-secret-value"
 };

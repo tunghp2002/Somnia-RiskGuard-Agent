@@ -34,7 +34,9 @@ export const telegramBindingRequestSchema = z
       .regex(/^0x[a-fA-F0-9]{40}$/)
       .transform((value) => getAddress(value)),
     chatId: z.string().regex(/^-?\d+$/),
-    telegramUserId: z.string().regex(/^\d+$/).optional()
+    telegramUserId: z.string().regex(/^\d+$/).optional(),
+    telegramUsername: z.string().min(1).max(64).optional(),
+    telegramDisplayName: z.string().min(1).max(128).optional()
   })
   .strict();
 
@@ -139,7 +141,9 @@ export class TelegramAlertService {
       userId: user.userId,
       walletAddress: parsed.walletAddress,
       chatId: parsed.chatId,
-      ...(parsed.telegramUserId ? { telegramUserId: parsed.telegramUserId } : {})
+      ...(parsed.telegramUserId ? { telegramUserId: parsed.telegramUserId } : {}),
+      ...(parsed.telegramUsername ? { telegramUsername: parsed.telegramUsername } : {}),
+      ...(parsed.telegramDisplayName ? { telegramDisplayName: parsed.telegramDisplayName } : {})
     });
 
     await this.audit.record({
@@ -149,7 +153,9 @@ export class TelegramAlertService {
         userId: user.userId,
         walletAddress: parsed.walletAddress,
         chatId: parsed.chatId,
-        telegramUserId: parsed.telegramUserId
+        telegramUserId: parsed.telegramUserId,
+        telegramUsername: parsed.telegramUsername,
+        telegramDisplayName: parsed.telegramDisplayName
       }
     });
 

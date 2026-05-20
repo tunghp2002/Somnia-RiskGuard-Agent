@@ -7,7 +7,7 @@ import {
   loadConfig,
   PublicConfigValidationError,
   type AgentConfig,
-  type LoadConfigOptions
+  type LoadConfigOptions,
 } from "./config/env.js";
 import { createLogger } from "./config/logger.js";
 import { createAgentApiServer } from "./api/server.js";
@@ -25,12 +25,12 @@ import { GroqClient } from "./integrations/llm/groq.client.js";
 import {
   createTelegramClient,
   type TelegramClient,
-  type TelegramPollingHandle
+  type TelegramPollingHandle,
 } from "./integrations/telegram/telegram.client.js";
 import { EthersDeadManSwitchStateReader } from "./integrations/somnia/deadman-switch.client.js";
 import {
   createSomniaAgentKitClient,
-  type SomniaAgentKitClient
+  type SomniaAgentKitClient,
 } from "./integrations/somnia/somnia-agent-kit.client.js";
 import { AuditService } from "./services/audit.service.js";
 import { TelegramHeartbeatReminderNotifier } from "./services/heartbeat-reminder-notifier.js";
@@ -79,7 +79,7 @@ export async function main(options: MainOptions = {}): Promise<AgentConfig> {
 
 export async function startAgentRuntime(
   config: AgentConfig,
-  options: StartAgentRuntimeOptions = {}
+  options: StartAgentRuntimeOptions = {},
 ): Promise<AgentRuntime> {
   const logger = createLogger(config);
   const users = new UsersRepository();
@@ -96,7 +96,7 @@ export async function startAgentRuntime(
   const somnia = options.somniaClient ?? createSomniaAgentKitClient(config);
   const riskScore = new RiskScoreService(config, riskSnapshots, audit, {
     primary: new GroqClient(config),
-    fallback: new DeepSeekClient(config)
+    fallback: new DeepSeekClient(config),
   });
   const telegramAlerts = new TelegramAlertService(
     config,
@@ -107,18 +107,23 @@ export async function startAgentRuntime(
     portfolioSnapshots,
     riskScore,
     telegramClient,
-    audit
+    audit,
   );
-  const telegramConnect = new TelegramConnectService(telegramAlerts);
+  const telegramConnect = new TelegramConnectService(
+    telegramAlerts,
+    config.telegram.botUsername
+      ? { botUsername: config.telegram.botUsername }
+      : {},
+  );
   const setupService = new SetupService(users, config, audit);
   const heartbeatReminderNotifier = new TelegramHeartbeatReminderNotifier(
     telegramBindings,
-    telegramClient
+    telegramClient,
   );
   const rewardClaimNotifier = new TelegramRewardClaimNotifier(
     telegramBindings,
     telegramClient,
-    audit
+    audit,
   );
   const deadManSwitchReader = new EthersDeadManSwitchStateReader(config);
   const heartbeats = new HeartbeatService(
@@ -127,7 +132,7 @@ export async function startAgentRuntime(
     audit,
     undefined,
     heartbeatReminderNotifier,
-    deadManSwitchReader
+    deadManSwitchReader,
   );
   const rewards = new RewardClaimService(
     rewardClaims,
@@ -135,19 +140,19 @@ export async function startAgentRuntime(
     audit,
     somnia,
     rewardClaimNotifier,
-    users
+    users,
   );
   const portfolioService = new PortfolioService(
     users,
     portfolioSnapshots,
     audit,
     undefined,
-    { demoMode: true }
+    { demoMode: true },
   );
   const portfolioMonitorJob = new PortfolioMonitorJob(
     portfolioService,
     riskScore,
-    telegramAlerts
+    telegramAlerts,
   );
   const heartbeatJob = new HeartbeatJob(heartbeats);
   const rewardClaimJob = new RewardClaimJob(rewards);
@@ -158,7 +163,7 @@ export async function startAgentRuntime(
     heartbeatsRepository,
     rewardClaims,
     audit,
-    config
+    config,
   );
   const apiServer = createAgentApiServer({
     setupService,
@@ -176,8 +181,8 @@ export async function startAgentRuntime(
       ok: true,
       telegram: await telegramAlerts.health(),
       somnia: await somnia.health(),
-      publicChain: config.publicChain
-    })
+      publicChain: config.publicChain,
+    }),
   });
 
   if (config.somnia.monitoredWalletAddress) {
@@ -187,30 +192,41 @@ export async function startAgentRuntime(
       status: "succeeded",
       metadata: {
         walletAddress: config.somnia.monitoredWalletAddress,
-        source: "MONITORED_WALLET_ADDRESS"
-      }
+        source: "MONITORED_WALLET_ADDRESS",
+      },
     });
   }
 
   const requestedPort = options.apiPort ?? 3001;
   await listen(apiServer, requestedPort);
   const address = apiServer.address();
-  const apiPort = typeof address === "object" && address ? address.port : requestedPort;
+  const apiPort =
+    typeof address === "object" && address ? address.port : requestedPort;
 
   const telegramPolling = telegramClient.startPolling?.({
     handleCallback: async (update) =>
       telegramAlerts.processCallback({
         chatId: update.chatId,
-        ...(update.telegramUserId ? { telegramUserId: update.telegramUserId } : {}),
-        data: update.data
+        ...(update.telegramUserId
+          ? { telegramUserId: update.telegramUserId }
+          : {}),
+        data: update.data,
       }),
     handleTextMessage: async (update) =>
       telegramConnect.confirmFromText({
         chatId: update.chatId,
-        ...(update.telegramUserId ? { telegramUserId: update.telegramUserId } : {}),
-        text: update.text
+        ...(update.telegramUserId
+          ? { telegramUserId: update.telegramUserId }
+          : {}),
+        ...(update.telegramUsername
+          ? { telegramUsername: update.telegramUsername }
+          : {}),
+        ...(update.telegramDisplayName
+          ? { telegramDisplayName: update.telegramDisplayName }
+          : {}),
+        text: update.text,
       }),
-    logger
+    logger,
   });
 
   logger.info(
@@ -219,19 +235,20 @@ export async function startAgentRuntime(
       apiHost: "0.0.0.0",
       telegram: await telegramAlerts.health(),
       somnia: await somnia.health(),
-      publicChain: config.publicChain.key
+      publicChain: config.publicChain.key,
     },
-    "agent runtime started"
+    "agent runtime started",
   );
 
-  const jobTimers = options.startJobs === false
-    ? []
-    : startRuntimeJobs({
-        logger,
-        portfolioMonitorJob,
-        heartbeatJob,
-        rewardClaimJob
-      });
+  const jobTimers =
+    options.startJobs === false
+      ? []
+      : startRuntimeJobs({
+          logger,
+          portfolioMonitorJob,
+          heartbeatJob,
+          rewardClaimJob,
+        });
 
   return {
     apiServer,
@@ -243,7 +260,7 @@ export async function startAgentRuntime(
       }
       telegramPolling?.stop();
       await close(apiServer);
-    }
+    },
   };
 }
 
@@ -251,7 +268,7 @@ function startRuntimeJobs({
   logger,
   portfolioMonitorJob,
   heartbeatJob,
-  rewardClaimJob
+  rewardClaimJob,
 }: {
   logger: ReturnType<typeof createLogger>;
   portfolioMonitorJob: PortfolioMonitorJob;
@@ -263,13 +280,16 @@ function startRuntimeJobs({
   const schedule = (
     name: string,
     intervalMs: number,
-    run: () => Promise<unknown>
+    run: () => Promise<unknown>,
   ) => {
     let running = false;
 
     const tick = async () => {
       if (running) {
-        logger.warn({ job: name }, "agent job skipped because previous run is still active");
+        logger.warn(
+          { job: name },
+          "agent job skipped because previous run is still active",
+        );
         return;
       }
 
@@ -279,8 +299,11 @@ function startRuntimeJobs({
         logger.debug({ job: name, result }, "agent job completed");
       } catch (error) {
         logger.error(
-          { job: name, error: error instanceof Error ? error.message : "unknown error" },
-          "agent job failed"
+          {
+            job: name,
+            error: error instanceof Error ? error.message : "unknown error",
+          },
+          "agent job failed",
         );
       } finally {
         running = false;
@@ -325,7 +348,9 @@ export async function runCli(options: MainOptions = {}): Promise<void> {
     }
 
     if (error instanceof PublicConfigValidationError) {
-      console.error(`Agent public chain configuration is invalid:\n- ${error.message}`);
+      console.error(
+        `Agent public chain configuration is invalid:\n- ${error.message}`,
+      );
       process.exitCode = 1;
       return;
     }

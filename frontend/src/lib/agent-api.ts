@@ -67,11 +67,18 @@ export interface TelegramConnectSession {
   status: "waiting" | "connected" | "expired" | "failed";
   connected: boolean;
   botDeepLink: string;
+  binding?: {
+    chatId: string;
+    telegramUserId?: string;
+    telegramUsername?: string;
+    telegramDisplayName?: string;
+  };
 }
 
 export interface UserRecord {
   userId: string;
   walletAddress: string;
+  displayName?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -219,6 +226,13 @@ export const agentApi = {
   registerWallet: (body: { walletAddress: string; message: string; signature: string }) =>
     request<UserRecord>("/api/users", {
       method: "POST",
+      body: JSON.stringify(body)
+    }),
+  getUserProfile: (walletAddress: string) =>
+    request<UserRecord | null>(`/api/users/profile${walletQuery(walletAddress)}`),
+  updateUserProfile: (body: { walletAddress: string; displayName: string }) =>
+    request<UserRecord>("/api/users/profile", {
+      method: "PATCH",
       body: JSON.stringify(body)
     }),
   getPortfolio: (walletAddress?: string) =>

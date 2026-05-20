@@ -3,8 +3,6 @@ import type { CSSProperties, FormEvent, ReactNode } from "react";
 import {
   Activity,
   CalendarClock,
-  CheckCircle2,
-  ExternalLink,
   Fingerprint,
   Info,
   Lock,
@@ -12,8 +10,6 @@ import {
   Loader2,
   Plus,
   Radar,
-  Send,
-  Shield,
   TimerReset,
   Trash2,
   Unlock,
@@ -22,68 +18,9 @@ import {
   WalletCards
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { TelegramConnectSession } from "@/lib/agent-api";
-
-export function GuardianSettings({
-  actionLoading,
-  telegramSession,
-  onRegisterWallet,
-  onTelegramConnect,
-  onRewardsSubmit
-}: {
-  actionLoading: string | null;
-  telegramSession: TelegramConnectSession | null;
-  onRegisterWallet: () => void;
-  onTelegramConnect: () => void;
-  onRewardsSubmit: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  return (
-    <div className="form-stack">
-      <Button className="secondary-button" onClick={onRegisterWallet} type="button" variant="secondary">
-        {actionLoading === "register" ? <Loader2 className="spin" size={15} /> : <Shield size={15} />}
-        Register monitored wallet
-      </Button>
-
-      <section className="connect-panel" aria-label="Telegram connection">
-        <div>
-          <label>Telegram Connect</label>
-          <p className="muted">Start a bot/code flow. Manual chat-id entry is reserved for internal fallback only.</p>
-        </div>
-        <Button onClick={onTelegramConnect} type="button" variant="secondary">
-          {actionLoading === "telegram" ? <Loader2 className="spin" size={15} /> : <Send size={15} />}
-          Connect Telegram
-        </Button>
-        {telegramSession ? (
-          <div className="connect-code">
-            <span>One-time code</span>
-            <strong>{telegramSession.code}</strong>
-            <Badge>{telegramSession.status}</Badge>
-            <small>Expires {new Date(telegramSession.expiresAt).toLocaleTimeString()}</small>
-            <a href={telegramSession.botDeepLink} rel="noreferrer" target="_blank">
-              Open bot link <ExternalLink size={13} />
-            </a>
-          </div>
-        ) : null}
-      </section>
-
-      <form onSubmit={onRewardsSubmit}>
-        <label className="check-row">
-          <input name="autoClaimEnabled" type="checkbox" defaultChecked />
-          Auto-claim inside policy bounds
-        </label>
-        <div className="two-col">
-          <input aria-label="Minimum reward value USD" name="minRewardValueUsd" type="number" min="0" step="0.01" defaultValue="1" />
-          <input aria-label="Maximum gas USD" name="maxClaimGasUsd" type="number" min="0" step="0.01" defaultValue="2" />
-        </div>
-        <Button type="submit" variant="secondary">{actionLoading === "rewards" ? "Saving" : "Save Reward Policy"}</Button>
-      </form>
-    </div>
-  );
-}
 
 type BeneficiaryDraft = {
   id: number;

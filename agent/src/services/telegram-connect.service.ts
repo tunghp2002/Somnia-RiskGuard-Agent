@@ -13,7 +13,10 @@ export interface TelegramConnectSession {
 export class TelegramConnectService {
   private readonly sessions = new Map<string, TelegramConnectSession>();
 
-  public constructor(private readonly telegramAlerts: TelegramAlertService) {}
+  public constructor(
+    private readonly telegramAlerts: TelegramAlertService,
+    private readonly options: { botUsername?: string } = {}
+  ) {}
 
   public start(walletAddress: string): TelegramConnectSession {
     const code = randomUUID().slice(0, 8).toUpperCase();
@@ -53,7 +56,7 @@ export class TelegramConnectService {
       status: session.status,
       connected: session.status === "connected",
       ...(session.binding ? { binding: session.binding } : {}),
-      botDeepLink: `https://t.me/RiskGuardBot?start=${encodeURIComponent(session.code)}`
+      botDeepLink: `https://t.me/${this.options.botUsername ?? "RiskGuardBot"}?start=${encodeURIComponent(session.code)}`
     };
   }
 
@@ -61,6 +64,8 @@ export class TelegramConnectService {
     code: string;
     chatId: string;
     telegramUserId?: string;
+    telegramUsername?: string;
+    telegramDisplayName?: string;
   }): Promise<TelegramConnectSession | undefined> {
     const code = input.code.toUpperCase();
     const session = this.sessions.get(code);
@@ -78,7 +83,9 @@ export class TelegramConnectService {
     const binding = await this.telegramAlerts.linkChat({
       walletAddress: session.walletAddress,
       chatId: input.chatId,
-      ...(input.telegramUserId ? { telegramUserId: input.telegramUserId } : {})
+      ...(input.telegramUserId ? { telegramUserId: input.telegramUserId } : {}),
+      ...(input.telegramUsername ? { telegramUsername: input.telegramUsername } : {}),
+      ...(input.telegramDisplayName ? { telegramDisplayName: input.telegramDisplayName } : {})
     });
     session.status = "connected";
     session.binding = binding;
@@ -90,17 +97,21 @@ export class TelegramConnectService {
     text: string;
     chatId: string;
     telegramUserId?: string;
+    telegramUsername?: string;
+    telegramDisplayName?: string;
   }): Promise<{ ok: boolean; message: string }> {
-    const code = extractConnectCode(input.text);
+    const code = extractConnectCode(input.text) ?? this.getSingleWaitingSessionCode(input.text);
 
     if (!code) {
-      return { ok: false, message: "Send the one-time RiskGuard code shown in the dashboard." };
+      return { ok: false, message: "Open Telegram Connect from the RiskGuard dashboard, then press Start here." };
     }
 
     const session = await this.confirm({
       code,
       chatId: input.chatId,
-      ...(input.telegramUserId ? { telegramUserId: input.telegramUserId } : {})
+      ...(input.telegramUserId ? { telegramUserId: input.telegramUserId } : {}),
+      ...(input.telegramUsername ? { telegramUsername: input.telegramUsername } : {}),
+      ...(input.telegramDisplayName ? { telegramDisplayName: input.telegramDisplayName } : {})
     });
 
     if (!session) {
@@ -113,11 +124,24 @@ export class TelegramConnectService {
 
     return { ok: true, message: "Telegram connected to RiskGuard." };
   }
+
+  private getSingleWaitingSessionCode(text: string): string | undefined {
+    if (!/^\/START(?:@\w+)?$/i.test(text.trim())) {
+      return undefined;
+    }
+
+    const waitingSessions = [...this.sessions.values()].filter((session) => (
+      session.status === "waiting" &&
+      Date.parse(session.expiresAt) > Date.now()
+    ));
+
+    return waitingSessions.length === 1 ? waitingSessions[0]?.code : undefined;
+  }
 }
 
 function extractConnectCode(text: string): string | undefined {
   const trimmed = text.trim().toUpperCase();
-  const startPayload = trimmed.match(/^\/START\s+([A-Z0-9]{8})$/)?.[1];
+  const startPayload = trimmed.match(/^\/START(?:@\w+)?\s+([A-Z0-9]{8})$/)?.[1];
   const bareCode = trimmed.match(/^[A-Z0-9]{8}$/)?.[0];
 
   return startPayload ?? bareCode;

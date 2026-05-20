@@ -22,21 +22,42 @@ export function DashboardSidebar({
   mode: Mode;
   publicChain: PublicChainMetadata | null;
 }) {
+  const navGroups = [
+    {
+      items: navItems.filter((item) => ["overview", "inheritance", "risk", "receipts"].includes(item.id)),
+      label: "Monitor"
+    },
+    {
+      items: navItems.filter((item) => ["demo", "health"].includes(item.id)),
+      label: "Operations"
+    },
+    {
+      items: navItems.filter((item) => ["profile"].includes(item.id)),
+      label: "Settings"
+    }
+  ];
+
   return (
     <aside className="rg-sidebar" aria-label="Primary sections">
       <div className="sidebar-brand"><Shield size={18} /> RiskGuard</div>
-      <nav>
-        {navItems.map((item) => (
-          <Button
-            className={activeSection === item.id ? "active" : ""}
-            key={item.id}
-            onClick={() => onSectionChange(item.id)}
-            type="button"
-            variant="ghost"
-          >
-            {item.icon}
-            {item.label}
-          </Button>
+      <nav className="sidebar-nav">
+        {navGroups.map((group) => (
+          <div className="sidebar-nav-group" key={group.label}>
+            <span className="sidebar-nav-label">{group.label}</span>
+            {group.items.map((item) => (
+              <Button
+                aria-current={activeSection === item.id ? "page" : undefined}
+                className={activeSection === item.id ? "sidebar-nav-button active" : "sidebar-nav-button"}
+                key={item.id}
+                onClick={() => onSectionChange(item.id)}
+                type="button"
+                variant="ghost"
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </Button>
+            ))}
+          </div>
         ))}
       </nav>
       <div className="sidebar-meta">

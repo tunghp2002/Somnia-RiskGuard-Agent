@@ -7,14 +7,13 @@ import {
   agentApi,
   type AuditEvent,
   type DemoScenarioResult,
-  type HeartbeatStatus,
   type Mode,
   type PortfolioSnapshot,
   type PublicChainMetadata,
   type Readiness,
-  type RewardStatus,
   type RiskSnapshot,
-  type TelegramConnectSession
+  type TelegramConnectSession,
+  type UserRecord
 } from "@/lib/agent-api";
 import {
   connectBrowserWallet,
@@ -25,7 +24,9 @@ import {
   type BrowserWalletState
 } from "@/lib/wallet";
 import type { AccountStatus, DashboardSection, Notice, RiskTone } from "../types";
-import { durationToSeconds, errorMessage, isSimulationEvent, readableMetadata } from "../utils";
+import { durationToSeconds, errorMessage, formatAddress, isSimulationEvent, readableMetadata } from "../utils";
+
+const telegramConnectTimeoutMs = 60_000;
 
 export function useRiskGuardDashboard() {
   const [activeSection, setActiveSection] = useState<DashboardSection>("overview");
@@ -38,11 +39,10 @@ export function useRiskGuardDashboard() {
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
   const [risk, setRisk] = useState<RiskSnapshot | null>(null);
-  const [heartbeat, setHeartbeat] = useState<HeartbeatStatus | null>(null);
-  const [rewards, setRewards] = useState<RewardStatus | null>(null);
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [telegramSession, setTelegramSession] = useState<TelegramConnectSession | null>(null);
+  const [userProfile, setUserProfile] = useState<UserRecord | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -61,26 +61,16 @@ export function useRiskGuardDashboard() {
       detail: readableMetadata(event.metadata),
       createdAt: event.createdAt
     }));
-    const latestClaim = rewards?.latestClaim
-      ? [{
-        id: rewards.latestClaim.createdAt,
-        title: `reward ${rewards.latestClaim.status}`,
-        status: rewards.latestClaim.status,
-        detail: rewards.latestClaim.reason ?? `${rewards.latestClaim.protocol} ${rewards.latestClaim.rewardToken}`,
-        createdAt: rewards.latestClaim.createdAt
-      }]
-      : [];
 
-    return [...latestClaim, ...fromAudit].slice(0, 8);
-  }, [events, rewards]);
+    return fromAudit.slice(0, 8);
+  }, [events]);
 
   const clearWalletScopedState = useCallback(() => {
     setPortfolio(null);
     setRisk(null);
-    setHeartbeat(null);
-    setRewards(null);
     setEvents([]);
     setTelegramSession(null);
+    setUserProfile(null);
   }, []);
 
   const loadData = useCallback(async () => {
@@ -96,8 +86,7 @@ export function useRiskGuardDashboard() {
         riskResult,
         healthResult,
         eventsResult,
-        heartbeatResult,
-        rewardsResult
+        profileResult
       ] = await Promise.allSettled([
         agentApi.getPublicChain(),
         agentApi.getReadiness(),
@@ -105,8 +94,7 @@ export function useRiskGuardDashboard() {
         walletAddress || mode === "simulation" ? agentApi.getRisk(walletAddress) : Promise.resolve(null),
         agentApi.getHealth(),
         agentApi.getAuditEvents(20),
-        walletAddress ? agentApi.getHeartbeat(walletAddress) : Promise.resolve(null),
-        walletAddress ? agentApi.getRewards(walletAddress) : Promise.resolve(null)
+        wallet ? agentApi.getUserProfile(wallet.address) : Promise.resolve(null)
       ]);
       const failedReads: string[] = [];
 
@@ -153,17 +141,11 @@ export function useRiskGuardDashboard() {
         failedReads.push("audit events");
         setEvents([]);
       }
-      if (heartbeatResult.status === "fulfilled") {
-        setHeartbeat(heartbeatResult.value);
+      if (profileResult.status === "fulfilled") {
+        setUserProfile(profileResult.value);
       } else {
-        failedReads.push("heartbeat");
-        setHeartbeat(null);
-      }
-      if (rewardsResult.status === "fulfilled") {
-        setRewards(rewardsResult.value);
-      } else {
-        failedReads.push("rewards");
-        setRewards(null);
+        failedReads.push("profile");
+        setUserProfile(null);
       }
 
       if (failedReads.length > 0) {
@@ -182,7 +164,7 @@ export function useRiskGuardDashboard() {
         setLoading(false);
       }
     }
-  }, [activeWalletAddress, mode]);
+  }, [activeWalletAddress, mode, wallet]);
 
   useEffect(() => {
     void loadData();
@@ -233,7 +215,7 @@ export function useRiskGuardDashboard() {
       return;
     }
 
-    const timer = setInterval(() => {
+    const interval = setInterval(() => {
       void agentApi.getTelegramConnectStatus(telegramSession.walletAddress)
         .then((session) => {
           setTelegramSession(session);
@@ -246,9 +228,19 @@ export function useRiskGuardDashboard() {
         })
         .catch(() => undefined);
     }, 3_000);
+    const timeout = setTimeout(() => {
+      setTelegramSession(null);
+      setNotice({
+        tone: "bad",
+        message: "Telegram did not connect in time. Check the bot username and try again."
+      });
+    }, telegramConnectTimeoutMs);
 
-    return () => clearInterval(timer);
-  }, [loadData, telegramSession]);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [loadData, telegramSession?.code, telegramSession?.status, telegramSession?.walletAddress]);
 
   async function handleConnectWallet() {
     setActionLoading("wallet");
@@ -256,6 +248,7 @@ export function useRiskGuardDashboard() {
       const nextWallet = await connectBrowserWallet();
       setWallet(nextWallet);
       setAccountStatus("connected");
+      setUserProfile(await agentApi.getUserProfile(nextWallet.address));
       setNotice({ tone: "ok", message: "Browser wallet connected. Backend agent wallet remains separate." });
     } catch (error) {
       setAccountStatus("error");
@@ -277,26 +270,6 @@ export function useRiskGuardDashboard() {
       setNotice({ tone: "ok", message: "Browser wallet disconnected from this dashboard." });
     } catch (error) {
       setAccountStatus("error");
-      setNotice({ tone: "bad", message: errorMessage(error) });
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  async function handleRegisterWallet() {
-    if (!wallet) {
-      setNotice({ tone: "warn", message: "Connect a browser wallet before registering a monitored wallet." });
-      return;
-    }
-
-    setActionLoading("register");
-    try {
-      const message = `Register Somnia RiskGuard monitored wallet: ${wallet.address}`;
-      const signature = await signWalletMessage(message);
-      await agentApi.registerWallet({ walletAddress: wallet.address, message, signature });
-      setNotice({ tone: "ok", message: "Monitored wallet registered with signed proof." });
-      await loadData();
-    } catch (error) {
       setNotice({ tone: "bad", message: errorMessage(error) });
     } finally {
       setActionLoading(null);
@@ -367,43 +340,29 @@ export function useRiskGuardDashboard() {
   }
 
   async function handleTelegramConnect() {
-    const walletAddress = activeWalletAddress;
+    const walletAddress = wallet?.address ?? activeWalletAddress;
     if (!walletAddress) {
       setNotice({ tone: "warn", message: "Connect or seed a wallet before starting Telegram Connect." });
       return;
     }
 
-    setActionLoading("telegram");
-    try {
-      const session = await agentApi.startTelegramConnect({ walletAddress });
-      setTelegramSession(session);
-      setNotice({ tone: "ok", message: "Telegram Connect started. Send the one-time code to the bot." });
-      await loadData();
-    } catch (error) {
-      setNotice({ tone: "bad", message: errorMessage(error) });
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  async function handleRewardsSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const walletAddress = activeWalletAddress;
-    if (!walletAddress) {
-      setNotice({ tone: "warn", message: "Connect or seed a wallet before configuring rewards." });
+    if (telegramSession?.status === "waiting") {
+      window.open(telegramSession.botDeepLink, "_blank", "noopener,noreferrer");
       return;
     }
 
-    const form = new FormData(event.currentTarget);
-    setActionLoading("rewards");
+    setActionLoading("telegram");
     try {
-      await agentApi.configureRewards({
-        walletAddress,
-        autoClaimEnabled: form.get("autoClaimEnabled") === "on",
-        minRewardValueUsd: Number(form.get("minRewardValueUsd") ?? 1),
-        maxClaimGasUsd: Number(form.get("maxClaimGasUsd") ?? 2)
-      });
-      setNotice({ tone: "ok", message: "Reward policy settings saved." });
+      if (wallet && !userProfile) {
+        setUserProfile(await agentApi.updateUserProfile({
+          walletAddress: wallet.address,
+          displayName: formatAddress(wallet.address)
+        }));
+      }
+      const session = await agentApi.startTelegramConnect({ walletAddress });
+      setTelegramSession(session);
+      window.open(session.botDeepLink, "_blank", "noopener,noreferrer");
+      setNotice({ tone: "ok", message: "Telegram bot opened. Press Start in Telegram to connect." });
       await loadData();
     } catch (error) {
       setNotice({ tone: "bad", message: errorMessage(error) });
@@ -447,6 +406,37 @@ export function useRiskGuardDashboard() {
     }
   }
 
+  async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!wallet) {
+      setNotice({ tone: "warn", message: "Connect a browser wallet before editing your profile." });
+      return;
+    }
+
+    const form = new FormData(event.currentTarget);
+    const displayName = String(form.get("displayName") ?? "").trim();
+
+    if (!displayName) {
+      setNotice({ tone: "warn", message: "Display name is required." });
+      return;
+    }
+
+    setActionLoading("profile");
+    try {
+      const profile = await agentApi.updateUserProfile({
+        walletAddress: wallet.address,
+        displayName
+      });
+      setUserProfile(profile);
+      setNotice({ tone: "ok", message: "Profile saved." });
+    } catch (error) {
+      setNotice({ tone: "bad", message: errorMessage(error) });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   return {
     state: {
       activeSection,
@@ -454,7 +444,6 @@ export function useRiskGuardDashboard() {
       actionLoading,
       guardianReady,
       health,
-      heartbeat,
       loading,
       mobileMoreOpen,
       mode,
@@ -463,11 +452,11 @@ export function useRiskGuardDashboard() {
       publicChain,
       readiness,
       receipts,
-      rewards,
       risk,
       riskScore,
       riskTone,
       telegramSession,
+      userProfile,
       wallet,
       activeWalletAddress
     },
@@ -476,10 +465,9 @@ export function useRiskGuardDashboard() {
       handleConnectWallet,
       handleDisconnectWallet,
       handleHeartbeatSubmit,
-      handleRegisterWallet,
-      handleRewardsSubmit,
       handleRunDemo,
       handleTelegramConnect,
+      handleProfileSubmit,
       loadData,
       setActiveSection,
       setMobileMoreOpen,

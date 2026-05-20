@@ -149,6 +149,7 @@ const rawEnvSchema = z
     z.number().nonnegative()
   ),
   TELEGRAM_BOT_TOKEN: optionalTelegramBotToken,
+  TELEGRAM_BOT_USERNAME: optionalNonEmptyString,
   TELEGRAM_CHAT_ID: optionalNumericString,
   TELEGRAM_WEBHOOK_SECRET: optionalNonEmptyString
 })
@@ -187,14 +188,11 @@ const rawEnvSchema = z
       }
     }
 
-    const hasTelegramBotToken = Boolean(env.TELEGRAM_BOT_TOKEN);
-    const hasTelegramChatId = Boolean(env.TELEGRAM_CHAT_ID);
-
-    if (hasTelegramBotToken !== hasTelegramChatId) {
+    if (!env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set together",
-        path: hasTelegramBotToken ? ["TELEGRAM_CHAT_ID"] : ["TELEGRAM_BOT_TOKEN"]
+        message: "TELEGRAM_BOT_TOKEN must be set when TELEGRAM_CHAT_ID is configured",
+        path: ["TELEGRAM_BOT_TOKEN"]
       });
     }
   });
@@ -256,8 +254,9 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
     minRewardValueUsd: env.MIN_REWARD_VALUE_USD
   },
   telegram: {
-    enabled: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID),
+    enabled: Boolean(env.TELEGRAM_BOT_TOKEN),
     botToken: env.TELEGRAM_BOT_TOKEN,
+    botUsername: env.TELEGRAM_BOT_USERNAME,
     chatId: env.TELEGRAM_CHAT_ID,
     webhookSecret: env.TELEGRAM_WEBHOOK_SECRET
   }

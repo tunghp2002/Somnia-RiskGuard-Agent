@@ -11,6 +11,7 @@ export const userSchema = z.object({
     .string()
     .regex(/^0x[a-fA-F0-9]{40}$/)
     .transform((value) => getAddress(value)),
+  displayName: z.string().trim().min(1).max(64).optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   telegramChatId: z.string().optional()
@@ -61,6 +62,38 @@ export class UsersRepository {
         createdAt: now,
         updatedAt: now
       };
+
+      return [...users, saved];
+    });
+
+    return saved;
+  }
+
+  public async updateProfile(input: {
+    walletAddress: string;
+    displayName?: string;
+  }): Promise<UserRecord> {
+    const checksumAddress = getAddress(input.walletAddress);
+    const displayName = input.displayName?.trim();
+    const now = new Date().toISOString();
+    let saved!: UserRecord;
+
+    await this.store.update((users) => {
+      const existing = users.find((user) => user.walletAddress === checksumAddress);
+
+      saved = {
+        ...(existing ?? {
+          userId: randomUUID(),
+          walletAddress: checksumAddress,
+          createdAt: now
+        }),
+        ...(displayName ? { displayName } : {}),
+        updatedAt: now
+      };
+
+      if (existing) {
+        return users.map((user) => (user.userId === existing.userId ? saved : user));
+      }
 
       return [...users, saved];
     });

@@ -51,6 +51,18 @@ export const setupWalletRequestSchema = z
 
 export type SetupWalletRequest = z.infer<typeof setupWalletRequestSchema>;
 
+export const userProfileUpdateRequestSchema = z
+  .object({
+    walletAddress: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/)
+      .transform((value) => getAddress(value)),
+    displayName: z.string().trim().min(1).max(64)
+  })
+  .strict();
+
+export type UserProfileUpdateRequest = z.infer<typeof userProfileUpdateRequestSchema>;
+
 export class SetupService {
   public constructor(
     private readonly users: UsersRepository,
@@ -64,6 +76,26 @@ export class SetupService {
 
     await this.audit?.record({
       eventType: "setup.wallet.registered",
+      status: "succeeded",
+      metadata: {
+        userId: user.userId,
+        walletAddress: user.walletAddress
+      }
+    });
+
+    return user;
+  }
+
+  public async getUserProfile(walletAddress: string) {
+    return this.users.findByWalletAddress(walletAddress);
+  }
+
+  public async updateUserProfile(input: UserProfileUpdateRequest) {
+    const parsed = userProfileUpdateRequestSchema.parse(input);
+    const user = await this.users.updateProfile(parsed);
+
+    await this.audit?.record({
+      eventType: "profile.updated",
       status: "succeeded",
       metadata: {
         userId: user.userId,

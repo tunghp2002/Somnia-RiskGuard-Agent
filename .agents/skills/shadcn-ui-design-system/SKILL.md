@@ -38,7 +38,8 @@ Use this skill whenever a BMad agent designs UX, writes architecture notes for U
 ## Implementation Rules
 
 - Before adding a component, inspect `frontend/src/components/ui` and existing feature components to reuse local patterns.
-- Add shadcn components through the configured project shape when possible. If hand-writing a component, follow shadcn conventions: Radix primitive when appropriate, CVA for variants when useful, `cn()` for class merging, `forwardRef` where the primitive pattern expects it.
+- Add shadcn components through the shadcn CLI, not by hand-writing registry components. From the frontend app, prefer commands like `pnpm dlx shadcn@latest add sonner`, `pnpm dlx shadcn@latest add dialog`, or `pnpm dlx shadcn@latest add select` so dependencies, files, and registry conventions stay consistent.
+- Hand-write UI only when the needed component is not available from shadcn, or when building a product-specific composition around installed shadcn primitives. In that case, follow shadcn conventions: Radix primitive when appropriate, CVA for variants when useful, `cn()` for class merging, `forwardRef` where the primitive pattern expects it.
 - Keep reusable primitives in `frontend/src/components/ui`; keep product-specific compositions under `frontend/src/features/...`.
 - Prefer shadcn/ui primitives over hand-rolled UI for navigation, auth menus, setup forms, status panels, dialogs, sheets, tables, tabs, toasts, and tooltips.
 - Use Tailwind tokens and CSS variables already present in `frontend/src/app/globals.css` before adding new color systems.

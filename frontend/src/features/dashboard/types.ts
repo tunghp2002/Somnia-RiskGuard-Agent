@@ -2,11 +2,9 @@ export type Notice = { tone: "ok" | "warn" | "bad"; message: string };
 
 export type DashboardSection =
   | "overview"
-  | "setup"
+  | "profile"
   | "inheritance"
   | "risk"
-  | "heartbeat"
-  | "rewards"
   | "receipts"
   | "demo"
   | "health";

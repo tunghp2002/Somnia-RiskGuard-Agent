@@ -2,20 +2,17 @@ import type { CSSProperties, ReactNode } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
-  CircleDollarSign,
-  Clock3,
   Loader2,
   Shield,
   ShieldAlert,
-  Sparkles,
-  XCircle
+  Sparkles
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import type { HeartbeatStatus, Mode, Readiness, RewardStatus, RiskSnapshot } from "@/lib/agent-api";
+import type { Mode, Readiness, RiskSnapshot } from "@/lib/agent-api";
 import type { BrowserWalletState } from "@/lib/wallet";
 import type { RiskTone } from "../types";
-import { classForStatus, formatAddress, formatDate, formatUsd } from "../utils";
+import { formatAddress } from "../utils";
 
 export function GuardianStatus({
   ready,
@@ -35,7 +32,7 @@ export function GuardianStatus({
         {ready ? <CheckCircle2 size={24} /> : <AlertTriangle size={24} />}
         <div>
           <strong>{ready ? "Ready" : "Needs setup"}</strong>
-          <span>{ready ? "Monitoring can explain and gate actions." : "Complete wallet, Telegram, heartbeat, and policy setup."}</span>
+          <span>{ready ? "Monitoring can explain and gate actions." : "Connect a wallet and finish your profile setup."}</span>
         </div>
       </div>
       <div className="role-chips">
@@ -83,46 +80,6 @@ export function RiskScore({
         {actionLoading === "risk-analysis" ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />}
         Analyze with AI
       </Button>
-    </section>
-  );
-}
-
-export function HeartbeatPanel({ heartbeat }: { heartbeat: HeartbeatStatus | null }) {
-  return (
-    <section className="panel">
-      <PanelHeading icon={<Clock3 size={18} />} title="Heartbeat Timer" action={heartbeat?.state ?? "unconfigured"} />
-      <div className="metric-line">
-        <span>Next deadline</span>
-        <strong>{formatDate(heartbeat?.nextDeadlineAt)}</strong>
-      </div>
-      <div className="metric-line">
-        <span>DMS status</span>
-        <strong>{heartbeat?.executionAvailable ? "beneficiary available" : heartbeat?.nextAction ?? "not configured"}</strong>
-      </div>
-      <div className={`status-strip ${classForStatus(heartbeat?.state)}`}>
-        <Shield size={15} />
-        {heartbeat?.contractStateReady ? "Contract state visible" : "No contract state"}
-      </div>
-    </section>
-  );
-}
-
-export function RewardPanel({ rewards }: { rewards: RewardStatus | null }) {
-  return (
-    <section className="panel">
-      <PanelHeading icon={<CircleDollarSign size={18} />} title="Reward Policy" action={rewards?.settings?.autoClaimEnabled ? "auto" : "manual"} />
-      <div className="metric-line">
-        <span>Minimum value</span>
-        <strong>{formatUsd(rewards?.settings?.minRewardValueUsd)}</strong>
-      </div>
-      <div className="metric-line">
-        <span>Max gas</span>
-        <strong>{formatUsd(rewards?.settings?.maxClaimGasUsd)}</strong>
-      </div>
-      <div className={`status-strip ${classForStatus(rewards?.latestClaim?.status)}`}>
-        {rewards?.latestClaim?.status === "failed" ? <XCircle size={15} /> : <CheckCircle2 size={15} />}
-        {rewards?.latestClaim?.reason ?? "No reward decision yet"}
-      </div>
     </section>
   );
 }

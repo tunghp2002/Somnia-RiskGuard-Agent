@@ -14,6 +14,8 @@ export const telegramBindingSchema = z.object({
     .transform((value) => getAddress(value)),
   chatId: z.string().regex(/^-?\d+$/),
   telegramUserId: z.string().regex(/^\d+$/).optional(),
+  telegramUsername: z.string().min(1).max(64).optional(),
+  telegramDisplayName: z.string().min(1).max(128).optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime()
 });
@@ -27,6 +29,8 @@ export interface UpsertTelegramBindingInput {
   walletAddress: string;
   chatId: string;
   telegramUserId?: string;
+  telegramUsername?: string;
+  telegramDisplayName?: string;
 }
 
 export class TelegramBindingsRepository {
@@ -75,6 +79,8 @@ export class TelegramBindingsRepository {
           walletAddress: checksumAddress,
           chatId: input.chatId,
           telegramUserId: input.telegramUserId,
+          telegramUsername: input.telegramUsername,
+          telegramDisplayName: input.telegramDisplayName,
           updatedAt: now
         });
         return bindings.map((binding) =>
@@ -88,6 +94,8 @@ export class TelegramBindingsRepository {
         walletAddress: checksumAddress,
         chatId: input.chatId,
         telegramUserId: input.telegramUserId,
+        telegramUsername: input.telegramUsername,
+        telegramDisplayName: input.telegramDisplayName,
         createdAt: now,
         updatedAt: now
       });

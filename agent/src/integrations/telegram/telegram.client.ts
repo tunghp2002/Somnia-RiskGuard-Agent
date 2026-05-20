@@ -27,6 +27,8 @@ export interface TelegramTextUpdate {
   updateId: number;
   chatId: string;
   telegramUserId?: string;
+  telegramUsername?: string;
+  telegramDisplayName?: string;
   text: string;
 }
 
@@ -52,7 +54,7 @@ export class DisabledTelegramClient implements TelegramClient {
     return {
       ok: false,
       enabled: false,
-      reason: "Telegram bot token and chat ID are not configured"
+      reason: "Telegram bot token is not configured"
     };
   }
 
@@ -70,7 +72,7 @@ export class TelegramBotApiClient implements TelegramClient {
       : {
           ok: false,
           enabled: false,
-          reason: "Telegram bot token and chat ID are not configured"
+          reason: "Telegram bot token is not configured"
         };
   }
 
@@ -234,7 +236,9 @@ export class TelegramBotApiClient implements TelegramClient {
   private toTextUpdate(update: TelegramRawUpdate): TelegramTextUpdate | undefined {
     const message = update.message;
     const chatId = message?.chat?.id;
-    const telegramUserId = message?.from?.id;
+    const from = message?.from;
+    const telegramUserId = from?.id;
+    const telegramDisplayName = [from?.first_name, from?.last_name].filter(Boolean).join(" ");
 
     if (!message?.text || chatId === undefined) {
       return undefined;
@@ -244,6 +248,8 @@ export class TelegramBotApiClient implements TelegramClient {
       updateId: update.update_id,
       chatId: chatId.toString(),
       ...(telegramUserId === undefined ? {} : { telegramUserId: telegramUserId.toString() }),
+      ...(from?.username ? { telegramUsername: from.username } : {}),
+      ...(telegramDisplayName ? { telegramDisplayName } : {}),
       text: message.text
     };
   }
@@ -252,7 +258,7 @@ export class TelegramBotApiClient implements TelegramClient {
 interface TelegramRawUpdate {
   update_id: number;
   message?: {
-    from?: { id?: number };
+    from?: { id?: number; username?: string; first_name?: string; last_name?: string };
     chat?: { id?: number };
     text?: string;
   };

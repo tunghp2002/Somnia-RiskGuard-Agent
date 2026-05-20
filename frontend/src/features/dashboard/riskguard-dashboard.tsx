@@ -1,8 +1,7 @@
 "use client";
 
-import { KeyRound } from "lucide-react";
-
-import { GuardianSettings, InheritanceSettings } from "@/features/settings/guardian-settings";
+import { InheritanceSettings } from "@/features/settings/guardian-settings";
+import { DashboardNoticeToast } from "./components/dashboard-notice-toast";
 import {
   DashboardHeader,
   DashboardSidebar,
@@ -13,13 +12,11 @@ import {
   DemoScenarioControl,
   OperatorHealth,
   PortfolioWatch,
+  ProfilePanel,
   SafetyReceipts
 } from "./components/dashboard-sections";
 import {
   GuardianStatus,
-  HeartbeatPanel,
-  PanelHeading,
-  RewardPanel,
   RiskScore
 } from "./components/status-panels";
 import { useRiskGuardDashboard } from "./hooks/use-riskguard-dashboard";
@@ -48,7 +45,7 @@ export function RiskGuardDashboard() {
           wallet={state.wallet}
         />
 
-        {state.notice ? <div className={`notice ${state.notice.tone}`}>{state.notice.message}</div> : null}
+        <DashboardNoticeToast notice={state.notice} />
 
         {state.activeSection === "overview" ? (
           <section className="rg-overview">
@@ -65,8 +62,7 @@ export function RiskGuardDashboard() {
               score={state.riskScore}
               tone={state.riskTone}
             />
-            <HeartbeatPanel heartbeat={state.heartbeat} />
-            <RewardPanel rewards={state.rewards} />
+            <PortfolioWatch loading={state.loading} portfolio={state.portfolio} />
           </section>
         ) : null}
 
@@ -84,17 +80,17 @@ export function RiskGuardDashboard() {
             </>
           ) : null}
 
-          {state.activeSection === "setup" ? (
-            <section className="panel">
-              <PanelHeading icon={<KeyRound size={17} />} title="Configuration" action="signed where required" />
-              <GuardianSettings
-                actionLoading={state.actionLoading}
-                onRegisterWallet={actions.handleRegisterWallet}
-                onRewardsSubmit={actions.handleRewardsSubmit}
-                onTelegramConnect={actions.handleTelegramConnect}
-                telegramSession={state.telegramSession}
-              />
-            </section>
+          {state.activeSection === "profile" ? (
+            <ProfilePanel
+              actionLoading={state.actionLoading}
+              onConnectTelegram={actions.handleTelegramConnect}
+              onConnectWallet={actions.handleConnectWallet}
+              onDisconnectWallet={actions.handleDisconnectWallet}
+              onProfileSubmit={actions.handleProfileSubmit}
+              telegramSession={state.telegramSession}
+              userProfile={state.userProfile}
+              wallet={state.wallet}
+            />
           ) : null}
 
           {state.activeSection === "inheritance" ? (
@@ -123,8 +119,6 @@ export function RiskGuardDashboard() {
             />
           ) : null}
 
-          {state.activeSection === "heartbeat" ? <HeartbeatPanel heartbeat={state.heartbeat} /> : null}
-          {state.activeSection === "rewards" ? <RewardPanel rewards={state.rewards} /> : null}
           {state.activeSection === "receipts" ? <SafetyReceipts receipts={state.receipts} /> : null}
         </section>
 

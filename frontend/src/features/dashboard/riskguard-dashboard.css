@@ -7,14 +7,15 @@
 .rg-sidebar {
   position: sticky;
   top: 0;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
   border-right: 1px solid var(--border);
-  background: rgb(10 10 15 / 92%);
-  padding: 20px 14px;
+  background: rgb(7 8 14 / 96%);
+  padding: 18px 12px;
 }
 
 .sidebar-brand,
-.rg-sidebar nav,
 .sidebar-meta,
 .account-status,
 .connect-panel,
@@ -24,14 +25,35 @@
 
 .sidebar-brand {
   grid-template-columns: auto 1fr;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
+  min-height: 40px;
+  border-bottom: 1px solid rgb(148 163 255 / 12%);
+  color: rgb(248 250 252 / 96%);
   font-weight: 800;
+  letter-spacing: 0;
   margin-bottom: 18px;
+  padding: 0 8px 14px;
 }
 
-.rg-sidebar nav {
-  gap: 6px;
+.sidebar-nav {
+  display: grid;
+  gap: 18px;
+}
+
+.sidebar-nav-group {
+  display: grid;
+  gap: 4px;
+}
+
+.sidebar-nav-label {
+  color: rgb(148 163 184 / 64%);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+  padding: 0 10px 6px;
+  text-transform: uppercase;
 }
 
 .rg-sidebar button,
@@ -48,18 +70,46 @@
   text-align: left;
 }
 
-.rg-sidebar button.active,
+.rg-sidebar .sidebar-nav-button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.rg-sidebar .sidebar-nav-button svg {
+  flex: 0 0 18px;
+  width: 18px;
+  color: rgb(148 163 184 / 92%);
+}
+
+.rg-sidebar .sidebar-nav-button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rg-sidebar .sidebar-nav-button:hover {
+  border-color: rgb(148 163 255 / 16%);
+  background: rgb(148 163 255 / 8%);
+  color: rgb(226 232 240 / 92%);
+}
+
+.rg-sidebar .sidebar-nav-button.active,
 .mobile-bottom-nav button.active {
   border-color: rgb(192 38 211 / 42%);
-  background: rgb(192 38 211 / 14%);
+  background:
+    linear-gradient(90deg, rgb(192 38 211 / 20%), rgb(192 38 211 / 10%)),
+    rgb(192 38 211 / 10%);
   color: var(--text);
 }
 
+.rg-sidebar .sidebar-nav-button.active svg {
+  color: rgb(248 250 252 / 94%);
+}
+
 .sidebar-meta {
-  position: absolute;
-  right: 14px;
-  bottom: 20px;
-  left: 14px;
+  margin-top: auto;
   gap: 4px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -294,27 +344,6 @@ input[type="number"] {
   font-size: 0.74rem;
 }
 
-.notice {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin: 0 0 18px;
-  padding: 12px 14px;
-  background: var(--surface);
-}
-
-.notice.ok {
-  border-color: rgb(52 211 153 / 45%);
-  color: var(--green);
-}
-.notice.warn {
-  border-color: rgb(251 191 36 / 45%);
-  color: var(--amber);
-}
-.notice.bad {
-  border-color: rgb(248 113 113 / 45%);
-  color: var(--red);
-}
-
 .rg-overview {
   display: grid;
   grid-template-columns: minmax(280px, 1.25fr) minmax(260px, 0.95fr) repeat(
@@ -347,6 +376,93 @@ input[type="number"] {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
+}
+
+.profile-screen {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 18px;
+}
+
+.profile-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgb(17 17 21 / 74%);
+  padding: 28px 30px;
+}
+
+.profile-card h2 {
+  margin: 0 0 10px;
+  color: rgb(248 250 252 / 96%);
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.profile-card p {
+  margin: 0;
+}
+
+.profile-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(190px, 0.9fr) auto;
+  gap: 12px;
+  align-items: end;
+  width: min(720px, 100%);
+}
+
+.profile-form label {
+  display: grid;
+  gap: 7px;
+  color: rgb(226 232 240 / 92%);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.profile-form input {
+  height: 44px;
+}
+
+.profile-form input[readonly] {
+  color: rgb(203 213 225 / 86%);
+}
+
+.profile-action-card {
+  min-height: 122px;
+}
+
+.profile-telegram-status {
+  display: inline-grid;
+  grid-template-columns: auto auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 14px;
+  border: 1px solid rgb(148 163 255 / 16%);
+  border-radius: 8px;
+  background: rgb(3 7 18 / 38%);
+  padding: 9px 11px;
+}
+
+.profile-telegram-status span,
+.profile-telegram-status a {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.profile-telegram-status strong {
+  color: var(--text);
+  font-family:
+    "JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.85rem;
+}
+
+.profile-telegram-status a {
+  color: var(--cyan);
+  text-decoration: none;
 }
 
 .panel-heading div {
@@ -1010,6 +1126,10 @@ label {
   min-width: 0;
 }
 
+.beneficiary-row .field-block {
+  grid-template-rows: 20px 46px;
+}
+
 .field-block label,
 .duration-card label {
   display: inline-flex;
@@ -1040,7 +1160,7 @@ label {
   grid-template-columns: minmax(0, 1fr) minmax(58px, auto);
   align-items: center;
   overflow: hidden;
-  min-height: 46px;
+  height: 46px;
   border: 1px solid rgb(148 163 255 / 18%);
   border-radius: 12px;
   background: rgb(3 7 18 / 58%);
@@ -1052,24 +1172,28 @@ label {
 
 .field-block > input,
 .duration-card input {
-  min-height: 46px;
+  height: 46px;
   border-color: rgb(148 163 255 / 18%);
   border-radius: 12px;
   background: rgb(3 7 18 / 58%);
+  box-shadow: none;
   transition:
     border-color 140ms ease,
     box-shadow 140ms ease;
 }
 
 .field-block > input:focus,
+.field-block > input:focus-visible,
 .duration-card input:focus,
+.duration-card input:focus-visible,
 .input-with-unit:focus-within {
   border-color: rgb(192 38 211 / 68%);
-  box-shadow: 0 0 0 3px rgb(192 38 211 / 12%);
+  box-shadow: none;
+  outline: none;
 }
 
 .input-with-unit input {
-  min-height: 44px;
+  height: 44px;
   border-radius: 0;
   border: 0;
   background: transparent;
@@ -1708,6 +1832,17 @@ label {
   .inheritance-section-head {
     align-items: stretch;
     display: grid;
+  }
+
+  .profile-card,
+  .profile-action-card {
+    display: grid;
+    align-items: stretch;
+    padding: 22px;
+  }
+
+  .profile-form {
+    grid-template-columns: 1fr;
   }
 
   .beneficiary-row {

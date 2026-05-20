@@ -151,6 +151,26 @@ describe("agent setup API", () => {
     );
   });
 
+  it("persists wallet profile display names", async () => {
+    const updateResponse = await fetch(`${baseUrl}/api/users/profile`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        walletAddress: wallet.address,
+        displayName: "Somnia Builder"
+      })
+    });
+    const updatePayload = await updateResponse.json();
+    const readResponse = await fetch(
+      `${baseUrl}/api/users/profile?walletAddress=${wallet.address}`
+    );
+    const readPayload = await readResponse.json();
+
+    expect(updateResponse.status).toBe(200);
+    expect(updatePayload.data.displayName).toBe("Somnia Builder");
+    expect(readPayload.data.walletAddress).toBe(wallet.address);
+    expect(readPayload.data.displayName).toBe("Somnia Builder");
+  });
+
   it("rejects private-key bearing setup payloads", async () => {
     const response = await fetch(`${baseUrl}/api/users`, {
       method: "POST",
