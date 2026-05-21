@@ -6,7 +6,7 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-filesystem",
-        "C:\\Users\\T\\Subwallet\\Somnia"
+        "."
       ],
       "env": {}
     },
@@ -17,13 +17,9 @@
       "env": {}
     },
     "shadcn": {
-      "command": "npx",
-      "args": ["shadcn@latest", "mcp"]
-    },
-    "telegram": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@some/telegram-mcp"],
+      "args": ["-y", "shadcn@latest", "mcp"],
       "env": {}
     }
   }
