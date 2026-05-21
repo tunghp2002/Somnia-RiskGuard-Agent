@@ -54,6 +54,8 @@ Important modeling points:
 - Reactivity supports off-chain TypeScript usage and on-chain Solidity/EVM invocation patterns.
 - Subscriptions are the core primitive, with filters, guarantees, and coalescing as relevant design concerns.
 - Logic should preserve state consistency assumptions when consuming event notifications.
+- On-chain cron subscriptions can target system-generated `Schedule` events for one-off future actions.
+- On-chain Reactivity handlers are invoked by the Reactivity precompile (`0x0100`), so contracts should gate handler entrypoints to that caller when the action has settlement authority.
 
 ## RiskGuard Fit
 
@@ -61,5 +63,6 @@ For this project, Somnia docs support these implementation choices:
 
 - Portfolio/risk monitoring can keep a simulation or polling fallback, but Somnia-native logic should be written as a reactive event-consumer boundary.
 - Contract heartbeat, inheritance, and alert flows should separate user wallet authority from the agent wallet.
+- Inheritance distribution should use a Somnia `Schedule` on-chain subscription for the current `timelockEndsAt()` so validator-invoked handler execution can push funds without beneficiary action at distribution time.
 - Agent actions should produce auditable receipts with signer, chain ID, request/callback identifiers when available, and advisory risk explanations.
 - Testnet behavior should use Somnia Testnet metadata from `config/public-chains.json`.

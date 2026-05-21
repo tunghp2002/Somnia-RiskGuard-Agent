@@ -36,7 +36,11 @@ contract TestToken is IERC20 {
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 amount) external override returns (bool) {
+    function transferFrom(address from, address to, uint256 amount)
+        external
+        override
+        returns (bool)
+    {
         uint256 currentAllowance = allowance[from][msg.sender];
         require(currentAllowance >= amount, "insufficient allowance");
         allowance[from][msg.sender] = currentAllowance - amount;
@@ -67,24 +71,20 @@ contract MockAgentPlatform {
         return REQUEST_DEPOSIT;
     }
 
-    function createRequest(
-        uint256,
-        address,
-        bytes4,
-        bytes calldata
-    ) external payable returns (uint256 requestId) {
+    function createRequest(uint256, address, bytes4, bytes calldata)
+        external
+        payable
+        returns (uint256 requestId)
+    {
         lastValue = msg.value;
         requestId = nextRequestId++;
     }
 
-    function respond(
-        SomniaDeadManSwitch dms,
-        uint256 requestId,
-        ResponseStatus status
-    ) external {
-        Response[] memory responses = status == ResponseStatus.Success
-            ? new Response[](1)
-            : new Response[](0);
+    function respond(SomniaDeadManSwitch dms, uint256 requestId, ResponseStatus status)
+        external
+    {
+        Response[] memory responses =
+            status == ResponseStatus.Success ? new Response[](1) : new Response[](0);
         if (responses.length == 1) {
             responses[0].status = ResponseStatus.Success;
             responses[0].timestamp = block.timestamp;
@@ -94,7 +94,7 @@ contract MockAgentPlatform {
         dms.handleHeartbeatResponse(requestId, responses, status, details);
     }
 
-    receive() external payable {}
+    receive() external payable { }
 }
 
 contract DeadManSwitchTest {
@@ -106,6 +106,7 @@ contract DeadManSwitchTest {
     address private constant BENEFICIARY_C = address(0xDAD);
     address private constant KEEPER = address(0x1CE);
     address private constant STRANGER = address(0xE11E);
+    address private constant REACTIVITY_PRECOMPILE = address(0x0100);
 
     SomniaDeadManSwitch private dms;
     TestToken private token;
@@ -131,6 +132,7 @@ contract DeadManSwitchTest {
         assert(dms.nextDeadlineAt() == 1_003 days);
         assert(dms.graceEndsAt() == 1_004 days);
         assert(dms.timelockEndsAt() == 1_005 days);
+        assert(dms.distributionScheduleTimestampMs() == 1_005 days * 1000);
         assert(!dms.isExpired());
     }
 
@@ -143,6 +145,15 @@ contract DeadManSwitchTest {
 
         vm.expectRevert(SomniaDeadManSwitch.InvalidShares.selector);
         new SomniaDeadManSwitch(OWNER, _beneficiariesBadTotal(), 3 days, 1 days, 1 days);
+    }
+
+    function testAllowsZeroGraceAndZeroTimelockForTestnetAutomation() public {
+        SomniaDeadManSwitch shortSwitch =
+            new SomniaDeadManSwitch(OWNER, _beneficiaries60_40(), 1 days, 0, 0);
+
+        assert(shortSwitch.nextDeadlineAt() == block.timestamp + 1 days);
+        assert(shortSwitch.graceEndsAt() == shortSwitch.nextDeadlineAt());
+        assert(shortSwitch.timelockEndsAt() == shortSwitch.nextDeadlineAt());
     }
 
     function testRejectsOwnerAndDuplicateBeneficiaryAddresses() public {
@@ -326,6 +337,51 @@ contract DeadManSwitchTest {
         assert(token.balanceOf(BENEFICIARY_B) == 40 ether);
     }
 
+    function testSomniaReactivityHandlerAutoDistributesWithoutBeneficiaryAction() public {
+        vm.deal(address(dms), 10 ether);
+        token.mint(address(dms), 100 ether);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(token);
+        vm.prank(OWNER);
+        dms.setDistributionTokens(tokens);
+
+        vm.warp(dms.timelockEndsAt());
+
+        bytes32[] memory topics = new bytes32[](1);
+        vm.prank(REACTIVITY_PRECOMPILE);
+        dms.onEvent(REACTIVITY_PRECOMPILE, topics, "");
+
+        assert(dms.globalExecutedAt() == dms.timelockEndsAt());
+        assert(dms.distributionComplete());
+        assert(dms.nativeClaimed(BENEFICIARY_A) == 6 ether);
+        assert(dms.nativeClaimed(BENEFICIARY_B) == 4 ether);
+        assert(BENEFICIARY_A.balance == 6 ether);
+        assert(BENEFICIARY_B.balance == 4 ether);
+        assert(token.balanceOf(BENEFICIARY_A) == 60 ether);
+        assert(token.balanceOf(BENEFICIARY_B) == 40 ether);
+    }
+
+    function testReactivityHandlerSkipsEarlyScheduleWithoutLockingFunds() public {
+        vm.deal(address(dms), 10 ether);
+
+        bytes32[] memory topics = new bytes32[](1);
+        vm.prank(REACTIVITY_PRECOMPILE);
+        dms.onEvent(REACTIVITY_PRECOMPILE, topics, "");
+
+        assert(dms.globalExecutedAt() == 0);
+        assert(!dms.distributionComplete());
+        assert(address(dms).balance == 10 ether);
+    }
+
+    function testOnlySomniaReactivityPrecompileCanCallHandler() public {
+        bytes32[] memory topics = new bytes32[](1);
+
+        vm.expectRevert(SomniaDeadManSwitch.OnlyReactivityPrecompile.selector);
+        vm.prank(STRANGER);
+        dms.onEvent(REACTIVITY_PRECOMPILE, topics, "");
+    }
+
     function testOwnerCanRescueBeforeExpiryAndAgentBudgetIsExcludedFromNativeRescue() public {
         vm.deal(address(dms), 10 ether);
         vm.prank(OWNER);
@@ -352,7 +408,7 @@ contract DeadManSwitchTest {
 
     function testAgentHeartbeatRequiresOwnerOrKeeperAndClearsPendingRequestOnSuccess() public {
         vm.prank(OWNER);
-        dms.configureAgent(address(platform), 7);
+        dms.configureAgent(address(platform), 7, 8);
         vm.prank(OWNER);
         dms.setKeeper(KEEPER);
         vm.prank(OWNER);
@@ -367,7 +423,11 @@ contract DeadManSwitchTest {
 
         uint256 requestId = dms.pendingAgentRequestId();
         assert(requestId == 41);
-        assert(platform.lastValue() == platform.REQUEST_DEPOSIT() + dms.agentRewardPerCall() * dms.AGENT_SUBCOMMITTEE_SIZE());
+        assert(
+            platform.lastValue()
+                == platform.REQUEST_DEPOSIT() + dms.agentRewardPerCall()
+                    * dms.AGENT_SUBCOMMITTEE_SIZE()
+        );
 
         vm.warp(block.timestamp + 1 hours);
         platform.respond(dms, requestId, ResponseStatus.Success);
@@ -378,7 +438,7 @@ contract DeadManSwitchTest {
 
     function testAgentHeartbeatFailureClearsPendingRequestWithoutRenewal() public {
         vm.prank(OWNER);
-        dms.configureAgent(address(platform), 7);
+        dms.configureAgent(address(platform), 7, 8);
         vm.prank(OWNER);
         dms.fundAgentBudget{ value: 1 ether }();
 
@@ -396,7 +456,7 @@ contract DeadManSwitchTest {
 
     function testAgentHeartbeatBlocksSecondPendingRequestAndRejectsUnknownCallback() public {
         vm.prank(OWNER);
-        dms.configureAgent(address(platform), 7);
+        dms.configureAgent(address(platform), 7, 8);
         vm.prank(OWNER);
         dms.fundAgentBudget{ value: 1 ether }();
 
