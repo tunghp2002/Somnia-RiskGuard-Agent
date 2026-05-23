@@ -56,8 +56,33 @@ export interface PublicChainMetadata {
     decimals: number;
   };
   contracts: {
-    deadManSwitch?: string;
+    inheritanceRegistry?: string;
   };
+}
+
+export interface InheritancePlanStatus {
+  registryAddress: string;
+  smartAccount: string;
+  state: "none" | "active" | "cancelled" | "executed";
+  active: boolean;
+  heartbeatIntervalSeconds: number;
+  gracePeriodSeconds: number;
+  timelockPeriodSeconds: number;
+  lastHeartbeatAt?: string;
+  nextDeadlineAt?: string;
+  graceEndsAt?: string;
+  timelockEndsAt?: string;
+  executedAt?: string;
+  beneficiaries: Array<{
+    address: string;
+    shareBps: number;
+  }>;
+  protectedAssets: Array<{
+    token: string;
+    kind: "native" | "erc20";
+  }>;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface TelegramConnectSession {
@@ -223,6 +248,10 @@ function walletQuery(walletAddress?: string) {
 export const agentApi = {
   getReadiness: () => request<Readiness>("/api/setup/readiness"),
   getPublicChain: () => request<PublicChainMetadata>("/api/public-chain"),
+  getInheritancePlan: (smartAccount: string) =>
+    request<InheritancePlanStatus | null>(
+      `/api/inheritance/plan?smartAccount=${encodeURIComponent(smartAccount)}`
+    ),
   registerWallet: (body: { walletAddress: string; message: string; signature: string }) =>
     request<UserRecord>("/api/users", {
       method: "POST",

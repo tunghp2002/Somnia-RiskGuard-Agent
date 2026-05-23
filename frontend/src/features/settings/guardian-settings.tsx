@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, FormEvent, ReactNode } from "react";
 import {
   Activity,
@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { InheritancePlanStatus } from "@/lib/agent-api";
 
 type BeneficiaryDraft = {
   id: number;
@@ -75,7 +76,7 @@ function getRecipientColor(index: number) {
 }
 
 function formatDurationPreview(duration: DurationDraft) {
-  const days = Number(duration.days || 1);
+  const days = Number(duration.days || 0);
   const hours = Number(duration.hours || 0);
 
   return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
@@ -99,6 +100,50 @@ function formatAddressPreview(address?: string) {
   }
 
   return `${trimmedAddress.slice(0, 6)}...${trimmedAddress.slice(-4)}`;
+}
+
+function formatPlanDate(value?: string) {
+  if (!value) {
+    return "not set";
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date(value));
+}
+
+function secondsToDuration(seconds?: number): DurationDraft {
+  const safeSeconds = Math.max(0, Number(seconds ?? 0));
+  const days = Math.floor(safeSeconds / 86_400);
+  const hours = Math.floor((safeSeconds % 86_400) / 3_600);
+
+  return { days: String(days), hours: String(hours) };
+}
+
+function beneficiariesFromPlan(plan?: InheritancePlanStatus | null): BeneficiaryDraft[] {
+  if (!plan?.active || plan.beneficiaries.length === 0) {
+    return initialBeneficiaries;
+  }
+
+  return plan.beneficiaries.map((beneficiary, index) => ({
+    id: index + 1,
+    address: beneficiary.address,
+    sharePercent: roundShare(beneficiary.shareBps / 100),
+    locked: false
+  }));
+}
+
+function formatProtectedAssets(plan?: InheritancePlanStatus | null) {
+  const assets = plan?.protectedAssets ?? [];
+
+  if (assets.length === 0) {
+    return "Native STT";
+  }
+
+  return assets
+    .map((asset) => asset.kind === "native" ? "Native STT" : formatAddressPreview(asset.token))
+    .join(", ");
 }
 
 function normalizeBeneficiaryShares(beneficiaries: BeneficiaryDraft[]) {
@@ -191,17 +236,39 @@ function rebalanceBeneficiaryShare(
 
 export function InheritanceSettings({
   actionLoading,
+  inheritancePlan,
+  onInheritanceCancel,
+  onInheritanceSubmit,
+  registryAddress,
   walletAddress,
-  onHeartbeatSubmit
 }: {
   actionLoading: string | null;
+  inheritancePlan?: InheritancePlanStatus | null | undefined;
+  onInheritanceCancel: () => void;
+  onInheritanceSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  registryAddress?: string | undefined;
   walletAddress?: string | undefined;
-  onHeartbeatSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const [beneficiaries, setBeneficiaries] = useState<BeneficiaryDraft[]>(initialBeneficiaries);
   const [intervalDuration, setIntervalDuration] = useState<DurationDraft>({ days: "30", hours: "0" });
-  const [graceDuration, setGraceDuration] = useState<DurationDraft>({ days: "7", hours: "0" });
-  const [timelockDuration, setTimelockDuration] = useState<DurationDraft>({ days: "2", hours: "0" });
+  const [graceDuration, setGraceDuration] = useState<DurationDraft>({ days: "0", hours: "0" });
+  const [timelockDuration, setTimelockDuration] = useState<DurationDraft>({ days: "0", hours: "0" });
+  const hasActivePlan = Boolean(inheritancePlan?.active);
+
+  useEffect(() => {
+    if (!inheritancePlan?.active) {
+      setBeneficiaries(initialBeneficiaries);
+      setIntervalDuration({ days: "30", hours: "0" });
+      setGraceDuration({ days: "0", hours: "0" });
+      setTimelockDuration({ days: "0", hours: "0" });
+      return;
+    }
+
+    setBeneficiaries(beneficiariesFromPlan(inheritancePlan));
+    setIntervalDuration(secondsToDuration(inheritancePlan.heartbeatIntervalSeconds));
+    setGraceDuration(secondsToDuration(inheritancePlan.gracePeriodSeconds));
+    setTimelockDuration(secondsToDuration(inheritancePlan.timelockPeriodSeconds));
+  }, [inheritancePlan]);
 
   const shareTotal = useMemo(
     () => roundShare(beneficiaries.reduce((total, beneficiary) => total + Number(beneficiary.sharePercent || 0), 0)),
@@ -242,7 +309,8 @@ export function InheritanceSettings({
   const firstShareError = beneficiaries
     .map((beneficiary, index) => getBeneficiaryShareError(beneficiary.sharePercent, index))
     .find(Boolean) ?? "";
-  const canSaveInheritancePlan = isAllocationReady && !firstAddressError && !firstShareError && actionLoading !== "heartbeat";
+  const planActionBusy = actionLoading === "inheritance-plan" || actionLoading === "inheritance-cancel";
+  const canSaveInheritancePlan = Boolean(registryAddress) && isAllocationReady && !firstAddressError && !firstShareError && !planActionBusy;
   const submitBlockReason = firstAddressError || firstShareError || allocationError;
   const hasCreatorWallet = walletAddressPattern.test(walletAddress?.trim() ?? "");
 
@@ -290,9 +358,38 @@ export function InheritanceSettings({
   }
 
   return (
-    <form className="inheritance-screen" onSubmit={onHeartbeatSubmit}>
+    <form className="inheritance-screen" onSubmit={onInheritanceSubmit}>
       <section className="inheritance-layout">
         <div className="inheritance-main">
+          {hasActivePlan ? (
+            <section className="inheritance-card current-plan-card">
+              <div className="inheritance-section-head">
+                <div>
+                  <Radar size={19} />
+                  <h3>Current Smart Account Will</h3>
+                </div>
+                <strong className="contract-pill">Active</strong>
+              </div>
+              <div className="current-plan-grid">
+                <span><small>Smart account</small><strong>{formatAddressPreview(inheritancePlan?.smartAccount)}</strong></span>
+                <span><small>Registry</small><strong>{formatAddressPreview(inheritancePlan?.registryAddress)}</strong></span>
+                <span><small>Protected assets</small><strong>{formatProtectedAssets(inheritancePlan)}</strong></span>
+                <span><small>Next heartbeat deadline</small><strong>{formatPlanDate(inheritancePlan?.nextDeadlineAt)}</strong></span>
+                <span><small>Executable after</small><strong>{formatPlanDate(inheritancePlan?.timelockEndsAt)}</strong></span>
+              </div>
+              <Button
+                className="cancel-plan-button"
+                disabled={actionLoading === "inheritance-cancel"}
+                onClick={onInheritanceCancel}
+                type="button"
+                variant="secondary"
+              >
+                {actionLoading === "inheritance-cancel" ? <Loader2 className="spin" size={16} /> : <Trash2 size={16} />}
+                Cancel will
+              </Button>
+            </section>
+          ) : null}
+
           <DurationField
             duration={intervalDuration}
             help="How often you must renew the heartbeat before the switch starts moving toward inheritance."
@@ -304,14 +401,14 @@ export function InheritanceSettings({
           <section className="timing-stack">
             <DurationField
               duration={graceDuration}
-              help="Extra time after a missed heartbeat before the contract is considered expired."
+              help="Extra time after a missed heartbeat before the account is considered expired. Testnet can be 0."
               label="Grace period"
               namePrefix="grace"
               onChange={setGraceDuration}
             />
             <DurationField
               duration={timelockDuration}
-              help="Final waiting period after grace ends. Recipients can mark safe execution only after this finishes."
+              help="Final waiting period after grace ends. Testnet can be 0; production should use a safer delay."
               label="Beneficiary timelock"
               namePrefix="timelock"
               onChange={setTimelockDuration}
@@ -426,9 +523,9 @@ export function InheritanceSettings({
           <div className="preview-glow" aria-hidden="true" />
           <section className="preview-vault">
             <div className="preview-topline">
-              <span><Radar size={15} /> Contract Preview</span>
-              <strong className={hasCreatorWallet ? "status-ok" : "status-warn"}>
-                {formatAddressPreview(walletAddress)}
+              <span><Radar size={15} /> Smart Account Will</span>
+              <strong className={hasActivePlan ? "status-ok" : hasCreatorWallet ? "status-warn" : "status-bad"}>
+                {hasActivePlan ? "Active" : hasCreatorWallet ? "New plan" : "No wallet"}
               </strong>
             </div>
 
@@ -483,9 +580,21 @@ export function InheritanceSettings({
               <p className="preview-note status-warn">{submitBlockReason}</p>
             ) : null}
 
+            {!registryAddress ? (
+              <p className="preview-note status-warn">Deploy and configure the Inheritance Registry before saving on testnet.</p>
+            ) : null}
+
+            <p className="preview-note">
+              This is a smart-account inheritance policy. Funds stay usable by the account; the automation module should execute native/ERC-20 transfers after expiry.
+            </p>
+
             <Button className="primary-button inheritance-save" disabled={!canSaveInheritancePlan} type="submit" variant="primary">
-              {actionLoading === "heartbeat" ? <Loader2 className="spin" size={16} /> : <WalletCards size={16} />}
-              {actionLoading === "heartbeat" ? "Saving plan" : canSaveInheritancePlan ? "Save inheritance plan" : "Complete valid recipients"}
+              {actionLoading === "inheritance-plan" ? <Loader2 className="spin" size={16} /> : <WalletCards size={16} />}
+              {actionLoading === "inheritance-plan"
+                ? "Saving plan"
+                : canSaveInheritancePlan
+                  ? hasActivePlan ? "Update inheritance plan" : "Create inheritance plan"
+                  : "Complete valid plan"}
             </Button>
           </section>
         </aside>
@@ -591,12 +700,12 @@ function DurationField({
 
   function updatePart(part: keyof DurationDraft, value: string) {
     const max = part === "days" ? 3650 : 23;
-    const min = part === "days" ? 1 : 0;
+    const min = part === "days" && namePrefix === "interval" ? 1 : 0;
     onChange({ ...duration, [part]: clampNumber(value, min, max) });
   }
 
   function normalizePart(part: keyof DurationDraft) {
-    const min = part === "days" ? 1 : 0;
+    const min = part === "days" && namePrefix === "interval" ? 1 : 0;
     const max = part === "days" ? 3650 : 23;
     const value = duration[part] === "" ? String(min) : duration[part];
     onChange({ ...duration, [part]: clampNumber(value, min, max) || String(min) });

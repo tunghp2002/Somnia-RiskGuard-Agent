@@ -1,6 +1,6 @@
 # Somnia RiskGuard Agent
 
-Intelligent on-chain AI Portfolio Guardian Agent on Somnia Agentic L1 with a basic Dead Man's Switch for the Agentathon.
+Intelligent on-chain AI Portfolio Guardian Agent on Somnia Agentic L1 with smart-account inheritance automation for the Agentathon.
 
 ## Current Phase
 Phase 1: Setup + Core Foundation.
@@ -8,7 +8,7 @@ Phase 1: Setup + Core Foundation.
 ## MVP Features
 - Real-time portfolio monitoring.
 - AI-powered Risk Score analysis with Groq primary and DeepSeek fallback.
-- Heartbeat Timer and safe Dead Man's Switch.
+- Heartbeat timer and smart-account inheritance registry.
 - Auto claim small staking/LP rewards under configured limits.
 - Telegram notifications with quick action buttons.
 - Lightweight dashboard for setup and overview.
@@ -17,7 +17,7 @@ Phase 1: Setup + Core Foundation.
 ```text
 agent/       Node.js + TypeScript agent runtime
 frontend/    Next.js 15 App Router dashboard
-contracts/   Solidity DeadManSwitch timelock contracts
+contracts/   Solidity smart-account inheritance registry contracts
 docs/        Architecture, security, and demo notes
 infra/       Deployment and runtime assets
 scripts/     Local automation

@@ -2,11 +2,11 @@ import { getAddress, verifyMessage } from "ethers";
 import { z } from "zod";
 
 import type { AgentConfig } from "../config/env.js";
-import type { DeadManSwitchStateReader } from "../integrations/somnia/deadman-switch.client.js";
 import { evaluateDeadmanExecutionPolicy } from "../policies/deadman-policy.js";
 import type { PolicyDecision } from "../policies/execution-policy.js";
 import {
   HeartbeatsRepository,
+  type HeartbeatContractState,
   type HeartbeatRecord
 } from "../persistence/heartbeats.repository.js";
 import type { AuditService } from "./audit.service.js";
@@ -165,6 +165,10 @@ export interface HeartbeatReminderNotifier {
   }): Promise<void>;
 }
 
+export interface InheritanceContractStateReader {
+  readState(): Promise<HeartbeatContractState | null>;
+}
+
 export class HeartbeatServiceError extends Error {
   public constructor(
     public readonly code: string,
@@ -183,7 +187,7 @@ export class HeartbeatService {
     private readonly audit?: AuditService,
     private readonly now: () => Date = () => new Date(),
     private readonly reminderNotifier?: HeartbeatReminderNotifier,
-    private readonly contractStateReader?: DeadManSwitchStateReader
+    private readonly contractStateReader?: InheritanceContractStateReader
   ) {}
 
   public async configure(input: HeartbeatSettingsRequest): Promise<HeartbeatStatus> {
@@ -333,8 +337,8 @@ export class HeartbeatService {
         timelockReady: false,
         contractStateReady: false,
         alreadyExecuted: false,
-        ...(this.config.somnia.deadManSwitchContractAddress
-          ? { contractAddress: this.config.somnia.deadManSwitchContractAddress }
+        ...(this.config.somnia.inheritanceRegistryContractAddress
+          ? { contractAddress: this.config.somnia.inheritanceRegistryContractAddress }
           : {})
       });
       await this.auditPolicyDecision(decision, parsed.walletAddress);
@@ -353,11 +357,11 @@ export class HeartbeatService {
       timelockReady: status.executionAvailable,
       contractStateReady: status.contractStateReady,
       alreadyExecuted: status.state === "executed",
-      ...(record.contractState?.contractAddress ?? this.config.somnia.deadManSwitchContractAddress
+      ...(record.contractState?.contractAddress ?? this.config.somnia.inheritanceRegistryContractAddress
         ? {
             contractAddress:
               record.contractState?.contractAddress
-              ?? this.config.somnia.deadManSwitchContractAddress
+              ?? this.config.somnia.inheritanceRegistryContractAddress
           }
         : {})
     });

@@ -7,6 +7,7 @@ import {
   agentApi,
   type AuditEvent,
   type DemoScenarioResult,
+  type InheritancePlanStatus,
   type Mode,
   type PortfolioSnapshot,
   type PublicChainMetadata,
@@ -15,11 +16,11 @@ import {
   type TelegramConnectSession,
   type UserRecord
 } from "@/lib/agent-api";
+import { cancelInheritancePlan, saveInheritancePlan } from "@/lib/inheritance-registry";
 import {
   connectBrowserWallet,
   disconnectBrowserWallet,
   restoreBrowserWallet,
-  signWalletMessage,
   subscribeBrowserWalletChanges,
   type BrowserWalletState
 } from "@/lib/wallet";
@@ -40,6 +41,7 @@ export function useRiskGuardDashboard() {
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
   const [risk, setRisk] = useState<RiskSnapshot | null>(null);
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
+  const [inheritancePlan, setInheritancePlan] = useState<InheritancePlanStatus | null>(null);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [telegramSession, setTelegramSession] = useState<TelegramConnectSession | null>(null);
   const [userProfile, setUserProfile] = useState<UserRecord | null>(null);
@@ -68,6 +70,7 @@ export function useRiskGuardDashboard() {
   const clearWalletScopedState = useCallback(() => {
     setPortfolio(null);
     setRisk(null);
+    setInheritancePlan(null);
     setEvents([]);
     setTelegramSession(null);
     setUserProfile(null);
@@ -85,6 +88,7 @@ export function useRiskGuardDashboard() {
         portfolioResult,
         riskResult,
         healthResult,
+        inheritancePlanResult,
         eventsResult,
         profileResult
       ] = await Promise.allSettled([
@@ -93,6 +97,7 @@ export function useRiskGuardDashboard() {
         walletAddress || mode === "simulation" ? agentApi.getPortfolio(walletAddress) : Promise.resolve(null),
         walletAddress || mode === "simulation" ? agentApi.getRisk(walletAddress) : Promise.resolve(null),
         agentApi.getHealth(),
+        walletAddress && mode === "testnet" ? agentApi.getInheritancePlan(walletAddress) : Promise.resolve(null),
         agentApi.getAuditEvents(20),
         wallet ? agentApi.getUserProfile(wallet.address) : Promise.resolve(null)
       ]);
@@ -131,6 +136,12 @@ export function useRiskGuardDashboard() {
       } else {
         failedReads.push("health");
         setHealth({ ok: false, subsystem: "agent-api" });
+      }
+      if (inheritancePlanResult.status === "fulfilled") {
+        setInheritancePlan(inheritancePlanResult.value);
+      } else {
+        failedReads.push("inheritance plan");
+        setInheritancePlan(null);
       }
       if (eventsResult.status === "fulfilled") {
         const nextEvents = mode === "testnet"
@@ -276,26 +287,31 @@ export function useRiskGuardDashboard() {
     }
   }
 
-  async function handleHeartbeatSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleInheritancePlanSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!wallet) {
-      setNotice({ tone: "warn", message: "Connect a browser wallet before configuring heartbeat." });
+      setNotice({ tone: "warn", message: "Connect a browser wallet before configuring inheritance." });
+      return;
+    }
+
+    const registryAddress = publicChain?.contracts.inheritanceRegistry;
+    if (!registryAddress) {
+      setNotice({ tone: "warn", message: "Inheritance Registry is not deployed/configured for this chain yet." });
       return;
     }
 
     const form = new FormData(event.currentTarget);
-    const beneficiaryAddresses = form
-      .getAll("beneficiaryAddress")
-      .map((value) => String(value).trim())
-      .filter(Boolean);
-    const shareTotal = form
-      .getAll("sharePercent")
-      .reduce((total, value) => total + Number(value || 0), 0);
+    const beneficiaryAddresses = form.getAll("beneficiaryAddress").map((value) => String(value).trim());
+    const sharePercents = form.getAll("sharePercent").map((value) => Number(value || 0));
+    const beneficiaries = beneficiaryAddresses
+      .map((address, index) => ({ address, sharePercent: sharePercents[index] ?? 0 }))
+      .filter((beneficiary) => beneficiary.address);
+    const shareTotal = beneficiaries.reduce((total, beneficiary) => total + beneficiary.sharePercent, 0);
     const intervalSeconds = Number(form.get("intervalSeconds") ?? durationToSeconds(form, "interval", 30));
-    const graceSeconds = Number(form.get("graceSeconds") ?? durationToSeconds(form, "grace", 7));
-    const timelockSeconds = Number(form.get("timelockSeconds") ?? durationToSeconds(form, "timelock", 2));
+    const graceSeconds = Number(form.get("graceSeconds") ?? durationToSeconds(form, "grace", 0));
+    const timelockSeconds = Number(form.get("timelockSeconds") ?? durationToSeconds(form, "timelock", 0));
 
-    if (beneficiaryAddresses.length === 0) {
+    if (beneficiaries.length === 0) {
       setNotice({ tone: "warn", message: "Add at least one recipient wallet address." });
       return;
     }
@@ -305,31 +321,24 @@ export function useRiskGuardDashboard() {
       return;
     }
 
-    if ([intervalSeconds, graceSeconds, timelockSeconds].some((seconds) => seconds < 86_400)) {
-      setNotice({ tone: "warn", message: "Each timing rule must be at least 1 day to match the contract." });
+    if (intervalSeconds < 86_400) {
+      setNotice({ tone: "warn", message: "Heartbeat renewal window must be at least 1 day." });
       return;
     }
 
-    const primaryBeneficiaryAddress = beneficiaryAddresses[0] ?? "";
-
-    setActionLoading("heartbeat");
+    setActionLoading("inheritance-plan");
     try {
-      const message = `Configure heartbeat: ${wallet.address}`;
-      const signature = await signWalletMessage(message);
-      await agentApi.configureHeartbeat({
-        walletAddress: wallet.address,
-        beneficiaryAddress: primaryBeneficiaryAddress,
-        intervalSeconds,
-        graceSeconds,
-        timelockSeconds,
-        message,
-        signature
-      });
+      const txHash = await saveInheritancePlan(registryAddress, {
+        beneficiaries,
+        heartbeatIntervalSeconds: intervalSeconds,
+        gracePeriodSeconds: graceSeconds,
+        timelockPeriodSeconds: timelockSeconds
+      }, inheritancePlan);
       setNotice({
         tone: "ok",
-        message: beneficiaryAddresses.length > 1
-          ? "Inheritance plan saved for monitoring. Current agent API stores the primary recipient; the full weighted list is ready for the contract flow."
-          : "Inheritance heartbeat settings saved with signed proof."
+        message: inheritancePlan?.active
+          ? `Inheritance plan updated on-chain: ${formatAddress(txHash)}`
+          : `Inheritance plan created on-chain: ${formatAddress(txHash)}`
       });
       await loadData();
     } catch (error) {
@@ -437,6 +446,35 @@ export function useRiskGuardDashboard() {
     }
   }
 
+  async function handleInheritancePlanCancel() {
+    if (!wallet) {
+      setNotice({ tone: "warn", message: "Connect a browser wallet before cancelling inheritance." });
+      return;
+    }
+
+    const registryAddress = publicChain?.contracts.inheritanceRegistry;
+    if (!registryAddress) {
+      setNotice({ tone: "warn", message: "Inheritance Registry is not deployed/configured for this chain yet." });
+      return;
+    }
+
+    if (!inheritancePlan?.active) {
+      setNotice({ tone: "warn", message: "No active inheritance plan found for this account." });
+      return;
+    }
+
+    setActionLoading("inheritance-cancel");
+    try {
+      const txHash = await cancelInheritancePlan(registryAddress);
+      setNotice({ tone: "ok", message: `Inheritance plan cancelled on-chain: ${formatAddress(txHash)}` });
+      await loadData();
+    } catch (error) {
+      setNotice({ tone: "bad", message: errorMessage(error) });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   return {
     state: {
       activeSection,
@@ -444,6 +482,7 @@ export function useRiskGuardDashboard() {
       actionLoading,
       guardianReady,
       health,
+      inheritancePlan,
       loading,
       mobileMoreOpen,
       mode,
@@ -464,7 +503,8 @@ export function useRiskGuardDashboard() {
       handleAnalyzeRisk,
       handleConnectWallet,
       handleDisconnectWallet,
-      handleHeartbeatSubmit,
+      handleInheritancePlanCancel,
+      handleInheritancePlanSubmit,
       handleRunDemo,
       handleTelegramConnect,
       handleProfileSubmit,

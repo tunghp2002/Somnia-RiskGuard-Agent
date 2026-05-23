@@ -28,7 +28,7 @@ const publicChainSchema = z.object({
     decimals: z.number().int().nonnegative()
   }),
   contracts: z.object({
-    deadManSwitch: optionalAddressSchema
+    inheritanceRegistry: optionalAddressSchema
   }).default({})
 });
 

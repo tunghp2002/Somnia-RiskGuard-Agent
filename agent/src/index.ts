@@ -121,7 +121,3 @@ export {
   SomniaIntegrationUnavailableError,
   createSomniaAgentKitClient
 } from "./integrations/somnia/somnia-agent-kit.client.js";
-export {
-  EthersDeadManSwitchStateReader,
-  type DeadManSwitchStateReader
-} from "./integrations/somnia/deadman-switch.client.js";

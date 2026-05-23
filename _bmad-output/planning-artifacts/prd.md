@@ -91,9 +91,9 @@ The long-term vision is a personal AI financial advisor and inheritance protecti
 
 ### Smart Account Direction
 
-For production inheritance UX, RiskGuard should evolve beyond a standalone locked vault into a Somnia smart-account "living vault" model. In this model, user assets remain in a Smart Contract Account that the user can operate day to day, while RiskGuard configures bounded inheritance policy, heartbeat state, beneficiaries, and executor permissions. This is the preferred path for native-token continuity because an ordinary EOA cannot grant a contract authority to pull native tokens later without first depositing them.
+RiskGuard inheritance should use a Somnia smart-account "living vault" model, not a standalone locked vault. User assets remain in a Smart Contract Account that the user can operate day to day, while RiskGuard configures bounded inheritance policy, heartbeat state, beneficiaries, and executor permissions. This is the required path for native-token continuity because an ordinary EOA cannot grant a contract authority to pull native tokens later without first depositing them.
 
-The product should preserve three distinct asset modes: locked vault balance for guaranteed inheritance, ERC-20 allowance/permit for best-effort flexible token coverage, and smart-account living vault for day-to-day native and ERC-20 usage with pre-approved inheritance execution.
+The product should not ask users to deposit their full balance into a locked vault. The primary inheritance mode is smart-account living vault for day-to-day native and ERC-20 usage with pre-approved inheritance execution.
 
 ## User Journeys
 
@@ -207,7 +207,7 @@ The main innovation risk is user trust. Users may reject automation if it feels 
 
 ### Project-Type Overview
 
-Somnia RiskGuard Agent is a Somnia Testnet-first Web3 agent product with local/demo simulation support for Agentathon judging. The system combines a browser-connected user wallet, a dedicated backend agent wallet, Somnia RPC access through ethers.js v6, and a minimal Dead Man's Switch smart contract. The MVP must prove safe agentic on-chain behavior without implying production custody, financial advice, or unrestricted asset management.
+Somnia RiskGuard Agent is a Somnia Testnet-first Web3 agent product with local/demo simulation support for Agentathon judging. The system combines a browser-connected user wallet, a dedicated backend agent wallet, Somnia RPC access through ethers.js v6, and a smart-account inheritance registry/executor path. The MVP must prove safe agentic on-chain behavior without implying production custody, financial advice, or unrestricted asset management.
 
 ### Technical Architecture Considerations
 

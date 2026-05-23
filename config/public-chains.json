@@ -12,7 +12,7 @@
         "decimals": 18
       },
       "contracts": {
-        "deadManSwitch": "0xCaC05a27FeEf973cD5F7310F31c826A49eFe51C6"
+        "inheritanceRegistry": "0x7A5FE6cF8402440300eDa11Fba3d13842F7f5658"
       }
     }
   }

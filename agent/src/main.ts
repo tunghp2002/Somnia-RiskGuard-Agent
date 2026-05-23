@@ -27,7 +27,6 @@ import {
   type TelegramClient,
   type TelegramPollingHandle,
 } from "./integrations/telegram/telegram.client.js";
-import { EthersDeadManSwitchStateReader } from "./integrations/somnia/deadman-switch.client.js";
 import {
   createSomniaAgentKitClient,
   type SomniaAgentKitClient,
@@ -125,14 +124,12 @@ export async function startAgentRuntime(
     telegramClient,
     audit,
   );
-  const deadManSwitchReader = new EthersDeadManSwitchStateReader(config);
   const heartbeats = new HeartbeatService(
     heartbeatsRepository,
     config,
     audit,
     undefined,
     heartbeatReminderNotifier,
-    deadManSwitchReader,
   );
   const rewards = new RewardClaimService(
     rewardClaims,

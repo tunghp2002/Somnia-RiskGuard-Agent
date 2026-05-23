@@ -17,77 +17,66 @@ pnpm --dir contracts format
 
 `forge` must be installed locally for contract commands. The package scripts use a Node wrapper that works on Ubuntu, WSL, and Windows PowerShell by checking the normal Foundry install path and PATH.
 
-Install Foundry:
+## Smart-Account Inheritance Summary
+
+`RiskGuardInheritanceRegistry` is the active inheritance contract path. It does not custody user funds. Instead, it stores one active inheritance plan per smart account:
+
+- beneficiary addresses and basis-point shares
+- heartbeat interval
+- optional grace period
+- optional beneficiary timelock
+- last heartbeat/check-in time
+- active/cancelled plan state
+
+This keeps assets in the user's Somnia/Thirdweb smart account so the user can continue day-to-day native-token and ERC-20 usage. A separate smart-account executor/module must be granted bounded authority by that smart account before it can transfer assets after missed heartbeat conditions.
+
+The previous standalone locked vault contract has been removed from the active code path because it required users to deposit funds they could no longer use normally.
+
+## Somnia Testnet Deployment
+
+Current Somnia Testnet deployment:
+
+- `RiskGuardInheritanceRegistry`: `0x7A5FE6cF8402440300eDa11Fba3d13842F7f5658`
+- deployer: `0x64769A00fB002b7ED192834443C9c819565Ab702`
+- transaction: `0x61099b4f6cfef1f90d751aecaa3932390ad9c526f5d15cc2a028076cbea4931a`
+
+Deploy the registry with Foundry:
 
 ```bash
-# Ubuntu / WSL
-curl -L https://foundry.paradigm.xyz | bash
-foundryup
+forge create src/InheritanceRegistry.sol:RiskGuardInheritanceRegistry \
+  --rpc-url $SOMNIA_RPC_URL \
+  --private-key $AGENT_PRIVATE_KEY \
+  --broadcast
 ```
 
-```bash
-# Windows: Git Bash or WSL
-curl -L https://foundry.paradigm.xyz | bash
-foundryup
-```
+After deployment, set the address in:
 
-Foundryup does not support Windows PowerShell or Cmd. If you stay in PowerShell,
-download the Windows release archive from
-<https://github.com/foundry-rs/foundry/releases> and place `forge.exe` in
-`%USERPROFILE%\.foundry\bin`, or set `FOUNDRY_FORGE` to the full path.
+- `config/public-chains.json` under `chains.somnia-testnet.contracts.inheritanceRegistry`
+- `.env` as `INHERITANCE_REGISTRY_CONTRACT_ADDRESS`
 
-The JavaScript workspace installs OpenZeppelin through pnpm; Foundry resolves it through the remapping in `foundry.toml`.
+The registry itself does not move funds until each user's smart account has authorized the registry as an executor/module/session key. Users should keep day-to-day native tokens and ERC-20s in the smart account, not in this registry.
 
-## Dead Man's Switch Summary
+## Runtime Flow
 
-`SomniaDeadManSwitch` holds native token and ERC-20 balances for an owner and a
-weighted beneficiary list. Beneficiaries are configured as `(address, shareBps)`
-pairs and the shares must sum to exactly `10_000` bps.
-
-Each beneficiary can mark safe execution only after:
-
-1. The heartbeat interval passes.
-2. The grace period passes.
-3. The timelock period passes.
-
-Execution is per beneficiary. The first `markSafeExecution()` call freezes the
-native-token pot in `snapshotNativePot`; all later native claims use that frozen
-pot, so claim order does not change each beneficiary's entitlement. ERC-20 pots
-are snapshotted lazily per token on the first claim for that token.
-
-Owner heartbeat renewal, beneficiary-list changes, and emergency rescue are
-blocked after expiry to reduce false-trigger and beneficiary-spoofing risk.
-Native rescue excludes `agentBudget`, which is reserved for Somnia Agent
-heartbeat requests.
-
-## Somnia Agent Heartbeat
-
-The owner can configure a Somnia Agents platform address and agent ID. The owner
-may also set a keeper address. Only the owner or keeper can call
-`triggerAgentHeartbeat()`.
-
-`triggerAgentHeartbeat()`:
-
-1. Requires no existing pending agent request.
-2. Uses the platform floor deposit plus `agentRewardPerCall * 3`.
-3. Debits that amount from `agentBudget`.
-4. Creates a Somnia Agent request whose callback is `handleHeartbeatResponse`.
-
-`handleHeartbeatResponse()` may only be called by the configured platform. It
-always clears `pendingAgentRequestId`, whether the response succeeds or fails.
-On success, it renews the heartbeat only if the switch is still active and no
-beneficiary has already marked execution.
+1. A smart account calls `createPlan(...)` with beneficiaries, protected assets, heartbeat, grace, and timelock.
+2. The smart account keeps holding and using native tokens/ERC-20s normally.
+3. The user refreshes liveness through `checkIn()` or a successful agent heartbeat callback before grace ends.
+4. After `lastHeartbeatAt + heartbeatInterval + gracePeriod + timelockPeriod`, Somnia Agents, Reactivity, a keeper, or any caller can trigger distribution.
+5. The registry snapshots each protected asset balance once and asks the smart account to execute transfers by beneficiary share.
+6. Failed transfers are skipped in agent/reactive mode, leaving that share in the smart account for retries. The manual `executeInheritance` path fails closed on transfer failure.
 
 ## Contract Tests
 
-`contracts/test/DeadManSwitch.t.sol` covers:
+`contracts/test/InheritanceRegistry.t.sol` covers:
 
-- constructor validation for duration bounds and beneficiary share totals
-- two-step beneficiary-list replacement
-- ownership transfer
-- heartbeat expiry and timelock readiness
-- per-beneficiary safe execution marking
-- native and ERC-20 proportional claims using frozen pot snapshots
-- owner rescue before expiry, with `agentBudget` excluded from native rescue
-- owner/keeper-only Somnia Agent heartbeat triggering
-- pending request rejection and callback reset behavior for success/failure
+- creating one active plan per smart account
+- rejecting a second active plan until cancellation
+- updating beneficiaries and timing rules
+- allowing `heartbeat = 1 day`, `grace = 0`, and `timelock = 0` for testnet
+- cancelling plans and clearing beneficiaries
+- rejecting bad shares, self-beneficiaries, and invalid duration bounds
+- refreshing heartbeat deadlines with `checkIn()`
+- Somnia agent heartbeat and distribution request tracking
+- per-smart-account agent budgets
+- native-token and ERC-20 distribution from an authorized smart account
+- skip-on-fail distribution behavior

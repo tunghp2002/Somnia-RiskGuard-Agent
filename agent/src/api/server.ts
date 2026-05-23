@@ -41,6 +41,7 @@ import {
   rewardSettingsRequestSchema,
   type RewardClaimService
 } from "../services/reward-claim.service.js";
+import { InheritanceRegistryClient } from "../integrations/somnia/inheritance-registry.client.js";
 
 const defaultMaxBodyBytes = 1_048_576;
 const sensitiveResponseKeyPattern =
@@ -303,6 +304,22 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
           throw new ServerDependencyError("Public chain metadata is not configured");
         }
         sendJson(response, 200, success(dependencies.publicChain, requestId));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/inheritance/plan") {
+        if (!dependencies.publicChain) {
+          throw new ServerDependencyError("Public chain metadata is not configured");
+        }
+        const smartAccount = parseOptionalWalletAddress(url.searchParams.get("smartAccount"));
+
+        if (!smartAccount) {
+          sendJson(response, 400, failure("validation_failed", "smartAccount is required"));
+          return;
+        }
+
+        const client = new InheritanceRegistryClient(dependencies.publicChain);
+        sendJson(response, 200, success(await client.getPlan(smartAccount), requestId));
         return;
       }
 

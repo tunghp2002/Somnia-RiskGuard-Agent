@@ -140,7 +140,7 @@ const rawEnvSchema = z
   HEARTBEAT_GRACE_SECONDS: integerFromString("HEARTBEAT_GRACE_SECONDS").pipe(
     z.number().int().positive()
   ),
-  DEAD_MAN_SWITCH_CONTRACT_ADDRESS: optionalEthereumAddressSchema,
+  INHERITANCE_REGISTRY_CONTRACT_ADDRESS: optionalEthereumAddressSchema,
   AUTO_CLAIM_ENABLED: booleanFromString,
   MAX_CLAIM_GAS_USD: numberFromString("MAX_CLAIM_GAS_USD").pipe(
     z.number().nonnegative()
@@ -214,7 +214,7 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
     agentWalletAddress: env.AGENT_WALLET_ADDRESS,
     agentPrivateKey: env.AGENT_PRIVATE_KEY,
     monitoredWalletAddress: env.MONITORED_WALLET_ADDRESS,
-    deadManSwitchContractAddress: env.DEAD_MAN_SWITCH_CONTRACT_ADDRESS
+    inheritanceRegistryContractAddress: env.INHERITANCE_REGISTRY_CONTRACT_ADDRESS
   },
   publicChain: {
     key: env.PUBLIC_CHAIN_KEY,
@@ -228,7 +228,7 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
       decimals: Number(env.PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS)
     },
     contracts: {
-      deadManSwitch: env.DEAD_MAN_SWITCH_CONTRACT_ADDRESS
+      inheritanceRegistry: env.INHERITANCE_REGISTRY_CONTRACT_ADDRESS
     }
   },
   llm: {
@@ -306,7 +306,7 @@ export function validateConfig(
     ...env,
     SOMNIA_RPC_URL: publicChain.rpcUrl,
     SOMNIA_CHAIN_ID: String(publicChain.chainId),
-    DEAD_MAN_SWITCH_CONTRACT_ADDRESS: publicChain.contracts.deadManSwitch,
+    INHERITANCE_REGISTRY_CONTRACT_ADDRESS: publicChain.contracts.inheritanceRegistry,
     PUBLIC_CHAIN_KEY: publicChain.key,
     PUBLIC_CHAIN_NAME: publicChain.name,
     PUBLIC_CHAIN_EXPLORER_URL: publicChain.blockExplorerUrl,

@@ -51,8 +51,7 @@ Core components:
 - LLM risk engine
 - Telegram notification/action service
 - On-chain policy and execution service
-- Dead Man's Switch smart contract
-- Smart-account inheritance module/factory
+- Smart-account inheritance registry and executor/module
 - Demo/simulation and observability layer
 
 ### Technical Constraints & Dependencies
@@ -61,8 +60,8 @@ The architecture must respect the project boundaries already defined in the repo
 
 - `/agent`: Node.js + TypeScript backend agent
 - `/frontend`: Next.js 15 App Router dashboard
-- `/contracts`: Solidity Dead Man's Switch contract
-- Somnia Account Abstraction / Thirdweb smart wallet tooling for post-MVP living-vault inheritance
+- `/contracts`: Solidity smart-account inheritance registry and executor/module contracts
+- Somnia Account Abstraction / Thirdweb smart wallet tooling for living-vault inheritance
 - `ethers.js v6`: blockchain provider, signer, and contract interaction
 - Groq: primary LLM provider
 - DeepSeek: fallback LLM provider
@@ -211,6 +210,12 @@ pnpm is the single package manager for root workspace orchestration and JavaScri
 - `ethers` as the primary EVM integration library per PRD.
 - `viem` as an alternative typed Ethereum client where it improves read operations, ABI typing, or Anvil/local simulation ergonomics.
 
+**Frontend Account Abstraction Dependencies:**
+- Use the `thirdweb` package when implementing Somnia smart-wallet UX from the Somnia Thirdweb docs.
+- Thirdweb should own frontend smart-account connection, `ThirdwebProvider`, `ConnectButton`, `TransactionButton`, in-app wallet options, `somniaTestnet`, `accountAbstraction`, and sponsored/gasless transaction UX.
+- Keep Somnia Reactivity dependencies separate: `@somnia-chain/reactivity` or the precompile ABI is for schedule/subscription management, not wallet connection or smart-account UX.
+- The Somnia Thirdweb docs reference smart account gas sponsorship via `sponsorGas: true` and account factory `0x4be0ddfebca9a5a4a617dee4dece99e7c862dceb`.
+
 **Code Organization:**
 - `/frontend`: multi-section setup and overview dashboard with routes/sections for Overview, Setup, Risk, Heartbeat, Rewards, Safety Receipts, Demo, and Health.
 - `/agent`: monitoring, risk analysis, Telegram, scheduling, policy gates, and execution services.
@@ -316,7 +321,7 @@ flowchart LR
 
   SomniaKit --> EVM[Ethers v6 / Viem Clients]
   EVM --> Somnia[Somnia Testnet RPC]
-  Somnia --> DMS[DeadManSwitch Contract]
+  Somnia --> Registry[InheritanceRegistry Contract]
   Somnia --> Rewards[Staking / LP Rewards]
   Policy --> AgentWallet[Env Agent Wallet]
 ```
@@ -449,7 +454,7 @@ AI agents could diverge on file placement, API response shape, validation bounda
 - `agent/src/services/risk-score.service.ts`
 - `agent/src/persistence/risk-snapshots.repository.ts`
 - `frontend/src/features/heartbeat/HeartbeatSetupForm.tsx`
-- `contracts/src/DeadManSwitch.sol`
+- `contracts/src/InheritanceRegistry.sol`
 - `risk.score.updated`
 
 **Anti-Patterns:**
@@ -533,11 +538,11 @@ somnia-riskguard-agent/
 ├── contracts/
 │   ├── script/
 │   │   ├── DemoTrigger.s.sol
-│   │   └── DeployDeadManSwitch.s.sol
+│   │   └── DeployInheritanceRegistry.s.sol
 │   ├── src/
-│   │   └── DeadManSwitch.sol
+│   │   └── InheritanceRegistry.sol
 │   ├── test/
-│   │   └── DeadManSwitch.t.sol
+│   │   └── InheritanceRegistry.t.sol
 │   ├── foundry.toml
 │   └── package.json
 ├── docs/
@@ -654,9 +659,9 @@ Root TypeScript config should define shared strict compiler defaults and be exte
 - `frontend/src/features/portfolio/`
 - `frontend/src/features/risk-score/`
 
-**Heartbeat + Dead Man's Switch:**
-- `contracts/src/DeadManSwitch.sol`
-- `contracts/test/DeadManSwitch.t.sol`
+**Smart-Account Inheritance:**
+- `contracts/src/InheritanceRegistry.sol`
+- `contracts/test/InheritanceRegistry.t.sol`
 - `agent/src/services/heartbeat.service.ts`
 - `agent/src/jobs/heartbeat.job.ts`
 - `agent/src/policies/deadman-policy.ts`
@@ -666,7 +671,7 @@ Root TypeScript config should define shared strict compiler defaults and be exte
 - Add a Somnia/Thirdweb smart-account integration boundary before productionizing living-vault inheritance.
 - Model the smart account as the asset-holding account. It can send native tokens through value-bearing calls and ERC-20 tokens through token contract calls, provided the inheritance module/session key/guardian policy has explicit authority.
 - Keep inheritance executor permissions narrow: beneficiary transfers only, configured token/native limits, heartbeat/timelock gating, cancel/update controls, and safety receipts for every attempted execution.
-- Keep the existing standalone vault as a locked-balance mode, not as the only long-term inheritance architecture.
+- Do not keep the standalone vault as a user-facing mode; the product goal requires assets to remain usable in the smart account.
 
 **Telegram Alerts + Quick Actions:**
 - `agent/src/integrations/telegram/`
@@ -769,7 +774,7 @@ The project structure supports all runtime boundaries. `/frontend`, `/agent`, an
 **Epic/Feature Coverage:**
 - Portfolio monitoring: covered by agent jobs/services and frontend portfolio view.
 - AI Risk Score: covered by LLM integrations, risk service, persistence, and dashboard.
-- Heartbeat + Dead Man's Switch: covered by contract, heartbeat job/service, policy, and dashboard setup.
+- Smart-Account Inheritance: covered by contract, heartbeat job/service, policy, and dashboard setup.
 - Telegram quick actions: covered by Telegram integration, callback signing, nonce persistence, and policy gates.
 - Auto reward claim: covered by reward job/service/policy and Somnia integration.
 - Demo flow: covered by demo API route, Foundry scripts, and dashboard demo controls.
@@ -870,3 +875,4 @@ None.
 
 **First Implementation Priority:**
 Create the root pnpm workspace, workspace package files, Foundry scaffold, and minimal agent/frontend bootstraps.
+

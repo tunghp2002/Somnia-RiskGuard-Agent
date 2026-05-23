@@ -129,11 +129,10 @@ RiskGuard should borrow clarity patterns from Rabby Wallet, Safe, Vercel, incide
 
 The dashboard should use pre-action explanations, wallet-role labels, environment badges, and safety receipts. User wallet, agent wallet, beneficiary wallet, and contract address should appear as distinct identities with distinct responsibilities. Reward claims, policy skips, heartbeat reminders, and Dead Man's Switch transitions should appear in a timeline so users and judges can reconstruct what happened without reading logs.
 
-For inheritance setup, the UX should distinguish asset authority modes clearly:
+For inheritance setup, the UX should center the smart-account authority model clearly:
 
-- Locked vault: assets are deposited and no longer used day to day.
-- Flexible ERC-20 coverage: token allowance/permit can cover remaining wallet balance but is not guaranteed.
-- Smart-account living vault: assets remain in a Somnia/Thirdweb smart account the user can use daily, while a bounded inheritance policy can transfer native and ERC-20 assets after missed heartbeat conditions.
+- Smart-account inheritance: assets remain in a Somnia/Thirdweb smart account the user can use daily, while a bounded inheritance policy can transfer native and ERC-20 assets after missed heartbeat conditions.
+- The UI must not ask users to deposit their full balance into a locked vault, because that conflicts with day-to-day wallet usage.
 
 The smart-account path should explain that gasless/sponsored transactions may reduce setup and check-in friction, but do not replace explicit spending permissions. Users should see exactly which smart account, beneficiary, executor/module, token/native limits, heartbeat deadline, and cancellation path are active.
 

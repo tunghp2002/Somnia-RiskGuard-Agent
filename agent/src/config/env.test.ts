@@ -26,7 +26,7 @@ const validEnv = {
   RISK_SCORE_ALERT_THRESHOLD: "70",
   HEARTBEAT_INTERVAL_SECONDS: "86400",
   HEARTBEAT_GRACE_SECONDS: "3600",
-  DEAD_MAN_SWITCH_CONTRACT_ADDRESS: "0x2222222222222222222222222222222222222222",
+  INHERITANCE_REGISTRY_CONTRACT_ADDRESS: "0x2222222222222222222222222222222222222222",
   AUTO_CLAIM_ENABLED: "false",
   MAX_CLAIM_GAS_USD: "1",
   MIN_REWARD_VALUE_USD: "2",
@@ -55,13 +55,13 @@ describe("agent runtime config", () => {
       AGENT_WALLET_ADDRESS: new Wallet(`0x${privateKey}`).address,
       GROQ_MODEL: "",
       DEEPSEEK_MODEL: "",
-      DEAD_MAN_SWITCH_CONTRACT_ADDRESS: ""
+      INHERITANCE_REGISTRY_CONTRACT_ADDRESS: ""
     });
 
     expect(config.somnia.agentPrivateKey).toBe(`0x${privateKey}`);
     expect(config.llm.groq.model).toBe("llama-3.3-70b-versatile");
     expect(config.llm.deepSeek.model).toBe("deepseek-chat");
-    expect(config.somnia.deadManSwitchContractAddress).toBeUndefined();
+    expect(config.somnia.inheritanceRegistryContractAddress).toBeUndefined();
   });
 
   it("fails with safe diagnostics when required values are missing", () => {
@@ -84,7 +84,7 @@ describe("agent runtime config", () => {
       ...validEnv,
       SOMNIA_RPC_URL: undefined,
       SOMNIA_CHAIN_ID: undefined,
-      DEAD_MAN_SWITCH_CONTRACT_ADDRESS: undefined
+      INHERITANCE_REGISTRY_CONTRACT_ADDRESS: undefined
     });
 
     expect(config.publicChain.key).toBe("somnia-testnet");

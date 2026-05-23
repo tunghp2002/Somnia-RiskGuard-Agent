@@ -97,7 +97,10 @@ export function RiskGuardDashboard() {
             <section className="inheritance-panel">
               <InheritanceSettings
                 actionLoading={state.actionLoading}
-                onHeartbeatSubmit={actions.handleHeartbeatSubmit}
+                inheritancePlan={state.inheritancePlan}
+                onInheritanceCancel={actions.handleInheritancePlanCancel}
+                onInheritanceSubmit={actions.handleInheritancePlanSubmit}
+                registryAddress={state.publicChain?.contracts.inheritanceRegistry}
                 walletAddress={state.wallet?.address ?? state.activeWalletAddress}
               />
             </section>

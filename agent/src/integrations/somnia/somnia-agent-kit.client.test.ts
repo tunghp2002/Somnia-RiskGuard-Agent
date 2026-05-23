@@ -18,7 +18,7 @@ const allowedPolicy = () => ({
   toolName: "claimReward",
   signerAddress: config.somnia.agentWalletAddress,
   chainId: config.somnia.chainId,
-  target: config.somnia.deadManSwitchContractAddress,
+  target: config.somnia.inheritanceRegistryContractAddress,
   calldataSummary: "claimReward()"
 });
 
@@ -33,7 +33,7 @@ describe("Somnia Agent Kit integration boundary", () => {
       client.callTool({
         toolName: "claimReward",
         stateChanging: true,
-        target: config.somnia.deadManSwitchContractAddress,
+        target: config.somnia.inheritanceRegistryContractAddress,
         calldataSummary: "claimReward()"
       })
     ).rejects.toBeInstanceOf(SomniaExecutionDisabledError);
@@ -49,7 +49,7 @@ describe("Somnia Agent Kit integration boundary", () => {
     const result = await client.callTool({
       toolName: "claimReward",
       stateChanging: true,
-      target: config.somnia.deadManSwitchContractAddress,
+      target: config.somnia.inheritanceRegistryContractAddress,
       calldataSummary: "claimReward()",
       policyDecision: allowedPolicy()
     });

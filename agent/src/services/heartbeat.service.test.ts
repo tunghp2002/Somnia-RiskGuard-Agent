@@ -140,7 +140,7 @@ describe("HeartbeatService", () => {
     now = new Date("2026-05-14T00:02:31.000Z");
     const pending = await service.getBeneficiaryStatus(wallet.address, beneficiary.address);
     await heartbeats.updateContractState(wallet.address, {
-      contractAddress: createTestConfig().somnia.deadManSwitchContractAddress,
+      contractAddress: createTestConfig().somnia.inheritanceRegistryContractAddress,
       isExpired: true,
       timelockReady: true,
       executed: false,
@@ -171,7 +171,7 @@ describe("HeartbeatService", () => {
       ...(await signedProof(beneficiary, "Deadman policy check"))
     });
     await heartbeats.updateContractState(wallet.address, {
-      contractAddress: createTestConfig().somnia.deadManSwitchContractAddress,
+      contractAddress: createTestConfig().somnia.inheritanceRegistryContractAddress,
       isExpired: true,
       timelockReady: true,
       executed: false,
@@ -218,7 +218,7 @@ describe("HeartbeatService", () => {
     now = new Date("2026-05-14T00:01:15.000Z");
     await new HeartbeatJob(service).runOnce();
     await heartbeats.updateContractState(wallet.address, {
-      contractAddress: createTestConfig().somnia.deadManSwitchContractAddress,
+      contractAddress: createTestConfig().somnia.inheritanceRegistryContractAddress,
       isExpired: true,
       timelockReady: true,
       executed: false,
