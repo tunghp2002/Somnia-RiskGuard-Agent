@@ -89,6 +89,12 @@ Post-MVP work includes advanced rebalancing, auto-swap flows, multi-chain suppor
 
 The long-term vision is a personal AI financial advisor and inheritance protection suite on Somnia: an always-on agent that combines portfolio intelligence, safe automation, emergency protection, and long-term asset continuity.
 
+### Smart Account Direction
+
+For production inheritance UX, RiskGuard should evolve beyond a standalone locked vault into a Somnia smart-account "living vault" model. In this model, user assets remain in a Smart Contract Account that the user can operate day to day, while RiskGuard configures bounded inheritance policy, heartbeat state, beneficiaries, and executor permissions. This is the preferred path for native-token continuity because an ordinary EOA cannot grant a contract authority to pull native tokens later without first depositing them.
+
+The product should preserve three distinct asset modes: locked vault balance for guaranteed inheritance, ERC-20 allowance/permit for best-effort flexible token coverage, and smart-account living vault for day-to-day native and ERC-20 usage with pre-approved inheritance execution.
+
 ## User Journeys
 
 ### Journey 1: Alex Configures RiskGuard And Acts From Telegram
@@ -210,6 +216,8 @@ The frontend dashboard uses browser wallet connection only, supporting wallets s
 The backend agent uses a dedicated agent wallet loaded from environment variables. This wallet is responsible only for configured safe actions such as small reward claims, heartbeat-related operations, Dead Man's Switch execution paths, and demo/testnet transactions. User wallet and agent wallet responsibilities must remain clearly separated.
 
 The system must support Somnia Testnet as the primary chain environment and a local/demo simulation mode for deterministic hackathon flows. Simulation mode must make demo behavior predictable without hiding which actions are simulated versus testnet-backed.
+
+Production inheritance should support Somnia Account Abstraction through Thirdweb or equivalent ERC-4337-style smart wallets. Smart accounts can execute native-token transfers and ERC-20 calls from the account itself, which makes them the right account model for users who need to keep using assets while retaining an automated inheritance fallback. Sponsored/gasless transactions may reduce onboarding and check-in friction, but sponsorship must not be confused with spending authority.
 
 ### Chain Specs
 

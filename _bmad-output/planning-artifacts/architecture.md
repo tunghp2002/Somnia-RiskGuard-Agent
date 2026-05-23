@@ -52,6 +52,7 @@ Core components:
 - Telegram notification/action service
 - On-chain policy and execution service
 - Dead Man's Switch smart contract
+- Smart-account inheritance module/factory
 - Demo/simulation and observability layer
 
 ### Technical Constraints & Dependencies
@@ -61,6 +62,7 @@ The architecture must respect the project boundaries already defined in the repo
 - `/agent`: Node.js + TypeScript backend agent
 - `/frontend`: Next.js 15 App Router dashboard
 - `/contracts`: Solidity Dead Man's Switch contract
+- Somnia Account Abstraction / Thirdweb smart wallet tooling for post-MVP living-vault inheritance
 - `ethers.js v6`: blockchain provider, signer, and contract interaction
 - Groq: primary LLM provider
 - DeepSeek: fallback LLM provider
@@ -78,6 +80,7 @@ The backend agent uses a dedicated environment-loaded agent wallet for safe acti
 - LLM output isolation from execution authority
 - Telegram action authentication and replay prevention
 - Dead Man's Switch false-trigger prevention
+- Smart-account inheritance authority, session-key/module limits, and cancellation/recovery semantics
 - Smart contract access control and timelock correctness
 - Audit-friendly logs without secret leakage
 - Provider failure handling for Groq, DeepSeek, Telegram, RPC, signer, and contracts
@@ -180,6 +183,7 @@ pnpm is the single package manager for root workspace orchestration and JavaScri
 **Language & Runtime:**
 - TypeScript across frontend and backend agent.
 - Solidity for Dead Man's Switch contracts.
+- Somnia smart-account integrations for living-vault inheritance where users retain day-to-day native and ERC-20 usage.
 - Node.js runtime for the backend agent.
 - Foundry toolchain for contract compilation, testing, scripting, and Anvil local simulation.
 
@@ -211,6 +215,7 @@ pnpm is the single package manager for root workspace orchestration and JavaScri
 - `/frontend`: multi-section setup and overview dashboard with routes/sections for Overview, Setup, Risk, Heartbeat, Rewards, Safety Receipts, Demo, and Health.
 - `/agent`: monitoring, risk analysis, Telegram, scheduling, policy gates, and execution services.
 - `/contracts`: Dead Man's Switch contract, Solidity tests, Foundry scripts, and minimal pnpm package wrapper.
+- `/contracts` should later include a factory/registry and smart-account inheritance module or adapter that records one active inheritance plan per smart account and exposes cancel/update/read APIs.
 
 **Development Experience:**
 - One package manager and one workspace root.
@@ -656,6 +661,12 @@ Root TypeScript config should define shared strict compiler defaults and be exte
 - `agent/src/jobs/heartbeat.job.ts`
 - `agent/src/policies/deadman-policy.ts`
 - `frontend/src/features/heartbeat/`
+
+**Smart Account Inheritance:**
+- Add a Somnia/Thirdweb smart-account integration boundary before productionizing living-vault inheritance.
+- Model the smart account as the asset-holding account. It can send native tokens through value-bearing calls and ERC-20 tokens through token contract calls, provided the inheritance module/session key/guardian policy has explicit authority.
+- Keep inheritance executor permissions narrow: beneficiary transfers only, configured token/native limits, heartbeat/timelock gating, cancel/update controls, and safety receipts for every attempted execution.
+- Keep the existing standalone vault as a locked-balance mode, not as the only long-term inheritance architecture.
 
 **Telegram Alerts + Quick Actions:**
 - `agent/src/integrations/telegram/`
