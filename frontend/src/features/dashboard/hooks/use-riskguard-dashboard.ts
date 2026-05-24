@@ -83,6 +83,10 @@ export function useRiskGuardDashboard() {
     setUserProfile(null);
   }, []);
 
+  const showNotice = useCallback((nextNotice: Notice) => {
+    setNotice(nextNotice);
+  }, []);
+
   const loadData = useCallback(async () => {
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
@@ -268,7 +272,7 @@ export function useRiskGuardDashboard() {
       setWallet(nextWallet);
       setAccountStatus("connected");
       setUserProfile(await agentApi.getUserProfile(nextWallet.address));
-      setNotice({ tone: "ok", message: "Browser wallet connected. Backend agent wallet remains separate." });
+      setNotice({ tone: "ok", message: "Wallet connected." });
     } catch (error) {
       setAccountStatus("error");
       setNotice({ tone: "bad", message: errorMessage(error) });
@@ -287,7 +291,7 @@ export function useRiskGuardDashboard() {
       loadRequestRef.current += 1;
       clearWalletScopedState();
       setAccountStatus("disconnected");
-      setNotice({ tone: "ok", message: "Browser wallet disconnected from this dashboard." });
+      setNotice({ tone: "ok", message: "Wallet disconnected." });
     } catch (error) {
       setAccountStatus("error");
       setNotice({ tone: "bad", message: errorMessage(error) });
@@ -299,7 +303,7 @@ export function useRiskGuardDashboard() {
   async function handleInheritancePlanSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!wallet) {
-      setNotice({ tone: "warn", message: "Connect a browser wallet before configuring inheritance." });
+      setNotice({ tone: "warn", message: "Connect your wallet before configuring inheritance." });
       return;
     }
 
@@ -441,7 +445,7 @@ export function useRiskGuardDashboard() {
     event.preventDefault();
 
     if (!wallet) {
-      setNotice({ tone: "warn", message: "Connect a browser wallet before editing your profile." });
+      setNotice({ tone: "warn", message: "Connect your wallet before editing your profile." });
       return;
     }
 
@@ -470,7 +474,7 @@ export function useRiskGuardDashboard() {
 
   async function handleInheritancePlanCancel() {
     if (!wallet) {
-      setNotice({ tone: "warn", message: "Connect a browser wallet before cancelling inheritance." });
+      setNotice({ tone: "warn", message: "Connect your wallet before cancelling inheritance." });
       return;
     }
 
@@ -534,6 +538,7 @@ export function useRiskGuardDashboard() {
       handleTelegramConnect,
       handleProfileSubmit,
       loadData,
+      showNotice,
       setActiveSection,
       setMobileMoreOpen,
       setSelectedSmartAccountAddress

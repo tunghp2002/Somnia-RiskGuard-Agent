@@ -80,6 +80,7 @@ export function RiskGuardDashboard() {
                 inheritancePlan={state.inheritancePlan}
                 onInheritanceCancel={actions.handleInheritancePlanCancel}
                 onInheritanceSubmit={actions.handleInheritancePlanSubmit}
+                onNotice={actions.showNotice}
                 onSmartAccountChange={actions.setSelectedSmartAccountAddress}
                 registryAddress={state.publicChain?.contracts.inheritanceRegistry}
                 selectedSmartAccountAddress={state.selectedSmartAccountAddress}

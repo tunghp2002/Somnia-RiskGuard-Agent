@@ -1,11 +1,15 @@
-import type { CSSProperties, FormEvent } from "react";
+import { useState, type CSSProperties, type FormEvent } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
-import { ConnectButton, useActiveAccount, useConnectedWallets } from "thirdweb/react";
+import { useActiveAccount, useConnectedWallets, useConnect } from "thirdweb/react";
+import { EIP1193, smartWallet } from "thirdweb/wallets";
+import type { Wallet } from "thirdweb/wallets";
 import {
     Activity,
     CalendarClock,
+    Check,
     ChevronDown,
     Coins,
+    Copy,
     Fingerprint,
     Lock,
     LockKeyhole,
@@ -23,10 +27,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InheritancePlanStatus } from "@/lib/agent-api";
+import type { Notice } from "@/features/dashboard/types";
 import {
     thirdwebAccountAbstraction,
-    thirdwebClient,
-    thirdwebWallets
+    thirdwebClient
 } from "@/lib/thirdweb-client";
 import { DurationField, Field, InfoHint } from "./inheritance-settings-controls";
 import {
@@ -48,6 +52,7 @@ export function InheritanceSettings({
     inheritancePlan,
     onInheritanceCancel,
     onInheritanceSubmit,
+    onNotice,
     onSmartAccountChange,
     registryAddress,
     selectedSmartAccountAddress,
@@ -57,12 +62,15 @@ export function InheritanceSettings({
     inheritancePlan?: InheritancePlanStatus | null | undefined;
     onInheritanceCancel: () => void;
     onInheritanceSubmit: (event: FormEvent<HTMLFormElement>) => void;
+    onNotice?: (notice: Notice) => void;
     onSmartAccountChange: (address: string | undefined) => void;
     registryAddress?: string | undefined;
     selectedSmartAccountAddress?: string | undefined;
     walletAddress?: string | undefined;
 }) {
     const thirdwebSmartAccount = useActiveAccount();
+    const { connect: connectThirdwebWallet, isConnecting: creatingSmartAccount } = useConnect();
+    const [copiedSmartAccount, setCopiedSmartAccount] = useState(false);
     const thirdwebSmartAccountAddress = thirdwebSmartAccount?.address;
     const thirdwebConnectedSmartAccountAddresses = useConnectedWallets()
         .map((wallet) => wallet.getAccount()?.address)
@@ -91,6 +99,7 @@ export function InheritanceSettings({
         setIntervalDuration,
         setSmartAccountDropdownOpen,
         setSubmitAttempted,
+        setSmartAccountDiscoveryError,
         setTimelockDuration,
         setTokenDialogOpen,
         setTokenDraft,
@@ -133,122 +142,229 @@ export function InheritanceSettings({
     const planActionBusy = actionLoading === "inheritance-plan" || actionLoading === "inheritance-cancel";
     const canSaveInheritancePlan = Boolean(registryAddress) && !planActionBusy;
 
+    async function handleCreateSmartAccount() {
+        if (!thirdwebClient) {
+            const message = "Smart account creation is not configured yet.";
+            onNotice?.({ tone: "bad", message });
+            return;
+        }
+        const client = thirdwebClient;
+
+        if (!walletAddress) {
+            const message = "Connect your wallet before creating a smart account.";
+            onNotice?.({ tone: "warn", message });
+            return;
+        }
+
+        const provider = typeof window === "undefined" ? undefined : window.ethereum;
+        if (!provider) {
+            const message = "No connected wallet provider was found.";
+            onNotice?.({ tone: "bad", message });
+            return;
+        }
+
+        setSmartAccountDiscoveryError("");
+        setSmartAccountDropdownOpen(false);
+        try {
+            const connectedWallet = await connectThirdwebWallet(async (): Promise<Wallet> => {
+                const personalWallet = EIP1193.fromProvider({
+                    provider: provider as Parameters<typeof EIP1193.fromProvider>[0]["provider"],
+                    walletId: "app.subwallet"
+                });
+                const personalAccount = await personalWallet.connect({
+                    chain: thirdwebAccountAbstraction.chain,
+                    client
+                });
+                const accountWallet = smartWallet(thirdwebAccountAbstraction);
+
+                await accountWallet.connect({
+                    client,
+                    personalAccount
+                });
+
+                return accountWallet as unknown as Wallet;
+            });
+            if (!connectedWallet) {
+                const message = "Smart account connection was cancelled.";
+                onNotice?.({ tone: "warn", message });
+                return;
+            }
+            const smartAccount = connectedWallet.getAccount()?.address ?? thirdwebSmartAccountAddress;
+
+            if (!smartAccount) {
+                const message = "Smart account was not returned by the wallet.";
+                onNotice?.({ tone: "bad", message });
+                return;
+            }
+
+            useConnectedThirdwebSmartAccount(smartAccount);
+            setSmartAccountDropdownOpen(false);
+            onNotice?.({ tone: "ok", message: "Smart account connected." });
+        } catch (error) {
+            const message = error instanceof Error && error.message
+                ? error.message
+                : "Smart account creation failed.";
+            onNotice?.({ tone: "bad", message });
+        }
+    }
+
+    async function handleCopySmartAccount() {
+        if (!smartAccountAddress) {
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(smartAccountAddress);
+            setCopiedSmartAccount(true);
+            onNotice?.({ tone: "ok", message: "Smart account address copied." });
+            window.setTimeout(() => setCopiedSmartAccount(false), 1400);
+        } catch {
+            onNotice?.({ tone: "bad", message: "Could not copy smart account address." });
+        }
+    }
+
     return (
         <form className="inheritance-screen" onSubmit={onInheritanceSubmit}>
             <section className="inheritance-layout">
                 <div className="inheritance-main">
-                    {hasActivePlan ? (
-                        <section className="inheritance-card current-plan-card">
-                            <div className="inheritance-section-head">
-                                <div>
-                                    <Radar size={19} />
-                                    <h3>Current Smart Account Will</h3>
-                                </div>
-                                <strong className="contract-pill">Active</strong>
-                            </div>
-                            <div className="current-plan-grid">
-                                <span><small>Smart account</small><strong>{formatAddressPreview(inheritancePlan?.smartAccount)}</strong></span>
-                                <span><small>Registry</small><strong>{formatAddressPreview(inheritancePlan?.registryAddress)}</strong></span>
-                                <span><small>Protected assets</small><strong>{formatProtectedAssets(inheritancePlan)}</strong></span>
-                                <span><small>Next heartbeat deadline</small><strong>{formatPlanDate(inheritancePlan?.nextDeadlineAt)}</strong></span>
-                                <span><small>Executable after</small><strong>{formatPlanDate(inheritancePlan?.timelockEndsAt)}</strong></span>
-                            </div>
-                            <Button
-                                className="cancel-plan-button"
-                                disabled={actionLoading === "inheritance-cancel"}
-                                onClick={onInheritanceCancel}
-                                type="button"
-                                variant="secondary"
-                            >
-                                {actionLoading === "inheritance-cancel" ? <Loader2 className="spin" size={16} /> : <Trash2 size={16} />}
-                                Cancel will
-                            </Button>
-                        </section>
-                    ) : (
-                        <section className="inheritance-card smart-account-card">
-                            <div className="inheritance-section-head">
-                                <div>
-                                    <WalletCards size={19} />
-                                    <h3>Smart Account</h3>
-                                    <InfoHint help="The inheritance plan must be created by a smart account, not a normal wallet address." />
-                                </div>
-                            </div>
-                            <input name="smartAccountAddress" type="hidden" value={smartAccountAddress} />
-                            <div className="smart-account-selector">
-                                <button
-                                    aria-expanded={smartAccountDropdownOpen}
-                                    className="smart-account-select-trigger"
-                                    onClick={toggleSmartAccountDropdown}
-                                    type="button"
-                                >
-                                    <span>{smartAccountAddress ? formatAddressPreview(smartAccountAddress) : "Select smart account"}</span>
-                                    {discoveringSmartAccounts ? <Loader2 className="spin" size={16} /> : <ChevronDown size={16} />}
-                                </button>
-                                {smartAccountDropdownOpen ? (
-                                    <div className="smart-account-select-content">
-                                        {discoveringSmartAccounts ? (
-                                            <div aria-label="Loading smart accounts" className="smart-account-select-loading">
-                                                <Loader2 className="spin" size={16} />
-                                            </div>
-                                        ) : smartAccountDiscoveryError ? (
-                                            <div className="smart-account-select-empty">
-                                                {smartAccountDiscoveryError}
-                                            </div>
-                                        ) : smartAccountCandidates.length === 0 ? (
-                                            <div className="smart-account-select-empty">
-                                                <span>No smart account connected.</span>
-                                                {thirdwebClient ? (
-                                                    <ConnectButton
-                                                        accountAbstraction={thirdwebAccountAbstraction}
-                                                        appMetadata={{
-                                                            name: "Somnia RiskGuard",
-                                                            url: "https://somnia.network"
-                                                        }}
-                                                        chain={thirdwebAccountAbstraction.chain}
-                                                        client={thirdwebClient}
-                                                        connectButton={{
-                                                            className: "smart-account-create-button",
-                                                            label: "Create a smart account"
-                                                        }}
-                                                        connectModal={{ size: "compact" }}
-                                                        onConnect={() => {
-                                                            useConnectedThirdwebSmartAccount(thirdwebSmartAccountAddress);
-                                                        }}
-                                                        showAllWallets={false}
-                                                        wallets={thirdwebWallets}
-                                                    />
-                                                ) : null}
-                                                <span>
-                                                    or{" "}
-                                                    <button
-                                                        onClick={() => void findSmartAccounts()}
-                                                        type="button"
-                                                    >
-                                                        reload
-                                                    </button>{" "}
-                                                    the wallet list.
-                                                </span>
-                                            </div>
-                                        ) : smartAccountCandidates.map((candidate) => (
-                                            <button
-                                                className="smart-account-select-item"
-                                                key={candidate.address}
-                                                onClick={() => {
-                                                    updateSmartAccountSelection(candidate.address);
-                                                    setSmartAccountDropdownOpen(false);
-                                                }}
-                                                type="button"
-                                            >
-                                                <WalletCards size={15} />
-                                                <span>{formatAddressPreview(candidate.address)}</span>
-                                            </button>
-                                        ))}
+                    <section className="account-budget-row">
+                        {hasActivePlan ? (
+                            <section className="inheritance-card current-plan-card">
+                                <div className="inheritance-section-head">
+                                    <div>
+                                        <Radar size={19} />
+                                        <h3>Current Smart Account Will</h3>
                                     </div>
-                                ) : null}
+                                    <strong className="contract-pill">Active</strong>
+                                </div>
+                                <div className="current-plan-grid">
+                                    <span><small>Smart account</small><strong>{formatAddressPreview(inheritancePlan?.smartAccount)}</strong></span>
+                                    <span><small>Registry</small><strong>{formatAddressPreview(inheritancePlan?.registryAddress)}</strong></span>
+                                    <span><small>Protected assets</small><strong>{formatProtectedAssets(inheritancePlan)}</strong></span>
+                                    <span><small>Next heartbeat deadline</small><strong>{formatPlanDate(inheritancePlan?.nextDeadlineAt)}</strong></span>
+                                    <span><small>Executable after</small><strong>{formatPlanDate(inheritancePlan?.timelockEndsAt)}</strong></span>
+                                </div>
+                                <Button
+                                    className="cancel-plan-button"
+                                    disabled={actionLoading === "inheritance-cancel"}
+                                    onClick={onInheritanceCancel}
+                                    type="button"
+                                    variant="secondary"
+                                >
+                                    {actionLoading === "inheritance-cancel" ? <Loader2 className="spin" size={16} /> : <Trash2 size={16} />}
+                                    Cancel will
+                                </Button>
+                            </section>
+                        ) : (
+                            <section className="inheritance-card smart-account-card">
+                                <div className="inheritance-section-head">
+                                    <div>
+                                        <WalletCards size={19} />
+                                        <h3>Smart Account</h3>
+                                        <InfoHint help="Choose the smart account that will hold and manage the inheritance plan." />
+                                    </div>
+                                </div>
+                                <input name="smartAccountAddress" type="hidden" value={smartAccountAddress} />
+                                <div className="smart-account-selector">
+                                    <div className="smart-account-trigger-row">
+                                        <button
+                                            aria-expanded={smartAccountDropdownOpen}
+                                            className="smart-account-select-trigger"
+                                            onClick={toggleSmartAccountDropdown}
+                                            type="button"
+                                        >
+                                            <span>{smartAccountAddress ? formatAddressPreview(smartAccountAddress) : "Select smart account"}</span>
+                                            {discoveringSmartAccounts ? <Loader2 className="spin" size={16} /> : <ChevronDown size={16} />}
+                                        </button>
+                                        {smartAccountAddress ? (
+                                            <Button
+                                                aria-label="Copy smart account address"
+                                                className="smart-account-copy-button"
+                                                onClick={() => void handleCopySmartAccount()}
+                                                type="button"
+                                                variant="secondary"
+                                            >
+                                                {copiedSmartAccount ? <Check size={15} /> : <Copy size={15} />}
+                                            </Button>
+                                        ) : null}
+                                    </div>
+                                    {smartAccountDropdownOpen ? (
+                                        <div className="smart-account-select-content">
+                                            {discoveringSmartAccounts ? (
+                                                <div aria-label="Loading smart accounts" className="smart-account-select-loading">
+                                                    <Loader2 className="spin" size={16} />
+                                                </div>
+                                            ) : smartAccountDiscoveryError ? (
+                                                <div className="smart-account-select-empty">
+                                                    {smartAccountDiscoveryError}
+                                                </div>
+                                            ) : smartAccountCandidates.length === 0 ? (
+                                                <div className="smart-account-select-empty">
+                                                    <span>
+                                                        No smart account connected.{" "}
+                                                        <button
+                                                            className="smart-account-create-button"
+                                                            disabled={creatingSmartAccount}
+                                                            onClick={() => void handleCreateSmartAccount()}
+                                                            type="button"
+                                                        >
+                                                            {creatingSmartAccount ? "creating" : "Create a smart account"}
+                                                        </button>{" "}
+                                                        or{" "}
+                                                        <button
+                                                            onClick={() => void findSmartAccounts()}
+                                                            type="button"
+                                                        >
+                                                            reload
+                                                        </button>{" "}
+                                                        the wallet list.
+                                                    </span>
+                                                </div>
+                                            ) : smartAccountCandidates.map((candidate) => (
+                                                <button
+                                                    className="smart-account-select-item"
+                                                    key={candidate.address}
+                                                    onClick={() => {
+                                                        updateSmartAccountSelection(candidate.address);
+                                                        setSmartAccountDropdownOpen(false);
+                                                    }}
+                                                    type="button"
+                                                >
+                                                    <WalletCards size={15} />
+                                                    <span>{formatAddressPreview(candidate.address)}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ) : null}
+                                </div>
+                                {submitAttempted && smartAccountError ? <p className="field-error">{smartAccountError}</p> : null}
+                            </section>
+                        )}
+
+                        <section className="inheritance-card agent-budget-card">
+                            <div className="inheritance-section-head">
+                                <div>
+                                    <Activity size={19} />
+                                    <h3>Agent Budget</h3>
+                                    <InfoHint help="This STT funds Somnia agent requests for heartbeat checks and automated distribution." />
+                                </div>
                             </div>
-                            {submitAttempted && smartAccountError ? <p className="field-error">{smartAccountError}</p> : null}
+                            <div className="input-with-unit budget-input-row">
+                                <Input
+                                    inputMode="decimal"
+                                    min={minAgentBudgetSTT}
+                                    name="agentBudgetSTT"
+                                    onChange={(event) => setAgentBudgetSTT(clampNumber(event.target.value, 0, 1000, true, 5))}
+                                    required
+                                    step="0.01"
+                                    type="text"
+                                    value={agentBudgetSTT}
+                                />
+                                <span>STT</span>
+                            </div>
+                            {submitAttempted && budgetError ? <p className="field-error">{budgetError}</p> : null}
                         </section>
-                    )}
+                    </section>
 
                     <section className="timing-stack">
                         <DurationField
@@ -316,30 +432,6 @@ export function InheritanceSettings({
                             ))}
                         </div>
                         {submitAttempted && assetError ? <p className="field-error">{assetError}</p> : null}
-                    </section>
-
-                    <section className="inheritance-card agent-budget-card">
-                        <div className="inheritance-section-head">
-                            <div>
-                                <Activity size={19} />
-                                <h3>Agent Budget</h3>
-                                <InfoHint help="This STT funds Somnia agent requests for heartbeat checks and automated distribution." />
-                            </div>
-                        </div>
-                        <div className="input-with-unit budget-input-row">
-                            <Input
-                                inputMode="decimal"
-                                min={minAgentBudgetSTT}
-                                name="agentBudgetSTT"
-                                onChange={(event) => setAgentBudgetSTT(clampNumber(event.target.value, 0, 1000, true, 5))}
-                                required
-                                step="0.01"
-                                type="text"
-                                value={agentBudgetSTT}
-                            />
-                            <span>STT</span>
-                        </div>
-                        {submitAttempted && budgetError ? <p className="field-error">{budgetError}</p> : null}
                     </section>
 
                     <section className="inheritance-card recipients-card">

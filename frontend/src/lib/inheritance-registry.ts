@@ -1,5 +1,5 @@
-import { BrowserProvider, Contract, parseEther } from "ethers";
-import { getContract, prepareContractCall, sendAndConfirmTransaction } from "thirdweb";
+import { BrowserProvider, Contract, formatEther, parseEther } from "ethers";
+import { getContract, prepareContractCall, prepareTransaction, sendAndConfirmTransaction } from "thirdweb";
 import type { Account } from "thirdweb/wallets";
 
 import type { InheritancePlanStatus } from "@/lib/agent-api";
@@ -113,6 +113,49 @@ async function waitForPlanTx(txPromise: Promise<{ wait: () => Promise<unknown>; 
   return tx.hash;
 }
 
+async function ensureThirdwebSmartAccountDeployed(account: Account) {
+  if (!thirdwebClient) {
+    throw new Error("Thirdweb client is not configured.");
+  }
+
+  const provider = new BrowserProvider(getEthereumProvider());
+  const code = await provider.getCode(account.address);
+
+  if (code !== "0x") {
+    return;
+  }
+
+  const deployTransaction = prepareTransaction({
+    chain: somniaThirdwebChain,
+    client: thirdwebClient,
+    to: account.address,
+    value: 0n
+  });
+
+  await sendAndConfirmTransaction({
+    account,
+    transaction: deployTransaction
+  });
+}
+
+async function assertSmartAccountCanFundBudget(smartAccountAddress: string, agentBudgetSTT?: string) {
+  const agentBudget = Number(agentBudgetSTT ?? 0);
+
+  if (!Number.isFinite(agentBudget) || agentBudget <= 0) {
+    return;
+  }
+
+  const requiredBudget = parseEther(agentBudgetSTT ?? "0");
+  const provider = new BrowserProvider(getEthereumProvider());
+  const balance = await provider.getBalance(smartAccountAddress);
+
+  if (balance < requiredBudget) {
+    throw new Error(
+      `Smart account needs at least ${agentBudgetSTT} STT for agent budget. Current balance is ${formatEther(balance)} STT. Transfer STT to the smart account first.`
+    );
+  }
+}
+
 export async function saveInheritancePlan(
   registryAddress: string,
   input: InheritancePlanInput,
@@ -168,6 +211,9 @@ export async function saveInheritancePlanWithThirdweb(
   if (account.address.toLowerCase() !== smartAccountAddress.toLowerCase()) {
     throw new Error("Select the active Thirdweb smart account before saving this plan.");
   }
+
+  await ensureThirdwebSmartAccountDeployed(account);
+  await assertSmartAccountCanFundBudget(smartAccountAddress, input.agentBudgetSTT);
 
   const registry = getContract({
     address: registryAddress,

@@ -334,6 +334,7 @@ export function useInheritanceSettingsForm({
     smartAccountAddress,
     smartAccountCandidates,
     smartAccountDiscoveryError,
+    setSmartAccountDiscoveryError,
     smartAccountDropdownOpen,
     smartAccountError,
     submitAttempted,

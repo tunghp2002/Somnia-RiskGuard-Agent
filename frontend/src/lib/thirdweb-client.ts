@@ -1,7 +1,7 @@
 "use client";
 
 import { createThirdwebClient, defineChain } from "thirdweb";
-import { createWallet, inAppWallet } from "thirdweb/wallets";
+import { createWallet } from "thirdweb/wallets";
 import type { Wallet } from "thirdweb/wallets";
 
 import publicChains from "../../../config/public-chains.json";
@@ -29,7 +29,7 @@ export const somniaThirdwebChain = defineChain({
 });
 
 export const thirdwebWallets = [
-  inAppWallet(),
+  createWallet("app.subwallet"),
   createWallet("io.metamask"),
   createWallet("com.coinbase.wallet"),
   createWallet("me.rainbow")

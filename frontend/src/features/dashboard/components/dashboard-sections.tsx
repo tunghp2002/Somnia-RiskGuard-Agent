@@ -127,7 +127,7 @@ export function ProfilePanel({
       <section className="profile-card profile-action-card">
         <div>
           <h2>Wallet Session</h2>
-          <p className="muted">Disconnect this browser wallet from the dashboard.</p>
+          <p className="muted">Disconnect this wallet from RiskGuard.</p>
         </div>
         <Button className="secondary-button" disabled={actionLoading === "wallet"} onClick={onDisconnectWallet} type="button" variant="secondary">
           Disconnect
