@@ -192,6 +192,12 @@ contract InheritanceRegistryTest {
         assert(assets[1].token == address(token));
     }
 
+    function testRejectsEOAPlanCreation() public {
+        vm.expectRevert(RiskGuardInheritanceRegistry.NotSmartAccount.selector);
+        vm.prank(AGENT);
+        registry.createPlan(_singleBeneficiary(), _nativeAsset(), 1 days, 0, 0);
+    }
+
     function testRejectsSecondActivePlanUntilCancelled() public {
         vm.prank(address(smartAccount));
         registry.createPlan(_beneficiaries60_40(), _nativeAsset(), 30 days, 7 days, 2 days);

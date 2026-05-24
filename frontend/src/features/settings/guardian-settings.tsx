@@ -1,765 +1,599 @@
-import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties, FormEvent, ReactNode } from "react";
+import type { CSSProperties, FormEvent } from "react";
+import { Dialog as DialogPrimitive } from "radix-ui";
+import { ConnectButton, useActiveAccount, useConnectedWallets } from "thirdweb/react";
 import {
-  Activity,
-  CalendarClock,
-  Fingerprint,
-  Info,
-  Lock,
-  LockKeyhole,
-  Loader2,
-  Plus,
-  Radar,
-  TimerReset,
-  Trash2,
-  Unlock,
-  UserPlus,
-  Users,
-  WalletCards
+    Activity,
+    CalendarClock,
+    ChevronDown,
+    Coins,
+    Fingerprint,
+    Lock,
+    LockKeyhole,
+    Loader2,
+    Plus,
+    Radar,
+    Trash2,
+    Unlock,
+    UserPlus,
+    Users,
+    WalletCards
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { InheritancePlanStatus } from "@/lib/agent-api";
-
-type BeneficiaryDraft = {
-  id: number;
-  address: string;
-  sharePercent: number;
-  locked: boolean;
-};
-
-const initialBeneficiaries: BeneficiaryDraft[] = [
-  { id: 1, address: "", sharePercent: 100, locked: false }
-];
-
-const recipientColors = ["#a78bfa", "#22d3ee", "#34d399", "#f59e0b", "#fb7185", "#60a5fa", "#f472b6", "#c4b5fd"];
-
-type DurationDraft = {
-  days: string;
-  hours: string;
-};
-
-const walletAddressPattern = /^0x[a-fA-F0-9]{40}$/;
-
-function clampNumber(value: string, min: number, max: number, allowDecimal = false, maxDecimalPlaces = 5) {
-  const cleaned = value.replace(allowDecimal ? /[^\d.]/g : /\D/g, "");
-  const normalized = allowDecimal
-    ? cleaned
-      .replace(/(\..*)\./g, "$1")
-      .replace(new RegExp(`^(\\d*\\.?\\d{0,${maxDecimalPlaces}}).*$`), "$1")
-    : cleaned;
-
-  if (normalized === "") {
-    return "";
-  }
-
-  const numeric = Number(normalized);
-  if (!Number.isFinite(numeric)) {
-    return String(min);
-  }
-
-  return String(Math.min(max, Math.max(min, numeric)));
-}
-
-function roundShare(value: number) {
-  return Math.round((value + Number.EPSILON) * 100_000) / 100_000;
-}
-
-function getShareInputValue(value: string) {
-  return Number(clampNumber(value, 0, 100, true, 5) || 0);
-}
-
-function getRecipientColor(index: number) {
-  return recipientColors[index % recipientColors.length];
-}
-
-function formatDurationPreview(duration: DurationDraft) {
-  const days = Number(duration.days || 0);
-  const hours = Number(duration.hours || 0);
-
-  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
-}
-
-function formatRecipientLabel(beneficiary: BeneficiaryDraft, index: number) {
-  const address = beneficiary.address.trim();
-
-  if (walletAddressPattern.test(address)) {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`;
-  }
-
-  return `Recipient ${index + 1}`;
-}
-
-function formatAddressPreview(address?: string) {
-  const trimmedAddress = address?.trim() ?? "";
-
-  if (!walletAddressPattern.test(trimmedAddress)) {
-    return "Creator wallet";
-  }
-
-  return `${trimmedAddress.slice(0, 6)}...${trimmedAddress.slice(-4)}`;
-}
-
-function formatPlanDate(value?: string) {
-  if (!value) {
-    return "not set";
-  }
-
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  }).format(new Date(value));
-}
-
-function secondsToDuration(seconds?: number): DurationDraft {
-  const safeSeconds = Math.max(0, Number(seconds ?? 0));
-  const days = Math.floor(safeSeconds / 86_400);
-  const hours = Math.floor((safeSeconds % 86_400) / 3_600);
-
-  return { days: String(days), hours: String(hours) };
-}
-
-function beneficiariesFromPlan(plan?: InheritancePlanStatus | null): BeneficiaryDraft[] {
-  if (!plan?.active || plan.beneficiaries.length === 0) {
-    return initialBeneficiaries;
-  }
-
-  return plan.beneficiaries.map((beneficiary, index) => ({
-    id: index + 1,
-    address: beneficiary.address,
-    sharePercent: roundShare(beneficiary.shareBps / 100),
-    locked: false
-  }));
-}
-
-function formatProtectedAssets(plan?: InheritancePlanStatus | null) {
-  const assets = plan?.protectedAssets ?? [];
-
-  if (assets.length === 0) {
-    return "Native STT";
-  }
-
-  return assets
-    .map((asset) => asset.kind === "native" ? "Native STT" : formatAddressPreview(asset.token))
-    .join(", ");
-}
-
-function normalizeBeneficiaryShares(beneficiaries: BeneficiaryDraft[]) {
-  const lockedTotal = beneficiaries
-    .filter((beneficiary) => beneficiary.locked)
-    .reduce((total, beneficiary) => total + beneficiary.sharePercent, 0);
-  const availableShare = Math.max(0, roundShare(100 - lockedTotal));
-  const unlocked = beneficiaries.filter((beneficiary) => !beneficiary.locked);
-
-  if (unlocked.length === 0) {
-    return beneficiaries;
-  }
-
-  const currentUnlockedTotal = unlocked.reduce((total, beneficiary) => total + beneficiary.sharePercent, 0);
-  let remainingShare = availableShare;
-  const distributed = new Map<number, number>();
-
-  unlocked.forEach((beneficiary, index) => {
-    const isLast = index === unlocked.length - 1;
-    const nextShare = isLast
-      ? remainingShare
-      : roundShare(currentUnlockedTotal > 0
-        ? (beneficiary.sharePercent / currentUnlockedTotal) * availableShare
-        : availableShare / unlocked.length);
-
-    const boundedShare = Math.min(remainingShare, Math.max(0, nextShare));
-    distributed.set(beneficiary.id, roundShare(boundedShare));
-    remainingShare = roundShare(remainingShare - boundedShare);
-  });
-
-  return beneficiaries.map((beneficiary) => beneficiary.locked
-    ? beneficiary
-    : { ...beneficiary, sharePercent: distributed.get(beneficiary.id) ?? 0 });
-}
-
-function rebalanceBeneficiaryShare(
-  beneficiaries: BeneficiaryDraft[],
-  changedId: number,
-  requestedShare: number
-) {
-  const changedBeneficiary = beneficiaries.find((beneficiary) => beneficiary.id === changedId);
-
-  if (!changedBeneficiary || changedBeneficiary.locked) {
-    return beneficiaries;
-  }
-
-  const lockedTotal = beneficiaries
-    .filter((beneficiary) => beneficiary.locked)
-    .reduce((total, beneficiary) => total + beneficiary.sharePercent, 0);
-  const availableShare = Math.max(0, roundShare(100 - lockedTotal));
-  const changedShare = Math.min(availableShare, Math.max(0, roundShare(requestedShare)));
-  const adjustable = beneficiaries.filter((beneficiary) => !beneficiary.locked && beneficiary.id !== changedId);
-
-  if (adjustable.length === 0) {
-    return beneficiaries.map((beneficiary) => beneficiary.id === changedId
-      ? { ...beneficiary, sharePercent: availableShare }
-      : beneficiary);
-  }
-
-  const remainingForAdjustable = roundShare(availableShare - changedShare);
-  const currentAdjustableTotal = adjustable.reduce((total, beneficiary) => total + beneficiary.sharePercent, 0);
-  let remainingShare = remainingForAdjustable;
-  const distributed = new Map<number, number>();
-
-  adjustable.forEach((beneficiary, index) => {
-    const isLast = index === adjustable.length - 1;
-    const nextShare = isLast
-      ? remainingShare
-      : roundShare(currentAdjustableTotal > 0
-        ? (beneficiary.sharePercent / currentAdjustableTotal) * remainingForAdjustable
-        : remainingForAdjustable / adjustable.length);
-    const boundedShare = Math.min(remainingShare, Math.max(0, nextShare));
-
-    distributed.set(beneficiary.id, roundShare(boundedShare));
-    remainingShare = roundShare(remainingShare - boundedShare);
-  });
-
-  return beneficiaries.map((beneficiary) => {
-    if (beneficiary.id === changedId) {
-      return { ...beneficiary, sharePercent: changedShare };
-    }
-
-    if (!beneficiary.locked) {
-      return { ...beneficiary, sharePercent: distributed.get(beneficiary.id) ?? 0 };
-    }
-
-    return beneficiary;
-  });
-}
+import {
+    thirdwebAccountAbstraction,
+    thirdwebClient,
+    thirdwebWallets
+} from "@/lib/thirdweb-client";
+import { DurationField, Field, InfoHint } from "./inheritance-settings-controls";
+import {
+    clampNumber,
+    formatAddressPreview,
+    formatDurationPreview,
+    formatPlanDate,
+    formatProtectedAssets,
+    formatRecipientLabel,
+    getBeneficiaryAddressError,
+    getBeneficiaryShareError,
+    getRecipientColor,
+    minAgentBudgetSTT,
+} from "./inheritance-settings.utils";
+import { useInheritanceSettingsForm } from "./use-inheritance-settings-form";
 
 export function InheritanceSettings({
-  actionLoading,
-  inheritancePlan,
-  onInheritanceCancel,
-  onInheritanceSubmit,
-  registryAddress,
-  walletAddress,
+    actionLoading,
+    inheritancePlan,
+    onInheritanceCancel,
+    onInheritanceSubmit,
+    onSmartAccountChange,
+    registryAddress,
+    selectedSmartAccountAddress,
+    walletAddress
 }: {
-  actionLoading: string | null;
-  inheritancePlan?: InheritancePlanStatus | null | undefined;
-  onInheritanceCancel: () => void;
-  onInheritanceSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  registryAddress?: string | undefined;
-  walletAddress?: string | undefined;
+    actionLoading: string | null;
+    inheritancePlan?: InheritancePlanStatus | null | undefined;
+    onInheritanceCancel: () => void;
+    onInheritanceSubmit: (event: FormEvent<HTMLFormElement>) => void;
+    onSmartAccountChange: (address: string | undefined) => void;
+    registryAddress?: string | undefined;
+    selectedSmartAccountAddress?: string | undefined;
+    walletAddress?: string | undefined;
 }) {
-  const [beneficiaries, setBeneficiaries] = useState<BeneficiaryDraft[]>(initialBeneficiaries);
-  const [intervalDuration, setIntervalDuration] = useState<DurationDraft>({ days: "30", hours: "0" });
-  const [graceDuration, setGraceDuration] = useState<DurationDraft>({ days: "0", hours: "0" });
-  const [timelockDuration, setTimelockDuration] = useState<DurationDraft>({ days: "0", hours: "0" });
-  const hasActivePlan = Boolean(inheritancePlan?.active);
-
-  useEffect(() => {
-    if (!inheritancePlan?.active) {
-      setBeneficiaries(initialBeneficiaries);
-      setIntervalDuration({ days: "30", hours: "0" });
-      setGraceDuration({ days: "0", hours: "0" });
-      setTimelockDuration({ days: "0", hours: "0" });
-      return;
-    }
-
-    setBeneficiaries(beneficiariesFromPlan(inheritancePlan));
-    setIntervalDuration(secondsToDuration(inheritancePlan.heartbeatIntervalSeconds));
-    setGraceDuration(secondsToDuration(inheritancePlan.gracePeriodSeconds));
-    setTimelockDuration(secondsToDuration(inheritancePlan.timelockPeriodSeconds));
-  }, [inheritancePlan]);
-
-  const shareTotal = useMemo(
-    () => roundShare(beneficiaries.reduce((total, beneficiary) => total + Number(beneficiary.sharePercent || 0), 0)),
-    [beneficiaries]
-  );
-  const allocationSegments = useMemo(() => {
-    let offset = 0;
-
-    return beneficiaries.map((beneficiary, index) => {
-      const share = Math.min(100, Math.max(0, roundShare(Number(beneficiary.sharePercent || 0))));
-      const segment = {
-        color: getRecipientColor(index),
-        id: beneficiary.id,
-        offset,
-        rest: roundShare(100 - share),
-        share
-      };
-
-      offset = roundShare(offset + share);
-      return segment;
+    const thirdwebSmartAccount = useActiveAccount();
+    const thirdwebSmartAccountAddress = thirdwebSmartAccount?.address;
+    const thirdwebConnectedSmartAccountAddresses = useConnectedWallets()
+        .map((wallet) => wallet.getAccount()?.address)
+        .filter((address): address is string => Boolean(address));
+    const {
+        addBeneficiary,
+        addDisabled,
+        addToken,
+        agentBudgetSTT,
+        allocationError,
+        allocationSegments,
+        assetError,
+        beneficiaries,
+        budgetError,
+        canRemove,
+        discoveringSmartAccounts,
+        findSmartAccounts,
+        graceDuration,
+        hasCreatorWallet,
+        includeNativeAsset,
+        intervalDuration,
+        removeBeneficiary,
+        setAgentBudgetSTT,
+        setGraceDuration,
+        setIncludeNativeAsset,
+        setIntervalDuration,
+        setSmartAccountDropdownOpen,
+        setSubmitAttempted,
+        setTimelockDuration,
+        setTokenDialogOpen,
+        setTokenDraft,
+        setTokenSubmitted,
+        setTokens,
+        shareTotal,
+        smartAccountAddress,
+        smartAccountCandidates,
+        smartAccountDiscoveryError,
+        smartAccountDropdownOpen,
+        smartAccountError,
+        submitAttempted,
+        submitBlockReason,
+        timelockDuration,
+        toggleBeneficiaryLock,
+        toggleSmartAccountDropdown,
+        tokenAddressError,
+        tokenAddressRef,
+        tokenDecimalsError,
+        tokenDecimalsRef,
+        tokenDialogOpen,
+        tokenDraft,
+        tokenSubmitted,
+        tokenSymbolError,
+        tokenSymbolRef,
+        tokens,
+        updateBeneficiary,
+        updateBeneficiaryShare,
+        updateSmartAccountSelection,
+        useConnectedThirdwebSmartAccount
+    } = useInheritanceSettingsForm({
+        inheritancePlan,
+        onSmartAccountChange,
+        selectedSmartAccountAddress,
+        thirdwebConnectedSmartAccountAddresses,
+        thirdwebSmartAccountAddress,
+        walletAddress
     });
-  }, [beneficiaries]);
-  const lockedShareTotal = useMemo(
-    () => beneficiaries
-      .filter((beneficiary) => beneficiary.locked)
-      .reduce((total, beneficiary) => total + Number(beneficiary.sharePercent || 0), 0),
-    [beneficiaries]
-  );
-  const canRemove = beneficiaries.length > 1;
-  const addDisabled = beneficiaries.length >= 20 || (beneficiaries.every((beneficiary) => beneficiary.locked) && lockedShareTotal >= 100);
-  const allocationError = Math.abs(shareTotal - 100) > 0.001
-    ? "Recipient shares must total 100%."
-    : "";
-  const isAllocationReady = !allocationError;
-  const firstAddressError = beneficiaries
-    .map((beneficiary, index) => getBeneficiaryAddressError(beneficiary.address, index, walletAddress, beneficiaries, beneficiary.id))
-    .find(Boolean) ?? "";
-  const firstShareError = beneficiaries
-    .map((beneficiary, index) => getBeneficiaryShareError(beneficiary.sharePercent, index))
-    .find(Boolean) ?? "";
-  const planActionBusy = actionLoading === "inheritance-plan" || actionLoading === "inheritance-cancel";
-  const canSaveInheritancePlan = Boolean(registryAddress) && isAllocationReady && !firstAddressError && !firstShareError && !planActionBusy;
-  const submitBlockReason = firstAddressError || firstShareError || allocationError;
-  const hasCreatorWallet = walletAddressPattern.test(walletAddress?.trim() ?? "");
+    const hasActivePlan = Boolean(inheritancePlan?.active);
+    const planActionBusy = actionLoading === "inheritance-plan" || actionLoading === "inheritance-cancel";
+    const canSaveInheritancePlan = Boolean(registryAddress) && !planActionBusy;
 
-  function updateBeneficiary(id: number, patch: Partial<BeneficiaryDraft>) {
-    setBeneficiaries((current) =>
-      current.map((beneficiary) => beneficiary.id === id ? { ...beneficiary, ...patch } : beneficiary)
-    );
-  }
+    return (
+        <form className="inheritance-screen" onSubmit={onInheritanceSubmit}>
+            <section className="inheritance-layout">
+                <div className="inheritance-main">
+                    {hasActivePlan ? (
+                        <section className="inheritance-card current-plan-card">
+                            <div className="inheritance-section-head">
+                                <div>
+                                    <Radar size={19} />
+                                    <h3>Current Smart Account Will</h3>
+                                </div>
+                                <strong className="contract-pill">Active</strong>
+                            </div>
+                            <div className="current-plan-grid">
+                                <span><small>Smart account</small><strong>{formatAddressPreview(inheritancePlan?.smartAccount)}</strong></span>
+                                <span><small>Registry</small><strong>{formatAddressPreview(inheritancePlan?.registryAddress)}</strong></span>
+                                <span><small>Protected assets</small><strong>{formatProtectedAssets(inheritancePlan)}</strong></span>
+                                <span><small>Next heartbeat deadline</small><strong>{formatPlanDate(inheritancePlan?.nextDeadlineAt)}</strong></span>
+                                <span><small>Executable after</small><strong>{formatPlanDate(inheritancePlan?.timelockEndsAt)}</strong></span>
+                            </div>
+                            <Button
+                                className="cancel-plan-button"
+                                disabled={actionLoading === "inheritance-cancel"}
+                                onClick={onInheritanceCancel}
+                                type="button"
+                                variant="secondary"
+                            >
+                                {actionLoading === "inheritance-cancel" ? <Loader2 className="spin" size={16} /> : <Trash2 size={16} />}
+                                Cancel will
+                            </Button>
+                        </section>
+                    ) : (
+                        <section className="inheritance-card smart-account-card">
+                            <div className="inheritance-section-head">
+                                <div>
+                                    <WalletCards size={19} />
+                                    <h3>Smart Account</h3>
+                                    <InfoHint help="The inheritance plan must be created by a smart account, not a normal wallet address." />
+                                </div>
+                            </div>
+                            <input name="smartAccountAddress" type="hidden" value={smartAccountAddress} />
+                            <div className="smart-account-selector">
+                                <button
+                                    aria-expanded={smartAccountDropdownOpen}
+                                    className="smart-account-select-trigger"
+                                    onClick={toggleSmartAccountDropdown}
+                                    type="button"
+                                >
+                                    <span>{smartAccountAddress ? formatAddressPreview(smartAccountAddress) : "Select smart account"}</span>
+                                    {discoveringSmartAccounts ? <Loader2 className="spin" size={16} /> : <ChevronDown size={16} />}
+                                </button>
+                                {smartAccountDropdownOpen ? (
+                                    <div className="smart-account-select-content">
+                                        {discoveringSmartAccounts ? (
+                                            <div aria-label="Loading smart accounts" className="smart-account-select-loading">
+                                                <Loader2 className="spin" size={16} />
+                                            </div>
+                                        ) : smartAccountDiscoveryError ? (
+                                            <div className="smart-account-select-empty">
+                                                {smartAccountDiscoveryError}
+                                            </div>
+                                        ) : smartAccountCandidates.length === 0 ? (
+                                            <div className="smart-account-select-empty">
+                                                <span>No smart account connected.</span>
+                                                {thirdwebClient ? (
+                                                    <ConnectButton
+                                                        accountAbstraction={thirdwebAccountAbstraction}
+                                                        appMetadata={{
+                                                            name: "Somnia RiskGuard",
+                                                            url: "https://somnia.network"
+                                                        }}
+                                                        chain={thirdwebAccountAbstraction.chain}
+                                                        client={thirdwebClient}
+                                                        connectButton={{
+                                                            className: "smart-account-create-button",
+                                                            label: "Create a smart account"
+                                                        }}
+                                                        connectModal={{ size: "compact" }}
+                                                        onConnect={() => {
+                                                            useConnectedThirdwebSmartAccount(thirdwebSmartAccountAddress);
+                                                        }}
+                                                        showAllWallets={false}
+                                                        wallets={thirdwebWallets}
+                                                    />
+                                                ) : null}
+                                                <span>
+                                                    or{" "}
+                                                    <button
+                                                        onClick={() => void findSmartAccounts()}
+                                                        type="button"
+                                                    >
+                                                        reload
+                                                    </button>{" "}
+                                                    the wallet list.
+                                                </span>
+                                            </div>
+                                        ) : smartAccountCandidates.map((candidate) => (
+                                            <button
+                                                className="smart-account-select-item"
+                                                key={candidate.address}
+                                                onClick={() => {
+                                                    updateSmartAccountSelection(candidate.address);
+                                                    setSmartAccountDropdownOpen(false);
+                                                }}
+                                                type="button"
+                                            >
+                                                <WalletCards size={15} />
+                                                <span>{formatAddressPreview(candidate.address)}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : null}
+                            </div>
+                            {submitAttempted && smartAccountError ? <p className="field-error">{smartAccountError}</p> : null}
+                        </section>
+                    )}
 
-  function updateBeneficiaryShare(id: number, value: string) {
-    setBeneficiaries((current) => rebalanceBeneficiaryShare(current, id, getShareInputValue(value)));
-  }
+                    <section className="timing-stack">
+                        <DurationField
+                            duration={intervalDuration}
+                            help="How often you must renew the heartbeat before the switch starts moving toward inheritance. (Minimum 1 day)"
+                            label="Heartbeat interval"
+                            namePrefix="interval"
+                            onChange={setIntervalDuration}
+                        />
+                        <DurationField
+                            duration={graceDuration}
+                            help="Extra time after a missed heartbeat before the account is considered expired. Testnet can be 0."
+                            label="Grace period"
+                            namePrefix="grace"
+                            onChange={setGraceDuration}
+                        />
+                        <DurationField
+                            duration={timelockDuration}
+                            help="Final waiting period after grace ends. Testnet can be 0; production should use a safer delay."
+                            label="Beneficiary timelock"
+                            namePrefix="timelock"
+                            onChange={setTimelockDuration}
+                        />
+                    </section>
 
-  function addBeneficiary() {
-    setBeneficiaries((current) => {
-      const currentLockedTotal = current
-        .filter((beneficiary) => beneficiary.locked)
-        .reduce((total, beneficiary) => total + beneficiary.sharePercent, 0);
+                    <section className="inheritance-card assets-card">
+                        <div className="inheritance-section-head">
+                            <div>
+                                <Coins size={19} />
+                                <h3>Protected Assets</h3>
+                                <InfoHint help="These are the native and ERC-20 balances the smart account should distribute after expiry." />
+                            </div>
+                            <Button onClick={() => setTokenDialogOpen(true)} type="button" variant="secondary">
+                                <Plus size={16} />
+                                Import token
+                            </Button>
+                        </div>
+                        <label className="native-asset-toggle">
+                            <input
+                                checked={includeNativeAsset}
+                                name="includeNativeAsset"
+                                onChange={(event) => setIncludeNativeAsset(event.target.checked)}
+                                type="checkbox"
+                                value="true"
+                            />
+                            Native STT
+                        </label>
+                        <div className="token-list">
+                            {tokens.map((token) => (
+                                <div className="token-row" key={token.address.toLowerCase()}>
+                                    <Coins size={15} />
+                                    <strong>{token.symbol}</strong>
+                                    <small>{formatAddressPreview(token.address)} · {token.decimals} decimals</small>
+                                    <input name="erc20Assets" type="hidden" value={token.address} />
+                                    <Button
+                                        aria-label={`Remove ${token.symbol}`}
+                                        className="token-remove"
+                                        onClick={() => setTokens((current) => current.filter((item) => item.address.toLowerCase() !== token.address.toLowerCase()))}
+                                        type="button"
+                                        variant="ghost"
+                                    >
+                                        <Trash2 size={15} />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                        {submitAttempted && assetError ? <p className="field-error">{assetError}</p> : null}
+                    </section>
 
-      if (current.length >= 20 || (current.every((beneficiary) => beneficiary.locked) && currentLockedTotal >= 100)) {
-        return current;
-      }
+                    <section className="inheritance-card agent-budget-card">
+                        <div className="inheritance-section-head">
+                            <div>
+                                <Activity size={19} />
+                                <h3>Agent Budget</h3>
+                                <InfoHint help="This STT funds Somnia agent requests for heartbeat checks and automated distribution." />
+                            </div>
+                        </div>
+                        <div className="input-with-unit budget-input-row">
+                            <Input
+                                inputMode="decimal"
+                                min={minAgentBudgetSTT}
+                                name="agentBudgetSTT"
+                                onChange={(event) => setAgentBudgetSTT(clampNumber(event.target.value, 0, 1000, true, 5))}
+                                required
+                                step="0.01"
+                                type="text"
+                                value={agentBudgetSTT}
+                            />
+                            <span>STT</span>
+                        </div>
+                        {submitAttempted && budgetError ? <p className="field-error">{budgetError}</p> : null}
+                    </section>
 
-      const nextId = Math.max(...current.map((beneficiary) => beneficiary.id)) + 1;
-      return [...current, { id: nextId, address: "", sharePercent: 0, locked: false }];
-    });
-  }
+                    <section className="inheritance-card recipients-card">
+                        <div className="inheritance-section-head">
+                            <div>
+                                <Users size={19} />
+                                <h3>Recipient Accounts</h3>
+                                <InfoHint help="Wallet addresses listed here receive the configured shares after heartbeat, grace, and timelock periods finish." />
+                            </div>
+                            <Button
+                                aria-label="Add recipient account"
+                                className="add-account-button"
+                                disabled={addDisabled}
+                                onClick={addBeneficiary}
+                                type="button"
+                                variant="secondary"
+                            >
+                                <Plus size={16} />
+                                Add account
+                            </Button>
+                        </div>
 
-  function removeBeneficiary(id: number) {
-    setBeneficiaries((current) => {
-      if (current.length === 1) {
-        return current;
-      }
+                        <div className="beneficiary-list">
+                            {beneficiaries.map((beneficiary, index) => {
+                                const addressError = getBeneficiaryAddressError(beneficiary.address, index, smartAccountAddress, beneficiaries, beneficiary.id);
+                                const shareError = getBeneficiaryShareError(beneficiary.sharePercent, index);
 
-      return normalizeBeneficiaryShares(current.filter((beneficiary) => beneficiary.id !== id));
-    });
-  }
-
-  function toggleBeneficiaryLock(id: number) {
-    setBeneficiaries((current) =>
-      current.map((beneficiary) => beneficiary.id === id
-        ? { ...beneficiary, locked: !beneficiary.locked }
-        : beneficiary)
-    );
-  }
-
-  return (
-    <form className="inheritance-screen" onSubmit={onInheritanceSubmit}>
-      <section className="inheritance-layout">
-        <div className="inheritance-main">
-          {hasActivePlan ? (
-            <section className="inheritance-card current-plan-card">
-              <div className="inheritance-section-head">
-                <div>
-                  <Radar size={19} />
-                  <h3>Current Smart Account Will</h3>
+                                return (
+                                    <div className={beneficiary.locked ? "beneficiary-row beneficiary-row-locked" : "beneficiary-row"} key={beneficiary.id}>
+                                        <div
+                                            className="beneficiary-index"
+                                            style={{
+                                                "--recipient-color": getRecipientColor(index)
+                                            } as CSSProperties}
+                                        >
+                                            <UserPlus size={17} />
+                                            <span>{index + 1}</span>
+                                        </div>
+                                        <Field
+                                            error={submitAttempted ? addressError || undefined : undefined}
+                                            id={`beneficiary-address-${beneficiary.id}`}
+                                            label="Recipient wallet address"
+                                        >
+                                            <Input
+                                                aria-invalid={Boolean(submitAttempted && addressError)}
+                                                id={`beneficiary-address-${beneficiary.id}`}
+                                                name="beneficiaryAddress"
+                                                onChange={(event) => updateBeneficiary(beneficiary.id, { address: event.target.value })}
+                                                required
+                                                value={beneficiary.address}
+                                            />
+                                        </Field>
+                                        <Field
+                                            error={submitAttempted ? shareError || undefined : undefined}
+                                            help="Percent of protected balances this recipient receives. Editing one unlocked recipient automatically rebalances the others."
+                                            id={`beneficiary-share-${beneficiary.id}`}
+                                            label="Inheritance share"
+                                        >
+                                            <div className="input-with-unit">
+                                                <Input
+                                                    aria-invalid={Boolean(submitAttempted && shareError)}
+                                                    disabled={beneficiary.locked}
+                                                    id={`beneficiary-share-${beneficiary.id}`}
+                                                    inputMode="decimal"
+                                                    name="sharePercent"
+                                                    onBlur={() => updateBeneficiaryShare(beneficiary.id, String(beneficiary.sharePercent))}
+                                                    onChange={(event) => updateBeneficiaryShare(beneficiary.id, event.target.value)}
+                                                    required
+                                                    type="text"
+                                                    value={beneficiary.sharePercent}
+                                                />
+                                                <span>%</span>
+                                            </div>
+                                        </Field>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <Button
+                                                    aria-label={beneficiary.locked ? "Unlock recipient share" : "Lock recipient share"}
+                                                    aria-pressed={beneficiary.locked}
+                                                    className={beneficiary.locked ? "lock-button lock-button-active" : "lock-button"}
+                                                    onClick={() => toggleBeneficiaryLock(beneficiary.id)}
+                                                    type="button"
+                                                    variant="ghost"
+                                                >
+                                                    {beneficiary.locked ? <Lock size={16} /> : <Unlock size={16} />}
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent className="riskguard-tooltip" sideOffset={8}>
+                                                {beneficiary.locked
+                                                    ? "Unlock this share before editing or auto-balancing it."
+                                                    : "Lock this percentage so other recipients rebalance around it."}
+                                            </TooltipContent>
+                                        </Tooltip>
+                                        <Button
+                                            aria-label="Remove recipient account"
+                                            className="icon-button"
+                                            disabled={!canRemove}
+                                            onClick={() => removeBeneficiary(beneficiary.id)}
+                                            type="button"
+                                            variant="ghost"
+                                        >
+                                            <Trash2 size={16} />
+                                        </Button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        {submitAttempted && allocationError ? <p className="field-error">{allocationError}</p> : null}
+                    </section>
                 </div>
-                <strong className="contract-pill">Active</strong>
-              </div>
-              <div className="current-plan-grid">
-                <span><small>Smart account</small><strong>{formatAddressPreview(inheritancePlan?.smartAccount)}</strong></span>
-                <span><small>Registry</small><strong>{formatAddressPreview(inheritancePlan?.registryAddress)}</strong></span>
-                <span><small>Protected assets</small><strong>{formatProtectedAssets(inheritancePlan)}</strong></span>
-                <span><small>Next heartbeat deadline</small><strong>{formatPlanDate(inheritancePlan?.nextDeadlineAt)}</strong></span>
-                <span><small>Executable after</small><strong>{formatPlanDate(inheritancePlan?.timelockEndsAt)}</strong></span>
-              </div>
-              <Button
-                className="cancel-plan-button"
-                disabled={actionLoading === "inheritance-cancel"}
-                onClick={onInheritanceCancel}
-                type="button"
-                variant="secondary"
-              >
-                {actionLoading === "inheritance-cancel" ? <Loader2 className="spin" size={16} /> : <Trash2 size={16} />}
-                Cancel will
-              </Button>
+
+                <aside className="contract-preview-panel">
+                    <div className="preview-glow" aria-hidden="true" />
+                    <section className="preview-vault">
+                        <div className="preview-topline">
+                            <span><Radar size={15} /> Smart Account Will</span>
+                            <strong className={hasActivePlan ? "status-ok" : hasCreatorWallet ? "status-warn" : "status-bad"}>
+                                {hasActivePlan ? "Active" : hasCreatorWallet ? "New plan" : "No wallet"}
+                            </strong>
+                        </div>
+
+                        <div className="vault-orbit">
+                            <svg aria-hidden="true" className="vault-allocation-ring" viewBox="0 0 120 120">
+                                <circle className="vault-ring-track" cx="60" cy="60" r="52" pathLength="100" />
+                                {allocationSegments.map((segment) => (
+                                    <circle
+                                        className="vault-ring-segment"
+                                        cx="60"
+                                        cy="60"
+                                        key={segment.id}
+                                        pathLength="100"
+                                        r="52"
+                                        style={{
+                                            "--segment-color": segment.color,
+                                            "--segment-offset": `${-segment.offset}`,
+                                            "--segment-rest": segment.rest,
+                                            "--segment-share": segment.share
+                                        } as CSSProperties}
+                                    />
+                                ))}
+                            </svg>
+                            <div>
+                                <LockKeyhole size={30} />
+                                <strong>{shareTotal}%</strong>
+                                <span>allocated</span>
+                            </div>
+                        </div>
+
+                        <div className="recipient-allocation-legend" aria-label="Recipient allocation legend">
+                            {beneficiaries.map((beneficiary, index) => (
+                                <span
+                                    key={beneficiary.id}
+                                    style={{ "--recipient-color": getRecipientColor(index) } as CSSProperties}
+                                >
+                                    <i aria-hidden="true" />
+                                    <strong>{formatRecipientLabel(beneficiary, index)}</strong>
+                                    <small>{beneficiary.sharePercent}%</small>
+                                </span>
+                            ))}
+                        </div>
+
+                        <div className="preview-stat-grid">
+                            <span><Users size={16} /><strong>{beneficiaries.length}</strong><small>Recipients</small></span>
+                            <span><CalendarClock size={16} /><strong>{formatDurationPreview(intervalDuration)}</strong><small>Renewal</small></span>
+                            <span><Activity size={16} /><strong>{formatDurationPreview(graceDuration)}</strong><small>Grace</small></span>
+                            <span><Fingerprint size={16} /><strong>{formatDurationPreview(timelockDuration)}</strong><small>Timelock</small></span>
+                        </div>
+
+                        {submitAttempted && submitBlockReason ? (
+                            <p className="preview-note status-bad">{submitBlockReason}</p>
+                        ) : null}
+
+                        {!registryAddress ? (
+                            <p className="preview-note status-warn">Deploy and configure the Inheritance Registry before saving on testnet.</p>
+                        ) : null}
+
+                        <p className="preview-note">
+                            Funds stay usable by the smart account. After expiry, automation executes native/ERC-20 transfers through the authorized account module.
+                        </p>
+
+                        <Button
+                            className="primary-button inheritance-save"
+                            disabled={!canSaveInheritancePlan}
+                            onClick={() => setSubmitAttempted(true)}
+                            type="submit"
+                            variant="primary"
+                        >
+                            {actionLoading === "inheritance-plan" ? <Loader2 className="spin" size={16} /> : <WalletCards size={16} />}
+                            {actionLoading === "inheritance-plan"
+                                ? "Saving plan"
+                                : hasActivePlan ? "Update inheritance plan" : "Create inheritance plan"}
+                        </Button>
+                    </section>
+                </aside>
             </section>
-          ) : null}
 
-          <DurationField
-            duration={intervalDuration}
-            help="How often you must renew the heartbeat before the switch starts moving toward inheritance."
-            label="Heartbeat renewal window (Minimum 1 day)"
-            namePrefix="interval"
-            onChange={setIntervalDuration}
-          />
-
-          <section className="timing-stack">
-            <DurationField
-              duration={graceDuration}
-              help="Extra time after a missed heartbeat before the account is considered expired. Testnet can be 0."
-              label="Grace period"
-              namePrefix="grace"
-              onChange={setGraceDuration}
-            />
-            <DurationField
-              duration={timelockDuration}
-              help="Final waiting period after grace ends. Testnet can be 0; production should use a safer delay."
-              label="Beneficiary timelock"
-              namePrefix="timelock"
-              onChange={setTimelockDuration}
-            />
-          </section>
-
-          <section className="inheritance-card recipients-card">
-            <div className="inheritance-section-head">
-              <div>
-                <Users size={19} />
-                <h3>Recipient Accounts</h3>
-                <InfoHint help="Wallet addresses listed here can claim after the heartbeat, grace, and timelock periods finish." />
-              </div>
-              <Button
-                aria-label="Add recipient account"
-                className="add-account-button"
-                disabled={addDisabled}
-                onClick={addBeneficiary}
-                type="button"
-                variant="secondary"
-              >
-                <Plus size={16} />
-                Add account
-              </Button>
-            </div>
-
-            <div className="beneficiary-list">
-              {beneficiaries.map((beneficiary, index) => (
-                <div className={beneficiary.locked ? "beneficiary-row beneficiary-row-locked" : "beneficiary-row"} key={beneficiary.id}>
-                  <div
-                    className="beneficiary-index"
-                    style={{
-                      "--recipient-color": getRecipientColor(index)
-                    } as CSSProperties}
-                  >
-                    <UserPlus size={17} />
-                    <span>{index + 1}</span>
-                  </div>
-                  <Field
-                    error={getBeneficiaryAddressError(beneficiary.address, index, walletAddress, beneficiaries, beneficiary.id) || undefined}
-                    id={`beneficiary-address-${beneficiary.id}`}
-                    label="Recipient wallet address"
-                  >
-                    <Input
-                      aria-invalid={Boolean(getBeneficiaryAddressError(beneficiary.address, index, walletAddress, beneficiaries, beneficiary.id))}
-                      id={`beneficiary-address-${beneficiary.id}`}
-                      name="beneficiaryAddress"
-                      onChange={(event) => updateBeneficiary(beneficiary.id, { address: event.target.value })}
-                      placeholder="0x..."
-                      required
-                      value={beneficiary.address}
-                    />
-                  </Field>
-                  <Field
-                    error={getBeneficiaryShareError(beneficiary.sharePercent, index) || undefined}
-                    help="Percent of protected balances this recipient receives. Editing one unlocked recipient automatically rebalances the other unlocked recipients."
-                    id={`beneficiary-share-${beneficiary.id}`}
-                    label="Inheritance share"
-                  >
-                    <div className="input-with-unit">
-                      <Input
-                        aria-invalid={Boolean(getBeneficiaryShareError(beneficiary.sharePercent, index))}
-                        disabled={beneficiary.locked}
-                        id={`beneficiary-share-${beneficiary.id}`}
-                        inputMode="decimal"
-                        name="sharePercent"
-                        onBlur={() => updateBeneficiaryShare(beneficiary.id, String(beneficiary.sharePercent))}
-                        onChange={(event) => updateBeneficiaryShare(beneficiary.id, event.target.value)}
-                        required
-                        type="text"
-                        value={beneficiary.sharePercent}
-                      />
-                      <span>%</span>
-                    </div>
-                  </Field>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        aria-label={beneficiary.locked ? "Unlock recipient share" : "Lock recipient share"}
-                        aria-pressed={beneficiary.locked}
-                        className={beneficiary.locked ? "lock-button lock-button-active" : "lock-button"}
-                        onClick={() => toggleBeneficiaryLock(beneficiary.id)}
-                        type="button"
-                        variant="ghost"
-                      >
-                        {beneficiary.locked ? <Lock size={16} /> : <Unlock size={16} />}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent className="riskguard-tooltip" sideOffset={8}>
-                      {beneficiary.locked
-                        ? "Unlock this share before editing or auto-balancing it."
-                        : "Lock this percentage so other recipients rebalance around it."}
-                    </TooltipContent>
-                  </Tooltip>
-                  <Button
-                    aria-label="Remove recipient account"
-                    className="icon-button"
-                    disabled={!canRemove}
-                    onClick={() => removeBeneficiary(beneficiary.id)}
-                    type="button"
-                    variant="ghost"
-                  >
-                    <Trash2 size={16} />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-
-        <aside className="contract-preview-panel">
-          <div className="preview-glow" aria-hidden="true" />
-          <section className="preview-vault">
-            <div className="preview-topline">
-              <span><Radar size={15} /> Smart Account Will</span>
-              <strong className={hasActivePlan ? "status-ok" : hasCreatorWallet ? "status-warn" : "status-bad"}>
-                {hasActivePlan ? "Active" : hasCreatorWallet ? "New plan" : "No wallet"}
-              </strong>
-            </div>
-
-            <div className="vault-orbit">
-              <svg aria-hidden="true" className="vault-allocation-ring" viewBox="0 0 120 120">
-                <circle className="vault-ring-track" cx="60" cy="60" r="52" pathLength="100" />
-                {allocationSegments.map((segment) => (
-                  <circle
-                    className="vault-ring-segment"
-                    cx="60"
-                    cy="60"
-                    key={segment.id}
-                    pathLength="100"
-                    r="52"
-                    style={{
-                      "--segment-color": segment.color,
-                      "--segment-offset": `${-segment.offset}`,
-                      "--segment-rest": segment.rest,
-                      "--segment-share": segment.share
-                    } as CSSProperties}
-                  />
-                ))}
-              </svg>
-              <div>
-                <LockKeyhole size={30} />
-                <strong>{shareTotal}%</strong>
-                <span>allocated</span>
-              </div>
-            </div>
-
-            <div className="recipient-allocation-legend" aria-label="Recipient allocation legend">
-              {beneficiaries.map((beneficiary, index) => (
-                <span
-                  key={beneficiary.id}
-                  style={{ "--recipient-color": getRecipientColor(index) } as CSSProperties}
-                >
-                  <i aria-hidden="true" />
-                  <strong>{formatRecipientLabel(beneficiary, index)}</strong>
-                  <small>{beneficiary.sharePercent}%</small>
-                </span>
-              ))}
-            </div>
-
-            <div className="preview-stat-grid">
-              <span><Users size={16} /><strong>{beneficiaries.length}</strong><small>Recipients</small></span>
-              <span><CalendarClock size={16} /><strong>{formatDurationPreview(intervalDuration)}</strong><small>Renewal</small></span>
-              <span><Activity size={16} /><strong>{formatDurationPreview(graceDuration)}</strong><small>Grace</small></span>
-              <span><Fingerprint size={16} /><strong>{formatDurationPreview(timelockDuration)}</strong><small>Timelock</small></span>
-            </div>
-
-            {submitBlockReason ? (
-              <p className="preview-note status-warn">{submitBlockReason}</p>
-            ) : null}
-
-            {!registryAddress ? (
-              <p className="preview-note status-warn">Deploy and configure the Inheritance Registry before saving on testnet.</p>
-            ) : null}
-
-            <p className="preview-note">
-              This is a smart-account inheritance policy. Funds stay usable by the account; the automation module should execute native/ERC-20 transfers after expiry.
-            </p>
-
-            <Button className="primary-button inheritance-save" disabled={!canSaveInheritancePlan} type="submit" variant="primary">
-              {actionLoading === "inheritance-plan" ? <Loader2 className="spin" size={16} /> : <WalletCards size={16} />}
-              {actionLoading === "inheritance-plan"
-                ? "Saving plan"
-                : canSaveInheritancePlan
-                  ? hasActivePlan ? "Update inheritance plan" : "Create inheritance plan"
-                  : "Complete valid plan"}
-            </Button>
-          </section>
-        </aside>
-      </section>
-    </form>
-  );
-}
-
-function Field({
-  children,
-  error,
-  help,
-  id,
-  label
-}: {
-  children: ReactNode;
-  error?: string | undefined;
-  help?: string | undefined;
-  id: string;
-  label: string;
-}) {
-  return (
-    <div className="field-block">
-      <label htmlFor={id}>
-        {label}
-        {help ? <InfoHint help={help} /> : null}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-function getBeneficiaryAddressError(
-  address: string,
-  index: number,
-  walletAddress?: string | undefined,
-  beneficiaries: BeneficiaryDraft[] = [],
-  currentId?: number
-) {
-  const label = `Recipient ${index + 1}`;
-  const trimmedAddress = address.trim();
-  const creatorAddress = walletAddress?.trim() ?? "";
-
-  if (!trimmedAddress) {
-    return `${label} address is required.`;
-  }
-
-  if (!walletAddressPattern.test(trimmedAddress)) {
-    return `${label} needs a valid 0x wallet address.`;
-  }
-
-  if (walletAddressPattern.test(creatorAddress) && trimmedAddress.toLowerCase() === creatorAddress.toLowerCase()) {
-    return `${label} cannot be the creator wallet.`;
-  }
-
-  const duplicateRecipientLabels = getDuplicateRecipientLabels(trimmedAddress, beneficiaries, currentId);
-
-  if (duplicateRecipientLabels.length > 0) {
-    return `${label} address duplicates ${duplicateRecipientLabels.join(", ")}.`;
-  }
-
-  return "";
-}
-
-function getDuplicateRecipientLabels(address: string, beneficiaries: BeneficiaryDraft[], currentId?: number) {
-  const normalizedAddress = address.toLowerCase();
-
-  return beneficiaries
-    .map((beneficiary, duplicateIndex) => ({
-      id: beneficiary.id,
-      isDuplicate: beneficiary.id !== currentId
-        && walletAddressPattern.test(beneficiary.address.trim())
-        && beneficiary.address.trim().toLowerCase() === normalizedAddress,
-      label: `Recipient ${duplicateIndex + 1}`
-    }))
-    .filter((beneficiary) => beneficiary.isDuplicate)
-    .map((beneficiary) => beneficiary.label);
-}
-
-function getBeneficiaryShareError(sharePercent: number, index: number) {
-  if (Number(sharePercent || 0) <= 0) {
-    return `Recipient ${index + 1} share must be greater than 0%.`;
-  }
-
-  return "";
-}
-
-function DurationField({
-  duration,
-  help,
-  label,
-  namePrefix,
-  onChange
-}: {
-  duration: DurationDraft;
-  help: string;
-  label: string;
-  namePrefix: "interval" | "grace" | "timelock";
-  onChange: (duration: DurationDraft) => void;
-}) {
-  const daysId = `${namePrefix}Days`;
-  const hoursId = `${namePrefix}Hours`;
-
-  function updatePart(part: keyof DurationDraft, value: string) {
-    const max = part === "days" ? 3650 : 23;
-    const min = part === "days" && namePrefix === "interval" ? 1 : 0;
-    onChange({ ...duration, [part]: clampNumber(value, min, max) });
-  }
-
-  function normalizePart(part: keyof DurationDraft) {
-    const min = part === "days" && namePrefix === "interval" ? 1 : 0;
-    const max = part === "days" ? 3650 : 23;
-    const value = duration[part] === "" ? String(min) : duration[part];
-    onChange({ ...duration, [part]: clampNumber(value, min, max) || String(min) });
-  }
-
-  return (
-    <div className="duration-card">
-      <label>
-        {label}
-        <InfoHint help={help} />
-      </label>
-      <div className="duration-inputs">
-        <div className="input-with-unit compact-unit">
-          <Input
-            aria-label={`${label} days`}
-            id={daysId}
-            inputMode="numeric"
-            name={daysId}
-            onBlur={() => normalizePart("days")}
-            onChange={(event) => updatePart("days", event.target.value)}
-            type="text"
-            value={duration.days}
-          />
-          <span>days</span>
-        </div>
-        <div className="input-with-unit compact-unit">
-          <Input
-            aria-label={`${label} hours`}
-            id={hoursId}
-            inputMode="numeric"
-            name={hoursId}
-            onBlur={() => normalizePart("hours")}
-            onChange={(event) => updatePart("hours", event.target.value)}
-            type="text"
-            value={duration.hours}
-          />
-          <span>hours</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function InfoHint({ help }: { help: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button className="info-hint" type="button" aria-label={help}>
-          <Info size={14} />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent className="riskguard-tooltip" sideOffset={8}>
-        {help}
-      </TooltipContent>
-    </Tooltip>
-  );
+            <DialogPrimitive.Root open={tokenDialogOpen} onOpenChange={(open) => {
+                setTokenDialogOpen(open);
+                if (!open) {
+                    setTokenSubmitted(false);
+                }
+            }}>
+                <DialogPrimitive.Portal>
+                    <DialogPrimitive.Overlay className="token-dialog-overlay" />
+                    <DialogPrimitive.Content className="token-dialog-content">
+                        <DialogPrimitive.Title>Import token</DialogPrimitive.Title>
+                        <p className="token-dialog-description">
+                            Add an ERC-20 asset that the smart account should distribute with this plan.
+                        </p>
+                        <Field
+                            error={tokenSubmitted ? tokenAddressError || undefined : undefined}
+                            id="token-contract-address"
+                            label="Token contract address"
+                        >
+                            <Input
+                                id="token-contract-address"
+                                onChange={(event) => setTokenDraft((current) => ({ ...current, address: event.target.value }))}
+                                ref={tokenAddressRef}
+                                value={tokenDraft.address}
+                            />
+                        </Field>
+                        <Field
+                            error={tokenSubmitted ? tokenSymbolError || undefined : undefined}
+                            id="token-symbol"
+                            label="Token symbol"
+                        >
+                            <Input
+                                id="token-symbol"
+                                maxLength={11}
+                                onChange={(event) => setTokenDraft((current) => ({ ...current, symbol: event.target.value.toUpperCase() }))}
+                                ref={tokenSymbolRef}
+                                value={tokenDraft.symbol}
+                            />
+                        </Field>
+                        <Field
+                            error={tokenSubmitted ? tokenDecimalsError || undefined : undefined}
+                            id="token-decimals"
+                            label="Token decimal"
+                        >
+                            <Input
+                                id="token-decimals"
+                                inputMode="numeric"
+                                onChange={(event) => setTokenDraft((current) => ({ ...current, decimals: clampNumber(event.target.value, 0, 255) }))}
+                                ref={tokenDecimalsRef}
+                                value={tokenDraft.decimals}
+                            />
+                        </Field>
+                        <div className="token-dialog-actions">
+                            <Button onClick={() => setTokenDialogOpen(false)} type="button" variant="secondary">Cancel</Button>
+                            <Button onClick={addToken} type="button" variant="primary">Add token</Button>
+                        </div>
+                    </DialogPrimitive.Content>
+                </DialogPrimitive.Portal>
+            </DialogPrimitive.Root>
+        </form>
+    );
 }

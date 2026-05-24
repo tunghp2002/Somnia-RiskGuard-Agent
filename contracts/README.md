@@ -36,9 +36,9 @@ The previous standalone locked vault contract has been removed from the active c
 
 Current Somnia Testnet deployment:
 
-- `RiskGuardInheritanceRegistry`: `0x7A5FE6cF8402440300eDa11Fba3d13842F7f5658`
+- `RiskGuardInheritanceRegistry`: `0xc0Fdb3c055F3B7C5fA93343349E0f713bC8e1D2c`
 - deployer: `0x64769A00fB002b7ED192834443C9c819565Ab702`
-- transaction: `0x61099b4f6cfef1f90d751aecaa3932390ad9c526f5d15cc2a028076cbea4931a`
+- transaction: `0x2c92b3d3352f32f529b99c625bd8048cf20e1c9b306b9e493b0ad627071c335a`
 
 Deploy the registry with Foundry:
 
@@ -59,11 +59,12 @@ The registry itself does not move funds until each user's smart account has auth
 ## Runtime Flow
 
 1. A smart account calls `createPlan(...)` with beneficiaries, protected assets, heartbeat, grace, and timelock.
-2. The smart account keeps holding and using native tokens/ERC-20s normally.
-3. The user refreshes liveness through `checkIn()` or a successful agent heartbeat callback before grace ends.
-4. After `lastHeartbeatAt + heartbeatInterval + gracePeriod + timelockPeriod`, Somnia Agents, Reactivity, a keeper, or any caller can trigger distribution.
-5. The registry snapshots each protected asset balance once and asks the smart account to execute transfers by beneficiary share.
-6. Failed transfers are skipped in agent/reactive mode, leaving that share in the smart account for retries. The manual `executeInheritance` path fails closed on transfer failure.
+2. The registry rejects normal EOAs because they cannot execute `executeBatch(...)` later.
+3. The smart account keeps holding and using native tokens/ERC-20s normally.
+4. The user refreshes liveness through `checkIn()` or a successful agent heartbeat callback before grace ends.
+5. After `lastHeartbeatAt + heartbeatInterval + gracePeriod + timelockPeriod`, Somnia Agents, Reactivity, a keeper, or any caller can trigger distribution.
+6. The registry snapshots each protected asset balance once and asks the smart account to execute transfers by beneficiary share.
+7. Failed transfers are skipped in agent/reactive mode, leaving that share in the smart account for retries. The manual `executeInheritance` path fails closed on transfer failure.
 
 ## Contract Tests
 

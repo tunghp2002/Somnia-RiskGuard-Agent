@@ -14,7 +14,7 @@ Current contract path:
 - `contracts/src/InheritanceRegistry.sol` (`RiskGuardInheritanceRegistry`)
 - public testnet metadata: `config/public-chains.json` -> `chains.somnia-testnet.contracts.inheritanceRegistry`
 - local secret/env override: `INHERITANCE_REGISTRY_CONTRACT_ADDRESS`
-- current Somnia Testnet deployment: `0x7A5FE6cF8402440300eDa11Fba3d13842F7f5658`
+- current Somnia Testnet deployment: `0xc0Fdb3c055F3B7C5fA93343349E0f713bC8e1D2c`
 
 Additional sources checked on 2026-05-23:
 
@@ -99,6 +99,7 @@ For this project, Somnia docs support these implementation choices:
 - Contract heartbeat, inheritance, and alert flows should separate user wallet authority from the agent wallet.
 - Inheritance distribution should use a Somnia `Schedule` on-chain subscription for the current `timelockEndsAt()` so validator-invoked handler execution can push funds without beneficiary action at distribution time.
 - `RiskGuardInheritanceRegistry` is the active contract. It stores inheritance policy and delegates actual spending to an authorized smart account through `executeBatch(...)`.
+- Normal EOAs must not create inheritance plans. The registry rejects plan creation/update when `msg.sender.code.length == 0`, because EOAs cannot satisfy the later `executeBatch(...)` distribution call.
 - The registry must never be described as a custody vault: users should not transfer funds into the registry. Funds live in the user's smart account.
 - Daily user transactions still require user authorization through the smart account. Inheritance distribution does not require a fresh user signature after expiry because the smart account pre-authorizes the registry/module path.
 - Native-token transfers are value-bearing smart-account calls to beneficiaries. ERC-20 transfers are smart-account calls to token contracts using `transfer(beneficiary, amount)`.

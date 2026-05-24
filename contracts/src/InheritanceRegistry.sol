@@ -246,6 +246,7 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         uint256 timelockPeriod
     ) external {
         address smartAccount = msg.sender;
+        _requireSmartAccount(smartAccount);
         if (plans[smartAccount].state == PlanState.Active) revert ActivePlanExists();
 
         _validateDuration(heartbeatInterval, true);
@@ -277,6 +278,7 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         uint256 gracePeriod,
         uint256 timelockPeriod
     ) external onlySmartAccount(msg.sender) {
+        _requireSmartAccount(msg.sender);
         Plan storage plan = plans[msg.sender];
         if (plan.state != PlanState.Active) revert NoActivePlan();
         if (block.timestamp >= plan.lastHeartbeatAt + plan.heartbeatInterval + plan.gracePeriod) {
@@ -706,6 +708,10 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
 
         distributionComplete[smartAccount] = false;
         distributionRetryCount[smartAccount] = 0;
+    }
+
+    function _requireSmartAccount(address smartAccount) private view {
+        if (smartAccount.code.length == 0) revert NotSmartAccount();
     }
 
     function _validateBeneficiaries(

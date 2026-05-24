@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "../src/app/globals.css";
 
@@ -17,6 +18,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <TooltipProvider>{children}</TooltipProvider>
+        <Toaster closeButton duration={4200} position="top-center" richColors />
       </body>
     </html>
   );

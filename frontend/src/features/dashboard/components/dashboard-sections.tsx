@@ -1,11 +1,9 @@
 import type { FormEvent } from "react";
-import { Activity, Bot, Clock3, Cpu, Link2, Loader2, RadioTower, Send, Shield, Sparkles, UserRound, Wallet } from "lucide-react";
+import { Activity, Bot, Clock3, Cpu, Link2, Loader2, RadioTower, Send, Shield, UserRound, Wallet } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type {
-  DemoScenarioResult,
-  Mode,
   PortfolioSnapshot,
   PublicChainMetadata,
   Readiness,
@@ -13,7 +11,6 @@ import type {
   UserRecord
 } from "@/lib/agent-api";
 import type { BrowserWalletState } from "@/lib/wallet";
-import { scenarios } from "../config";
 import { classForStatus, formatAddress, formatDate, formatUsd, hasOkFlag, readableMetadata } from "../utils";
 import { HealthRow, PanelHeading } from "./status-panels";
 
@@ -159,45 +156,13 @@ export function PortfolioWatch({
             <strong>{formatUsd(asset.valueUsd)}</strong>
           </div>
         ))}
-        {!portfolio ? <p className="muted">No portfolio snapshot yet. Run a simulation scenario or start the agent monitor.</p> : null}
+        {!portfolio ? <p className="muted">No portfolio snapshot yet. Connect a wallet or start the agent monitor.</p> : null}
       </div>
       <div className="signal-list">
         {(portfolio?.riskSignals ?? []).map((signal) => (
           <span className={`signal ${signal.severity}`} key={`${signal.signalType}-${signal.description}`}>
             {signal.severity}: {signal.description}
           </span>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-export function DemoScenarioControl({
-  actionLoading,
-  mode,
-  onRunDemo
-}: {
-  actionLoading: string | null;
-  mode: Mode;
-  onRunDemo: (scenario: DemoScenarioResult["scenario"]) => void;
-}) {
-  return (
-    <section className="panel demo-panel">
-      <PanelHeading icon={<Sparkles size={17} />} title="Demo Scenario Control" action={mode} />
-      <p className="muted">Deterministic simulation states are seeded through the agent API and then shown from the same read models as live status.</p>
-      <div className="scenario-grid">
-        {scenarios.map((scenario) => (
-          <Button
-            className="scenario-button"
-            disabled={mode !== "simulation" || actionLoading === scenario.id}
-            key={scenario.id}
-            onClick={() => onRunDemo(scenario.id)}
-            type="button"
-            variant="secondary"
-          >
-            <span>{scenario.label}</span>
-            <small>{actionLoading === scenario.id ? "Running..." : scenario.detail}</small>
-          </Button>
         ))}
       </div>
     </section>

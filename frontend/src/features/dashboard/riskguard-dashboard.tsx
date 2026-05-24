@@ -9,11 +9,8 @@ import {
   MobileDashboardNav
 } from "./components/dashboard-navigation";
 import {
-  DemoScenarioControl,
-  OperatorHealth,
   PortfolioWatch,
-  ProfilePanel,
-  SafetyReceipts
+  ProfilePanel
 } from "./components/dashboard-sections";
 import {
   GuardianStatus,
@@ -28,20 +25,16 @@ export function RiskGuardDashboard() {
     <main className="rg-app-shell">
       <DashboardSidebar
         activeSection={state.activeSection}
-        mode={state.mode}
         onSectionChange={actions.setActiveSection}
         publicChain={state.publicChain}
       />
 
       <div className="rg-shell">
         <DashboardHeader
-          accountStatus={state.accountStatus}
           actionLoading={state.actionLoading}
           activeSection={state.activeSection}
-          mode={state.mode}
           onConnectWallet={actions.handleConnectWallet}
           onDisconnectWallet={actions.handleDisconnectWallet}
-          onModeChange={actions.setMode}
           wallet={state.wallet}
         />
 
@@ -67,19 +60,6 @@ export function RiskGuardDashboard() {
         ) : null}
 
         <section className="rg-grid">
-          {state.activeSection === "risk" ? (
-            <>
-              <RiskScore
-                actionLoading={state.actionLoading}
-                onAnalyzeRisk={actions.handleAnalyzeRisk}
-                risk={state.risk}
-                score={state.riskScore}
-                tone={state.riskTone}
-              />
-              <PortfolioWatch loading={state.loading} portfolio={state.portfolio} />
-            </>
-          ) : null}
-
           {state.activeSection === "profile" ? (
             <ProfilePanel
               actionLoading={state.actionLoading}
@@ -100,29 +80,13 @@ export function RiskGuardDashboard() {
                 inheritancePlan={state.inheritancePlan}
                 onInheritanceCancel={actions.handleInheritancePlanCancel}
                 onInheritanceSubmit={actions.handleInheritancePlanSubmit}
+                onSmartAccountChange={actions.setSelectedSmartAccountAddress}
                 registryAddress={state.publicChain?.contracts.inheritanceRegistry}
+                selectedSmartAccountAddress={state.selectedSmartAccountAddress}
                 walletAddress={state.wallet?.address ?? state.activeWalletAddress}
               />
             </section>
           ) : null}
-
-          {state.activeSection === "demo" ? (
-            <DemoScenarioControl
-              actionLoading={state.actionLoading}
-              mode={state.mode}
-              onRunDemo={(scenario) => void actions.handleRunDemo(scenario)}
-            />
-          ) : null}
-
-          {state.activeSection === "health" ? (
-            <OperatorHealth
-              health={state.health}
-              publicChain={state.publicChain}
-              readiness={state.readiness}
-            />
-          ) : null}
-
-          {state.activeSection === "receipts" ? <SafetyReceipts receipts={state.receipts} /> : null}
         </section>
 
         <MobileDashboardNav

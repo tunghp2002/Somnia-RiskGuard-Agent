@@ -17,7 +17,6 @@
 
 .sidebar-brand,
 .sidebar-meta,
-.account-status,
 .connect-panel,
 .connect-code {
   display: grid;
@@ -118,15 +117,13 @@
 }
 
 .sidebar-meta span,
-.account-status span,
 .connect-code span,
 .connect-code small {
   color: var(--muted);
   font-size: 0.74rem;
 }
 
-.sidebar-meta strong,
-.account-status strong {
+.sidebar-meta strong {
   overflow-wrap: anywhere;
 }
 
@@ -192,26 +189,6 @@
   justify-content: flex-end;
 }
 
-.account-status {
-  gap: 2px;
-  min-width: 150px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #0d0d13;
-  padding: 7px 10px;
-}
-
-.mode-switch {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  width: 210px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #0d0d13;
-  padding: 4px;
-}
-
-.mode-switch button,
 .primary-button,
 .secondary-button,
 form button,
@@ -220,18 +197,6 @@ form button,
 .ui-button {
   border: 1px solid transparent;
   border-radius: 8px;
-  color: var(--text);
-}
-
-.mode-switch button {
-  min-height: 34px;
-  background: transparent;
-  color: var(--muted);
-}
-
-.mode-switch button.active {
-  background: rgb(192 38 211 / 18%);
-  border-color: rgb(192 38 211 / 45%);
   color: var(--text);
 }
 
@@ -927,7 +892,7 @@ label {
 }
 
 .inheritance-card {
-  padding: 18px;
+  padding: 14px;
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -950,8 +915,8 @@ label {
 
 .timing-stack {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .contract-preview-panel {
@@ -1007,7 +972,7 @@ label {
   justify-content: space-between;
   align-items: center;
   gap: 14px;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 
 .inheritance-section-head div {
@@ -1122,7 +1087,7 @@ label {
 .field-block,
 .duration-card {
   display: grid;
-  gap: 7px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -1296,7 +1261,7 @@ label {
 
 .duration-card {
   border-radius: 18px;
-  padding: 16px;
+  padding: 12px;
 }
 
 .current-plan-card {
@@ -1335,6 +1300,270 @@ label {
   white-space: nowrap;
 }
 
+.wallet-session-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wallet-address-button {
+  min-width: 128px;
+  justify-content: center;
+}
+
+.wallet-logout-button {
+  width: 42px;
+  padding: 0;
+}
+
+.smart-account-card,
+.assets-card,
+.agent-budget-card {
+  display: grid;
+  gap: 8px;
+}
+
+.smart-account-card {
+  z-index: 20;
+}
+
+.smart-account-selector {
+  position: relative;
+  min-width: 0;
+  z-index: 30;
+}
+
+.smart-account-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgb(148 163 255 / 18%);
+  border-radius: 12px;
+  background: rgb(3 7 18 / 58%);
+  padding: 0 13px;
+  color: var(--soft);
+  font-family:
+    "JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.smart-account-select-trigger:hover,
+.smart-account-select-trigger:focus-visible {
+  border-color: rgb(192 38 211 / 58%);
+  box-shadow: 0 0 24px rgb(192 38 211 / 12%);
+  outline: none;
+}
+
+.smart-account-select-trigger svg {
+  flex: 0 0 auto;
+  color: var(--cyan);
+}
+
+.smart-account-select-content {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 300;
+  overflow: auto;
+  max-height: 210px;
+  border: 1px solid rgb(148 163 255 / 22%);
+  border-radius: 12px;
+  background: rgb(5 8 19 / 96%);
+  box-shadow: 0 22px 60px rgb(0 0 0 / 42%);
+}
+
+.smart-account-select-item,
+.smart-account-select-empty,
+.smart-account-select-loading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 0 38px 0 12px;
+  color: var(--soft);
+  font-family:
+    "JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.smart-account-select-loading {
+  justify-content: center;
+  padding: 0;
+  color: var(--cyan);
+}
+
+.smart-account-select-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.smart-account-select-item:hover,
+.smart-account-select-item:focus-visible {
+  background: rgb(34 211 238 / 12%);
+  color: var(--cyan);
+}
+
+.smart-account-select-empty {
+  align-items: flex-start;
+  flex-direction: column;
+  color: var(--muted);
+  padding-top: 10px;
+  padding-bottom: 10px;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.smart-account-select-empty button {
+  border: 0;
+  background: transparent;
+  color: var(--cyan);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.smart-account-create-button {
+  min-height: 34px !important;
+  border: 1px solid rgb(192 38 211 / 44%) !important;
+  border-radius: 10px !important;
+  background: rgb(192 38 211 / 16%) !important;
+  color: var(--soft) !important;
+  font-family:
+    "JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, monospace !important;
+  font-size: 0.78rem !important;
+}
+
+.native-asset-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 9px;
+  min-height: 40px;
+  border: 1px solid rgb(148 163 255 / 18%);
+  border-radius: 12px;
+  background: rgb(3 7 18 / 48%);
+  padding: 0 12px;
+  color: var(--soft);
+  font-weight: 700;
+}
+
+.native-asset-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--cyan);
+}
+
+.token-list {
+  display: grid;
+  gap: 8px;
+}
+
+.token-row {
+  display: grid;
+  align-items: center;
+  min-height: 44px;
+  border: 1px solid rgb(148 163 255 / 14%);
+  border-radius: 12px;
+  background: rgb(3 7 18 / 42%);
+  padding: 8px 10px;
+}
+
+.token-row {
+  grid-template-columns: auto auto minmax(0, 1fr) 38px;
+  gap: 9px;
+}
+
+.token-row svg {
+  color: var(--cyan);
+}
+
+.token-row strong,
+.token-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-row strong {
+  color: var(--soft);
+}
+
+.token-row small {
+  color: var(--muted);
+  font-family:
+    "JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.76rem;
+}
+
+.token-remove {
+  width: 38px;
+  height: 36px;
+  padding: 0;
+}
+
+.token-dialog-overlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  background: rgb(2 6 23 / 70%);
+  backdrop-filter: blur(8px);
+}
+
+.token-dialog-content {
+  position: fixed;
+  z-index: 81;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  gap: 14px;
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgb(148 163 255 / 22%);
+  border-radius: 18px;
+  background: rgb(5 8 19 / 96%);
+  padding: 18px;
+  box-shadow: 0 26px 80px rgb(0 0 0 / 48%);
+}
+
+.token-dialog-content [data-radix-dialog-title] {
+  margin: 0;
+  color: var(--soft);
+  font-size: 1rem;
+}
+
+.token-dialog-description {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.token-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.budget-input-row {
+  display: grid;
+  gap: 7px;
+}
+
 .cancel-plan-button {
   justify-self: start;
   border-color: rgb(248 113 113 / 34%);
@@ -1348,8 +1577,9 @@ label {
 
 .duration-inputs {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  max-width: 150px;
 }
 
 .preview-topline,
@@ -1722,8 +1952,6 @@ label {
   .signal,
   .status-strip,
   .scenario-button,
-  .mode-switch,
-  .account-status,
   .connect-panel,
   .sidebar-meta {
     background: #ffffff;
@@ -1746,7 +1974,7 @@ label {
     left: 10px;
     z-index: 10;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 4px;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -1903,7 +2131,7 @@ label {
   }
 
   .duration-inputs {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .recipient-allocation-legend,
@@ -1918,10 +2146,6 @@ label {
 
   .timeline-panel {
     grid-column: span 1;
-  }
-
-  .mode-switch {
-    width: 100%;
   }
 
   .score-ring {

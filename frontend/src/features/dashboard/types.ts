@@ -3,11 +3,7 @@ export type Notice = { tone: "ok" | "warn" | "bad"; message: string };
 export type DashboardSection =
   | "overview"
   | "profile"
-  | "inheritance"
-  | "risk"
-  | "receipts"
-  | "demo"
-  | "health";
+  | "inheritance";
 
 export type AccountStatus =
   | "restoring"

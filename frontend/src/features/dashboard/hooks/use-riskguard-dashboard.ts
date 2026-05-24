@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { useActiveAccount } from "thirdweb/react";
 
 import {
   agentApi,
   type AuditEvent,
-  type DemoScenarioResult,
   type InheritancePlanStatus,
   type Mode,
   type PortfolioSnapshot,
@@ -16,7 +16,12 @@ import {
   type TelegramConnectSession,
   type UserRecord
 } from "@/lib/agent-api";
-import { cancelInheritancePlan, saveInheritancePlan } from "@/lib/inheritance-registry";
+import {
+  cancelInheritancePlan,
+  cancelInheritancePlanWithThirdweb,
+  saveInheritancePlan,
+  saveInheritancePlanWithThirdweb
+} from "@/lib/inheritance-registry";
 import {
   connectBrowserWallet,
   disconnectBrowserWallet,
@@ -30,18 +35,19 @@ import { durationToSeconds, errorMessage, formatAddress, isSimulationEvent, read
 const telegramConnectTimeoutMs = 60_000;
 
 export function useRiskGuardDashboard() {
+  const thirdwebSmartAccount = useActiveAccount();
   const [activeSection, setActiveSection] = useState<DashboardSection>("overview");
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [accountStatus, setAccountStatus] = useState<AccountStatus>("restoring");
   const [wallet, setWallet] = useState<BrowserWalletState | null>(null);
-  const [demoWalletAddress, setDemoWalletAddress] = useState<string>();
-  const [mode, setMode] = useState<Mode>("simulation");
+  const mode: Mode = "testnet";
   const [publicChain, setPublicChain] = useState<PublicChainMetadata | null>(null);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
   const [risk, setRisk] = useState<RiskSnapshot | null>(null);
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [inheritancePlan, setInheritancePlan] = useState<InheritancePlanStatus | null>(null);
+  const [selectedSmartAccountAddress, setSelectedSmartAccountAddress] = useState<string>();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [telegramSession, setTelegramSession] = useState<TelegramConnectSession | null>(null);
   const [userProfile, setUserProfile] = useState<UserRecord | null>(null);
@@ -50,7 +56,8 @@ export function useRiskGuardDashboard() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const loadRequestRef = useRef(0);
 
-  const activeWalletAddress = mode === "simulation" ? demoWalletAddress : wallet?.address;
+  const activeWalletAddress = wallet?.address;
+  const activeInheritanceSmartAccount = selectedSmartAccountAddress;
   const guardianReady = Boolean(readiness?.agentWallet.ready && readiness.monitoredWallet.ready);
   const riskScore = risk?.score ?? 0;
   const riskTone: RiskTone = riskScore >= 75 ? "bad" : riskScore >= 50 ? "warn" : "ok";
@@ -94,10 +101,12 @@ export function useRiskGuardDashboard() {
       ] = await Promise.allSettled([
         agentApi.getPublicChain(),
         agentApi.getReadiness(),
-        walletAddress || mode === "simulation" ? agentApi.getPortfolio(walletAddress) : Promise.resolve(null),
-        walletAddress || mode === "simulation" ? agentApi.getRisk(walletAddress) : Promise.resolve(null),
+        walletAddress ? agentApi.getPortfolio(walletAddress) : Promise.resolve(null),
+        walletAddress ? agentApi.getRisk(walletAddress) : Promise.resolve(null),
         agentApi.getHealth(),
-        walletAddress && mode === "testnet" ? agentApi.getInheritancePlan(walletAddress) : Promise.resolve(null),
+        activeInheritanceSmartAccount
+          ? agentApi.getInheritancePlan(activeInheritanceSmartAccount)
+          : Promise.resolve(null),
         agentApi.getAuditEvents(20),
         wallet ? agentApi.getUserProfile(wallet.address) : Promise.resolve(null)
       ]);
@@ -117,7 +126,7 @@ export function useRiskGuardDashboard() {
       }
 
       if (portfolioResult.status === "fulfilled") {
-        const nextPortfolio = mode === "testnet" && portfolioResult.value?.source === "demo"
+        const nextPortfolio = portfolioResult.value?.source === "demo"
           ? null
           : portfolioResult.value;
         setPortfolio(nextPortfolio);
@@ -144,9 +153,7 @@ export function useRiskGuardDashboard() {
         setInheritancePlan(null);
       }
       if (eventsResult.status === "fulfilled") {
-        const nextEvents = mode === "testnet"
-          ? eventsResult.value.events.filter((event) => !isSimulationEvent(event))
-          : eventsResult.value.events;
+        const nextEvents = eventsResult.value.events.filter((event) => !isSimulationEvent(event));
         setEvents(nextEvents);
       } else {
         failedReads.push("audit events");
@@ -175,7 +182,7 @@ export function useRiskGuardDashboard() {
         setLoading(false);
       }
     }
-  }, [activeWalletAddress, mode, wallet]);
+  }, [activeInheritanceSmartAccount, activeWalletAddress, wallet]);
 
   useEffect(() => {
     void loadData();
@@ -216,6 +223,7 @@ export function useRiskGuardDashboard() {
       })
       .catch(() => {
         setWallet(null);
+        setSelectedSmartAccountAddress(undefined);
         setAccountStatus("error");
         clearWalletScopedState();
       });
@@ -275,6 +283,7 @@ export function useRiskGuardDashboard() {
     try {
       await disconnectBrowserWallet();
       setWallet(null);
+      setSelectedSmartAccountAddress(undefined);
       loadRequestRef.current += 1;
       clearWalletScopedState();
       setAccountStatus("disconnected");
@@ -301,6 +310,17 @@ export function useRiskGuardDashboard() {
     }
 
     const form = new FormData(event.currentTarget);
+    const smartAccountAddress = String(form.get("smartAccountAddress") ?? "").trim();
+    const includeNativeAsset = form.get("includeNativeAsset") === "true";
+    const erc20Assets = form.getAll("erc20Assets")
+      .map((value) => String(value))
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const protectedAssets = [
+      ...(includeNativeAsset ? ["0x0000000000000000000000000000000000000000"] : []),
+      ...erc20Assets
+    ];
+    const agentBudgetSTT = String(form.get("agentBudgetSTT") ?? "").trim();
     const beneficiaryAddresses = form.getAll("beneficiaryAddress").map((value) => String(value).trim());
     const sharePercents = form.getAll("sharePercent").map((value) => Number(value || 0));
     const beneficiaries = beneficiaryAddresses
@@ -316,6 +336,16 @@ export function useRiskGuardDashboard() {
       return;
     }
 
+    if (!/^0x[a-fA-F0-9]{40}$/.test(smartAccountAddress)) {
+      setNotice({ tone: "warn", message: "Select a valid smart account address." });
+      return;
+    }
+
+    if (protectedAssets.length === 0) {
+      setNotice({ tone: "warn", message: "Select native STT or add at least one ERC-20 token." });
+      return;
+    }
+
     if (Math.abs(shareTotal - 100) > 0.001) {
       setNotice({ tone: "warn", message: "Recipient shares must add up to exactly 100%." });
       return;
@@ -326,14 +356,25 @@ export function useRiskGuardDashboard() {
       return;
     }
 
+    if (Number(agentBudgetSTT || 0) < 0.05) {
+      setNotice({ tone: "warn", message: "Agent budget must be at least 0.05 STT." });
+      return;
+    }
+
     setActionLoading("inheritance-plan");
     try {
-      const txHash = await saveInheritancePlan(registryAddress, {
+      const planInput = {
+        smartAccountAddress,
         beneficiaries,
+        protectedAssets,
         heartbeatIntervalSeconds: intervalSeconds,
         gracePeriodSeconds: graceSeconds,
-        timelockPeriodSeconds: timelockSeconds
-      }, inheritancePlan);
+        timelockPeriodSeconds: timelockSeconds,
+        agentBudgetSTT
+      };
+      const txHash = thirdwebSmartAccount?.address.toLowerCase() === smartAccountAddress.toLowerCase()
+        ? await saveInheritancePlanWithThirdweb(registryAddress, planInput, thirdwebSmartAccount, inheritancePlan)
+        : await saveInheritancePlan(registryAddress, planInput, inheritancePlan);
       setNotice({
         tone: "ok",
         message: inheritancePlan?.active
@@ -351,7 +392,7 @@ export function useRiskGuardDashboard() {
   async function handleTelegramConnect() {
     const walletAddress = wallet?.address ?? activeWalletAddress;
     if (!walletAddress) {
-      setNotice({ tone: "warn", message: "Connect or seed a wallet before starting Telegram Connect." });
+      setNotice({ tone: "warn", message: "Connect a wallet before starting Telegram Connect." });
       return;
     }
 
@@ -372,25 +413,6 @@ export function useRiskGuardDashboard() {
       setTelegramSession(session);
       window.open(session.botDeepLink, "_blank", "noopener,noreferrer");
       setNotice({ tone: "ok", message: "Telegram bot opened. Press Start in Telegram to connect." });
-      await loadData();
-    } catch (error) {
-      setNotice({ tone: "bad", message: errorMessage(error) });
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  async function handleRunDemo(scenario: DemoScenarioResult["scenario"]) {
-    if (mode !== "simulation") {
-      setNotice({ tone: "warn", message: "Demo scenarios are disabled in Testnet mode." });
-      return;
-    }
-
-    setActionLoading(scenario);
-    try {
-      const result = await agentApi.runDemoScenario({ scenario });
-      setDemoWalletAddress(result.walletAddress);
-      setNotice({ tone: "ok", message: `${scenario.replaceAll("_", " ")} seeded in simulation mode.` });
       await loadData();
     } catch (error) {
       setNotice({ tone: "bad", message: errorMessage(error) });
@@ -465,7 +487,9 @@ export function useRiskGuardDashboard() {
 
     setActionLoading("inheritance-cancel");
     try {
-      const txHash = await cancelInheritancePlan(registryAddress);
+      const txHash = thirdwebSmartAccount?.address.toLowerCase() === inheritancePlan.smartAccount.toLowerCase()
+        ? await cancelInheritancePlanWithThirdweb(registryAddress, thirdwebSmartAccount)
+        : await cancelInheritancePlan(registryAddress);
       setNotice({ tone: "ok", message: `Inheritance plan cancelled on-chain: ${formatAddress(txHash)}` });
       await loadData();
     } catch (error) {
@@ -497,7 +521,9 @@ export function useRiskGuardDashboard() {
       telegramSession,
       userProfile,
       wallet,
-      activeWalletAddress
+      activeWalletAddress,
+      activeInheritanceSmartAccount,
+      selectedSmartAccountAddress
     },
     actions: {
       handleAnalyzeRisk,
@@ -505,13 +531,12 @@ export function useRiskGuardDashboard() {
       handleDisconnectWallet,
       handleInheritancePlanCancel,
       handleInheritancePlanSubmit,
-      handleRunDemo,
       handleTelegramConnect,
       handleProfileSubmit,
       loadData,
       setActiveSection,
       setMobileMoreOpen,
-      setMode
+      setSelectedSmartAccountAddress
     }
   };
 }
