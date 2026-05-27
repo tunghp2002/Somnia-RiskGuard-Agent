@@ -17,6 +17,7 @@ const addressSchema = z
   .transform((value) => getAddress(value));
 
 const positiveIntegerSchema = z.number().int().positive();
+const automationSignerPlaceholder = "0x0000000000000000000000000000000000000000";
 
 function verifySignedProof(
   input: { address: string; message: string; signature: string },
@@ -331,7 +332,7 @@ export class HeartbeatService {
         walletAddress: parsed.walletAddress,
         beneficiaryAddress: parsed.requestedBy,
         requestedBy: parsed.requestedBy,
-        signerAddress: this.config.somnia.agentWalletAddress,
+        signerAddress: automationSignerPlaceholder,
         chainId: this.config.somnia.chainId,
         heartbeatExpired: false,
         timelockReady: false,
@@ -351,7 +352,7 @@ export class HeartbeatService {
       walletAddress: record.walletAddress,
       beneficiaryAddress: record.beneficiaryAddress,
       requestedBy: parsed.requestedBy,
-      signerAddress: this.config.somnia.agentWalletAddress,
+      signerAddress: automationSignerPlaceholder,
       chainId: this.config.somnia.chainId,
       heartbeatExpired: status.state === "expired" || status.state === "timelock_pending" || status.state === "beneficiary_available",
       timelockReady: status.executionAvailable,

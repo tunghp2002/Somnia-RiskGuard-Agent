@@ -66,8 +66,8 @@ export function useRiskGuardDashboard() {
   const loadRequestRef = useRef(0);
 
   const activeWalletAddress = wallet?.address;
-  const activeInheritanceSmartAccount = selectedSmartAccountAddress;
-  const guardianReady = Boolean(readiness?.agentWallet.ready && readiness.monitoredWallet.ready);
+  const activeInheritanceSmartAccount = selectedSmartAccountAddress ?? thirdwebSmartAccount?.address;
+  const guardianReady = Boolean(readiness?.sessionKey.ready && readiness.monitoredWallet.ready);
   const riskScore = risk?.score ?? 0;
   const riskTone: RiskTone = riskScore >= 75 ? "bad" : riskScore >= 50 ? "warn" : "ok";
 
@@ -197,7 +197,8 @@ export function useRiskGuardDashboard() {
                   chatId: binding.chatId,
                   ...(binding.telegramUserId ? { telegramUserId: binding.telegramUserId } : {}),
                   ...(binding.telegramUsername ? { telegramUsername: binding.telegramUsername } : {}),
-                  ...(binding.telegramDisplayName ? { telegramDisplayName: binding.telegramDisplayName } : {})
+                  ...(binding.telegramDisplayName ? { telegramDisplayName: binding.telegramDisplayName } : {}),
+                  ...(binding.smartAccountAddress ? { smartAccountAddress: binding.smartAccountAddress } : {})
                 }
               });
         } else {
@@ -377,7 +378,6 @@ export function useRiskGuardDashboard() {
       ...(includeNativeAsset ? ["0x0000000000000000000000000000000000000000"] : []),
       ...erc20Assets
     ];
-    const agentBudgetSTT = String(form.get("agentBudgetSTT") ?? "").trim();
     const beneficiaryAddresses = form.getAll("beneficiaryAddress").map((value) => String(value).trim());
     const sharePercents = form.getAll("sharePercent").map((value) => Number(value || 0));
     const beneficiaries = beneficiaryAddresses
@@ -413,11 +413,6 @@ export function useRiskGuardDashboard() {
       return;
     }
 
-    if (Number(agentBudgetSTT || 0) < 0.05) {
-      setNotice({ tone: "warn", message: "Agent budget must be at least 0.05 STT." });
-      return;
-    }
-
     setActionLoading("inheritance-plan");
     try {
       const planInput = {
@@ -426,12 +421,16 @@ export function useRiskGuardDashboard() {
         protectedAssets,
         heartbeatIntervalSeconds: intervalSeconds,
         gracePeriodSeconds: graceSeconds,
-        timelockPeriodSeconds: timelockSeconds,
-        agentBudgetSTT
+        timelockPeriodSeconds: timelockSeconds
       };
       const txHash = thirdwebSmartAccount?.address.toLowerCase() === smartAccountAddress.toLowerCase()
         ? await saveInheritancePlanWithThirdweb(registryAddress, planInput, thirdwebSmartAccount, inheritancePlan)
         : await saveInheritancePlan(registryAddress, planInput, inheritancePlan);
+      await agentApi.ensureSessionKeyAction({
+        walletAddress: wallet.address,
+        smartAccountAddress,
+        action: "checkin"
+      });
       setNotice({
         tone: "ok",
         message: inheritancePlan?.active
@@ -466,7 +465,10 @@ export function useRiskGuardDashboard() {
           displayName: formatAddress(wallet.address)
         }));
       }
-      const session = await agentApi.startTelegramConnect({ walletAddress });
+      const session = await agentApi.startTelegramConnect({
+        walletAddress,
+        ...(activeInheritanceSmartAccount ? { smartAccountAddress: activeInheritanceSmartAccount } : {})
+      });
       setTelegramSession(session);
       window.open(session.botDeepLink, "_blank", "noopener,noreferrer");
       setNotice({ tone: "ok", message: "Telegram bot opened. Press Start in Telegram to connect." });

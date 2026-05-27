@@ -1,7 +1,6 @@
 import { chdir, cwd } from "node:process";
 
 import { describe, expect, it } from "vitest";
-import { Wallet } from "ethers";
 
 import {
   ConfigValidationError,
@@ -10,15 +9,15 @@ import {
   validateConfig
 } from "./env.js";
 
-const validAgentPrivateKey = `0x${"a".repeat(64)}`;
-
 const validEnv = {
   NODE_ENV: "development",
   LOG_LEVEL: "info",
   SOMNIA_RPC_URL: "https://dream-rpc.somnia.network",
   SOMNIA_CHAIN_ID: "50312",
-  AGENT_WALLET_ADDRESS: new Wallet(validAgentPrivateKey).address,
-  AGENT_PRIVATE_KEY: validAgentPrivateKey,
+  THIRDWEB_SECRET_KEY: "thirdweb-secret-key",
+  SUPABASE_URL: "https://riskguard.supabase.co",
+  SUPABASE_SERVICE_ROLE_KEY: "supabase-service-role",
+  SESSION_KEY_ENCRYPTION_KEY: "0x1111111111111111111111111111111111111111111111111111111111111111",
   GROQ_API_KEY: "groq-test-token",
   GROQ_MODEL: "llama-3.3-70b-versatile",
   DEEPSEEK_API_KEY: "deepseek-test-token",
@@ -31,6 +30,7 @@ const validEnv = {
   MAX_CLAIM_GAS_USD: "1",
   MIN_REWARD_VALUE_USD: "2",
   TELEGRAM_BOT_TOKEN: "123456:telegram_test_token",
+  TELEGRAM_BOT_USERNAME: "RiskGuardBot",
   TELEGRAM_CHAT_ID: "987654321",
   TELEGRAM_WEBHOOK_SECRET: "webhook-secret-value"
 };
@@ -47,18 +47,16 @@ describe("agent runtime config", () => {
     expect(config.telegram.enabled).toBe(true);
   });
 
-  it("normalizes private keys without 0x and defaults empty model names", () => {
-    const privateKey = "b".repeat(64);
+  it("keeps backend-only Thirdweb and Supabase values out of the client config", () => {
     const config = validateConfig({
       ...validEnv,
-      AGENT_PRIVATE_KEY: privateKey,
-      AGENT_WALLET_ADDRESS: new Wallet(`0x${privateKey}`).address,
       GROQ_MODEL: "",
       DEEPSEEK_MODEL: "",
       INHERITANCE_REGISTRY_CONTRACT_ADDRESS: ""
     });
 
-    expect(config.somnia.agentPrivateKey).toBe(`0x${privateKey}`);
+    expect(config.thirdweb.secretKey).toBe("thirdweb-secret-key");
+    expect(config.supabase.sessionKeyEncryptionKey).toBe(validEnv.SESSION_KEY_ENCRYPTION_KEY);
     expect(config.llm.groq.model).toBe("llama-3.3-70b-versatile");
     expect(config.llm.deepSeek.model).toBe("deepseek-chat");
     expect(config.somnia.inheritanceRegistryContractAddress).toBeUndefined();
@@ -73,7 +71,7 @@ describe("agent runtime config", () => {
       expect(error).toBeInstanceOf(ConfigValidationError);
       const message = formatConfigError(error as ConfigValidationError);
 
-      expect(message).toContain("AGENT_PRIVATE_KEY");
+      expect(message).toContain("GROQ_API_KEY");
       expect(message).not.toContain("SOMNIA_RPC_URL");
       expect(message).not.toContain("undefined");
     }
@@ -106,9 +104,6 @@ describe("agent runtime config", () => {
   });
 
   it.each([
-    ["AGENT_WALLET_ADDRESS", "0x123"],
-    ["AGENT_PRIVATE_KEY", "0x123"],
-    ["AGENT_PRIVATE_KEY", `0x${"0".repeat(64)}`],
     ["RISK_SCORE_ALERT_THRESHOLD", "101"],
     ["HEARTBEAT_INTERVAL_SECONDS", "0"],
     ["AUTO_CLAIM_ENABLED", "sometimes"]
@@ -121,15 +116,6 @@ describe("agent runtime config", () => {
   it("rejects malformed optional Telegram values when provided", () => {
     expect(() =>
       validateConfig({ ...validEnv, TELEGRAM_CHAT_ID: "not-numeric" })
-    ).toThrow(ConfigValidationError);
-  });
-
-  it("rejects a configured agent wallet address that does not match the private key", () => {
-    expect(() =>
-      validateConfig({
-        ...validEnv,
-        AGENT_WALLET_ADDRESS: "0x1111111111111111111111111111111111111111"
-      })
     ).toThrow(ConfigValidationError);
   });
 
@@ -166,7 +152,7 @@ describe("agent runtime config", () => {
   it("omits secret input values from diagnostics", () => {
     const secretEnv = {
       ...validEnv,
-      AGENT_PRIVATE_KEY: "bad-private-key",
+      SESSION_KEY_ENCRYPTION_KEY: "",
       GROQ_API_KEY: "",
       DEEPSEEK_API_KEY: "",
       TELEGRAM_BOT_TOKEN: "bad-token"
@@ -177,7 +163,7 @@ describe("agent runtime config", () => {
     } catch (error) {
       const message = formatConfigError(error as ConfigValidationError);
 
-      expect(message).toContain("AGENT_PRIVATE_KEY");
+      expect(message).toContain("SESSION_KEY_ENCRYPTION_KEY");
       expect(message).toContain("GROQ_API_KEY");
       expect(message).toContain("DEEPSEEK_API_KEY");
       expect(message).toContain("TELEGRAM_BOT_TOKEN");

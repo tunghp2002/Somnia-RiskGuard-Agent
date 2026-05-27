@@ -33,9 +33,8 @@ export interface Readiness {
     ready: boolean;
     walletAddress?: string;
   };
-  agentWallet: {
+  sessionKey: {
     ready: boolean;
-    walletAddress: string;
     chainId: number;
   };
   configuration: {
@@ -87,6 +86,7 @@ export interface InheritancePlanStatus {
 
 export interface TelegramConnectSession {
   walletAddress: string;
+  smartAccountAddress?: string;
   code: string;
   expiresAt: string;
   status: "waiting" | "connected" | "expired" | "failed";
@@ -97,6 +97,7 @@ export interface TelegramConnectSession {
     telegramUserId?: string;
     telegramUsername?: string;
     telegramDisplayName?: string;
+    smartAccountAddress?: string;
   };
 }
 
@@ -105,10 +106,22 @@ export interface TelegramBindingStatus {
   binding?: {
     chatId: string;
     walletAddress?: string;
+    smartAccountAddress?: string;
     telegramUserId?: string;
     telegramUsername?: string;
     telegramDisplayName?: string;
   };
+}
+
+export interface SessionKeyActionPermission {
+  action: "checkin" | "send" | "swap";
+  walletAddress: string;
+  smartAccountAddress?: string;
+  sessionKeyAddress: string;
+  approvedTargets: string[];
+  nativeTokenLimitPerTransaction: string;
+  permissionStartTimestamp: string;
+  permissionEndTimestamp: string;
 }
 
 export interface UserRecord {
@@ -259,6 +272,15 @@ function walletQuery(walletAddress?: string) {
 export const agentApi = {
   getReadiness: () => request<Readiness>("/api/setup/readiness"),
   getPublicChain: () => request<PublicChainMetadata>("/api/public-chain"),
+  ensureSessionKeyAction: (body: {
+    walletAddress: string;
+    smartAccountAddress?: string;
+    action: SessionKeyActionPermission["action"];
+  }) =>
+    request<SessionKeyActionPermission>("/api/session-keys/action", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
   getInheritancePlan: (smartAccount: string) =>
     request<InheritancePlanStatus | null>(
       `/api/inheritance/plan?smartAccount=${encodeURIComponent(smartAccount)}`
@@ -323,7 +345,7 @@ export const agentApi = {
       method: "DELETE",
       body: JSON.stringify(body)
     }),
-  startTelegramConnect: (body: { walletAddress: string }) =>
+  startTelegramConnect: (body: { walletAddress: string; smartAccountAddress?: string }) =>
     request<TelegramConnectSession>("/api/telegram/connect/start", {
       method: "POST",
       body: JSON.stringify(body)

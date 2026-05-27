@@ -5,6 +5,7 @@ import type { TelegramAlertService } from "./telegram-alert.service.js";
 
 export interface TelegramConnectSession {
   walletAddress: string;
+  smartAccountAddress?: string;
   code: string;
   expiresAt: string;
   status: "waiting" | "connected" | "expired" | "failed";
@@ -19,10 +20,11 @@ export class TelegramConnectService {
     private readonly options: { botUsername?: string } = {}
   ) {}
 
-  public start(walletAddress: string): TelegramConnectSession {
+  public start(walletAddress: string, smartAccountAddress?: string): TelegramConnectSession {
     const code = randomUUID().slice(0, 8).toUpperCase();
     const session: TelegramConnectSession = {
       walletAddress,
+      ...(smartAccountAddress ? { smartAccountAddress } : {}),
       code,
       expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
       status: "waiting"
@@ -52,6 +54,7 @@ export class TelegramConnectService {
 
     return {
       walletAddress: session.walletAddress,
+      ...(session.smartAccountAddress ? { smartAccountAddress: session.smartAccountAddress } : {}),
       code: session.code,
       expiresAt: session.expiresAt,
       status: session.status,
@@ -84,6 +87,7 @@ export class TelegramConnectService {
     const binding = await this.telegramAlerts.linkChat({
       walletAddress: session.walletAddress,
       chatId: input.chatId,
+      ...(session.smartAccountAddress ? { smartAccountAddress: session.smartAccountAddress } : {}),
       ...(input.telegramUserId ? { telegramUserId: input.telegramUserId } : {}),
       ...(input.telegramUsername ? { telegramUsername: input.telegramUsername } : {}),
       ...(input.telegramDisplayName ? { telegramDisplayName: input.telegramDisplayName } : {})

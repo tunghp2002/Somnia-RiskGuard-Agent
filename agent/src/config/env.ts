@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import { config as loadDotenvFile } from "dotenv";
-import { getAddress, Wallet } from "ethers";
+import { getAddress } from "ethers";
 import { z } from "zod";
 
 import { loadPublicChainMetadata, PublicChainConfigError } from "./public-chain.js";
@@ -14,24 +14,6 @@ const ethereumAddressSchema = z
 const optionalEthereumAddressSchema = z.preprocess(
   (value) => (value === "" ? undefined : value),
   ethereumAddressSchema.optional()
-);
-
-const privateKeySchema = z.preprocess(
-  (value) =>
-    typeof value === "string" && /^[a-fA-F0-9]{64}$/.test(value)
-      ? `0x${value}`
-      : value,
-  z
-    .string()
-    .regex(/^0x[a-fA-F0-9]{64}$/, "Must be a 32-byte hex private key")
-    .refine((value) => {
-      try {
-        new Wallet(value);
-        return true;
-      } catch {
-        return false;
-      }
-    }, "Must be a valid secp256k1 private key")
 );
 
 const optionalNonEmptyString = z.preprocess(
@@ -124,8 +106,11 @@ const rawEnvSchema = z
   SOMNIA_CHAIN_ID: integerFromString("SOMNIA_CHAIN_ID").pipe(
     z.number().int().positive()
   ),
-  AGENT_WALLET_ADDRESS: ethereumAddressSchema,
-  AGENT_PRIVATE_KEY: privateKeySchema,
+  THIRDWEB_SECRET_KEY: optionalNonEmptyString,
+  THIRDWEB_CLIENT_ID: optionalNonEmptyString,
+  SUPABASE_URL: optionalNonEmptyString,
+  SUPABASE_SERVICE_ROLE_KEY: optionalNonEmptyString,
+  SESSION_KEY_ENCRYPTION_KEY: optionalNonEmptyString,
   MONITORED_WALLET_ADDRESS: optionalEthereumAddressSchema,
   GROQ_API_KEY: requiredNonEmptyString("GROQ_API_KEY"),
   GROQ_MODEL: defaultModelString("llama-3.3-70b-versatile"),
@@ -170,24 +155,6 @@ const rawEnvSchema = z
       });
     }
 
-    if (env.AGENT_PRIVATE_KEY && env.AGENT_WALLET_ADDRESS) {
-      let derivedAddress: string;
-
-      try {
-        derivedAddress = new Wallet(env.AGENT_PRIVATE_KEY).address;
-      } catch {
-        return;
-      }
-
-      if (derivedAddress !== env.AGENT_WALLET_ADDRESS) {
-        context.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Must match the address derived from AGENT_PRIVATE_KEY",
-          path: ["AGENT_WALLET_ADDRESS"]
-        });
-      }
-    }
-
     if (!env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -206,7 +173,9 @@ const rawEnvSchema = z
   });
 
 export const secretEnvKeys = [
-  "AGENT_PRIVATE_KEY",
+  "THIRDWEB_SECRET_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "SESSION_KEY_ENCRYPTION_KEY",
   "GROQ_API_KEY",
   "DEEPSEEK_API_KEY",
   "TELEGRAM_BOT_TOKEN",
@@ -219,10 +188,17 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
   somnia: {
     rpcUrl: env.SOMNIA_RPC_URL,
     chainId: Number(env.SOMNIA_CHAIN_ID),
-    agentWalletAddress: env.AGENT_WALLET_ADDRESS,
-    agentPrivateKey: env.AGENT_PRIVATE_KEY,
     monitoredWalletAddress: env.MONITORED_WALLET_ADDRESS,
     inheritanceRegistryContractAddress: env.INHERITANCE_REGISTRY_CONTRACT_ADDRESS
+  },
+  thirdweb: {
+    secretKey: env.THIRDWEB_SECRET_KEY,
+    clientId: env.THIRDWEB_CLIENT_ID
+  },
+  supabase: {
+    url: env.SUPABASE_URL,
+    serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
+    sessionKeyEncryptionKey: env.SESSION_KEY_ENCRYPTION_KEY
   },
   publicChain: {
     key: env.PUBLIC_CHAIN_KEY,

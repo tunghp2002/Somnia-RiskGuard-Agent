@@ -5,7 +5,9 @@ import { createLogger, loggerRedactPaths } from "./logger.js";
 
 describe("structured logger", () => {
   it("configures secret-safe pino redaction paths", () => {
-    expect(loggerRedactPaths).toContain("somnia.agentPrivateKey");
+    expect(loggerRedactPaths).toContain("thirdweb.secretKey");
+    expect(loggerRedactPaths).toContain("supabase.serviceRoleKey");
+    expect(loggerRedactPaths).toContain("supabase.sessionKeyEncryptionKey");
     expect(loggerRedactPaths).toContain("llm.groq.apiKey");
     expect(loggerRedactPaths).toContain("telegram.botToken");
   });

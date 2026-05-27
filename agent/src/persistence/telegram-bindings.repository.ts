@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 import { z } from "zod";
 
-import { JsonStore } from "./json-store.js";
+import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const telegramBindingSchema = z.object({
   telegramBindingId: z.string().uuid(),
@@ -16,6 +16,11 @@ export const telegramBindingSchema = z.object({
   telegramUserId: z.string().regex(/^\d+$/).optional(),
   telegramUsername: z.string().min(1).max(64).optional(),
   telegramDisplayName: z.string().min(1).max(128).optional(),
+  smartAccountAddress: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/)
+    .transform((value) => getAddress(value))
+    .optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime()
 });
@@ -31,13 +36,14 @@ export interface UpsertTelegramBindingInput {
   telegramUserId?: string;
   telegramUsername?: string;
   telegramDisplayName?: string;
+  smartAccountAddress?: string;
 }
 
 export class TelegramBindingsRepository {
-  private readonly store: JsonStore<TelegramBindingRecord[]>;
+  private readonly store: RepositoryStore<TelegramBindingRecord[]>;
 
-  public constructor(dataDirectory?: string | URL) {
-    this.store = new JsonStore({
+  public constructor(dataDirectory?: string | URL, store?: RepositoryStore<TelegramBindingRecord[]>) {
+    this.store = store ?? new JsonStore({
       filename: "telegram-bindings.json",
       schema: telegramBindingsSchema,
       defaultValue: [],
@@ -63,6 +69,19 @@ export class TelegramBindingsRepository {
   ): Promise<TelegramBindingRecord | undefined> {
     const bindings = await this.store.read();
     return bindings.find((binding) => binding.userId === userId && binding.chatId === chatId);
+  }
+
+  public async latestForChat(
+    chatId: string,
+    telegramUserId?: string
+  ): Promise<TelegramBindingRecord | undefined> {
+    const bindings = await this.store.read();
+    return bindings
+      .filter((binding) => (
+        binding.chatId === chatId &&
+        (!telegramUserId || !binding.telegramUserId || binding.telegramUserId === telegramUserId)
+      ))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   }
 
   public async deleteLatestForWallet(walletAddress: string): Promise<TelegramBindingRecord | undefined> {
@@ -96,6 +115,7 @@ export class TelegramBindingsRepository {
           telegramUserId: input.telegramUserId,
           telegramUsername: input.telegramUsername,
           telegramDisplayName: input.telegramDisplayName,
+          smartAccountAddress: input.smartAccountAddress,
           updatedAt: now
         });
         return bindings.map((binding) =>
@@ -111,6 +131,7 @@ export class TelegramBindingsRepository {
         telegramUserId: input.telegramUserId,
         telegramUsername: input.telegramUsername,
         telegramDisplayName: input.telegramDisplayName,
+        smartAccountAddress: input.smartAccountAddress,
         createdAt: now,
         updatedAt: now
       });

@@ -10,6 +10,7 @@ import {
   setupWalletRequestSchema,
   userProfileUpdateRequestSchema
 } from "../services/setup.service.js";
+import { sessionKeyActionSchema } from "../services/session-key-actions.js";
 import type { PublicChainMetadata } from "../config/public-chain.js";
 import type { AuditEventsRepository } from "../persistence/audit-events.repository.js";
 import type { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
@@ -308,6 +309,41 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/session-keys/action") {
+        if (!dependencies.publicChain) {
+          throw new ServerDependencyError("Public chain metadata is not configured");
+        }
+
+        const body = await readJsonBody(request);
+        const walletAddress = parseOptionalWalletAddress(
+          typeof body === "object" && body && "walletAddress" in body
+            ? String((body as { walletAddress?: unknown }).walletAddress ?? "")
+            : null
+        );
+        const smartAccountAddress = parseOptionalWalletAddress(
+          typeof body === "object" && body && "smartAccountAddress" in body
+            ? String((body as { smartAccountAddress?: unknown }).smartAccountAddress ?? "")
+            : null
+        );
+        const action = sessionKeyActionSchema.parse(
+          typeof body === "object" && body && "action" in body
+            ? String((body as { action?: unknown }).action ?? "checkin")
+            : "checkin"
+        );
+
+        if (!walletAddress) {
+          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
+          return;
+        }
+
+        sendJson(response, 200, success(await dependencies.setupService.ensureSessionKeyAction({
+          walletAddress,
+          ...(smartAccountAddress ? { smartAccountAddress } : {}),
+          action
+        }), requestId));
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/inheritance/plan") {
         if (!dependencies.publicChain) {
           throw new ServerDependencyError("Public chain metadata is not configured");
@@ -475,13 +511,18 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
             ? String((body as { walletAddress?: unknown }).walletAddress ?? "")
             : null
         );
+        const smartAccountAddress = parseOptionalWalletAddress(
+          typeof body === "object" && body && "smartAccountAddress" in body
+            ? String((body as { smartAccountAddress?: unknown }).smartAccountAddress ?? "")
+            : null
+        );
 
         if (!walletAddress) {
           sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
           return;
         }
 
-        const session = telegramConnect.start(walletAddress);
+        const session = telegramConnect.start(walletAddress, smartAccountAddress);
         sendJson(
           response,
           201,

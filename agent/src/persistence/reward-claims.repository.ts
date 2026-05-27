@@ -4,7 +4,7 @@ import { getAddress } from "ethers";
 import { z } from "zod";
 
 import { policyDecisionSchema } from "../policies/execution-policy.js";
-import { JsonStore } from "./json-store.js";
+import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 const addressSchema = z
   .string()
@@ -105,10 +105,10 @@ export interface AppendRewardClaimInput {
 }
 
 export class RewardClaimsRepository {
-  private readonly store: JsonStore<RewardClaimsData>;
+  private readonly store: RepositoryStore<RewardClaimsData>;
 
-  public constructor(dataDirectory?: string | URL) {
-    this.store = new JsonStore({
+  public constructor(dataDirectory?: string | URL, store?: RepositoryStore<RewardClaimsData>) {
+    this.store = store ?? new JsonStore({
       filename: "reward-claims.json",
       schema: rewardClaimsDataSchema,
       defaultValue: {

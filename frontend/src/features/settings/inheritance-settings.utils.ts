@@ -8,7 +8,6 @@ export const initialBeneficiaries: BeneficiaryDraft[] = [
 
 export const recipientColors = ["#a78bfa", "#22d3ee", "#34d399", "#f59e0b", "#fb7185", "#60a5fa", "#f472b6", "#c4b5fd"];
 export const nativeAssetAddress = "0x0000000000000000000000000000000000000000";
-export const minAgentBudgetSTT = 0.05;
 export const walletAddressPattern = /^0x[a-fA-F0-9]{40}$/;
 
 export function clampNumber(value: string, min: number, max: number, allowDecimal = false, maxDecimalPlaces = 5) {

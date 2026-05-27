@@ -10,6 +10,7 @@ import { SetupService } from "./setup.service.js";
 import { AuditEventsRepository } from "../persistence/audit-events.repository.js";
 import { UsersRepository } from "../persistence/users.repository.js";
 import { createTestConfig } from "../test-helpers/env.js";
+import type { SessionKeyService } from "./session-key.service.js";
 
 let dataDirectory: string;
 let wallet: Wallet;
@@ -44,10 +45,10 @@ describe("setup service", () => {
     ).rejects.toThrow();
   });
 
-  it("reports user wallet and agent wallet readiness separately", async () => {
+  it("reports user wallet and session key readiness separately", async () => {
     const users = new UsersRepository(dataDirectory);
-    const config = createTestConfig();
-    const service = new SetupService(users, config);
+    const sessionKeys = { ready: () => true } as unknown as SessionKeyService;
+    const service = new SetupService(users, createTestConfig(), undefined, sessionKeys);
 
     await service.registerMonitoredWallet({
       walletAddress: wallet.address,
@@ -59,9 +60,9 @@ describe("setup service", () => {
 
     expect(readiness.monitoredWallet.ready).toBe(true);
     expect(readiness.monitoredWallet.walletAddress).toBe(wallet.address);
-    expect(readiness.agentWallet.ready).toBe(true);
-    expect(readiness.agentWallet.walletAddress).toBe(config.somnia.agentWalletAddress);
-    expect(JSON.stringify(readiness)).not.toContain(config.somnia.agentPrivateKey);
+    expect(readiness.sessionKey.ready).toBe(true);
+    expect(JSON.stringify(readiness)).not.toContain("thirdweb-secret-key");
+    expect(JSON.stringify(readiness)).not.toContain("supabase-service-role");
   });
 
   it("records an audit event when setup succeeds", async () => {

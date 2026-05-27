@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { useActiveAccount, useConnectedWallets, useConnect } from "thirdweb/react";
 import { EIP1193, smartWallet } from "thirdweb/wallets";
@@ -26,7 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { InheritancePlanStatus } from "@/lib/agent-api";
+import { agentApi, type InheritancePlanStatus } from "@/lib/agent-api";
 import type { Notice } from "@/features/dashboard/types";
 import {
     thirdwebAccountAbstraction,
@@ -43,9 +43,37 @@ import {
     getBeneficiaryAddressError,
     getBeneficiaryShareError,
     getRecipientColor,
-    minAgentBudgetSTT,
 } from "./inheritance-settings.utils";
 import { useInheritanceSettingsForm } from "./use-inheritance-settings-form";
+
+const smartAccountCacheKey = "riskguard.smartAccounts";
+
+function readCachedSmartAccount(ownerAddress?: string) {
+    if (typeof window === "undefined" || !ownerAddress) {
+        return undefined;
+    }
+
+    try {
+        const cache = JSON.parse(window.localStorage.getItem(smartAccountCacheKey) ?? "{}") as Record<string, string>;
+        return cache[ownerAddress.toLowerCase()];
+    } catch {
+        return undefined;
+    }
+}
+
+function cacheSmartAccount(ownerAddress: string | undefined, smartAccountAddress: string) {
+    if (typeof window === "undefined" || !ownerAddress) {
+        return;
+    }
+
+    try {
+        const cache = JSON.parse(window.localStorage.getItem(smartAccountCacheKey) ?? "{}") as Record<string, string>;
+        cache[ownerAddress.toLowerCase()] = smartAccountAddress;
+        window.localStorage.setItem(smartAccountCacheKey, JSON.stringify(cache));
+    } catch {
+        // Local storage is only a UI hydration hint; Thirdweb remains the source of truth.
+    }
+}
 
 export function InheritanceSettings({
     actionLoading,
@@ -71,6 +99,7 @@ export function InheritanceSettings({
     const thirdwebSmartAccount = useActiveAccount();
     const { connect: connectThirdwebWallet, isConnecting: creatingSmartAccount } = useConnect();
     const [copiedSmartAccount, setCopiedSmartAccount] = useState(false);
+    const autoConnectOwnerRef = useRef<string | undefined>(undefined);
     const thirdwebSmartAccountAddress = thirdwebSmartAccount?.address;
     const thirdwebConnectedSmartAccountAddresses = useConnectedWallets()
         .map((wallet) => wallet.getAccount()?.address)
@@ -79,12 +108,10 @@ export function InheritanceSettings({
         addBeneficiary,
         addDisabled,
         addToken,
-        agentBudgetSTT,
         allocationError,
         allocationSegments,
         assetError,
         beneficiaries,
-        budgetError,
         canRemove,
         discoveringSmartAccounts,
         findSmartAccounts,
@@ -93,7 +120,6 @@ export function InheritanceSettings({
         includeNativeAsset,
         intervalDuration,
         removeBeneficiary,
-        setAgentBudgetSTT,
         setGraceDuration,
         setIncludeNativeAsset,
         setIntervalDuration,
@@ -142,30 +168,68 @@ export function InheritanceSettings({
     const planActionBusy = actionLoading === "inheritance-plan" || actionLoading === "inheritance-cancel";
     const canSaveInheritancePlan = Boolean(registryAddress) && !planActionBusy;
 
-    async function handleCreateSmartAccount() {
+    useEffect(() => {
+        const cachedSmartAccount = readCachedSmartAccount(walletAddress);
+        if (cachedSmartAccount) {
+            useConnectedThirdwebSmartAccount(cachedSmartAccount);
+        }
+    }, [walletAddress]);
+
+    useEffect(() => {
+        if (!walletAddress || !thirdwebSmartAccountAddress) {
+            return;
+        }
+
+        cacheSmartAccount(walletAddress, thirdwebSmartAccountAddress);
+    }, [thirdwebSmartAccountAddress, walletAddress]);
+
+    useEffect(() => {
+        if (!walletAddress || !thirdwebClient || thirdwebSmartAccountAddress || creatingSmartAccount) {
+            return;
+        }
+
+        if (autoConnectOwnerRef.current === walletAddress.toLowerCase()) {
+            return;
+        }
+
+        autoConnectOwnerRef.current = walletAddress.toLowerCase();
+        void connectSmartAccount({ silent: true });
+    }, [creatingSmartAccount, thirdwebSmartAccountAddress, walletAddress]);
+
+    async function connectSmartAccount(options: { silent?: boolean } = {}) {
         if (!thirdwebClient) {
             const message = "Smart account creation is not configured yet.";
-            onNotice?.({ tone: "bad", message });
+            if (!options.silent) {
+                onNotice?.({ tone: "bad", message });
+            }
             return;
         }
         const client = thirdwebClient;
 
         if (!walletAddress) {
             const message = "Connect your wallet before creating a smart account.";
-            onNotice?.({ tone: "warn", message });
+            if (!options.silent) {
+                onNotice?.({ tone: "warn", message });
+            }
             return;
         }
 
         const provider = typeof window === "undefined" ? undefined : window.ethereum;
         if (!provider) {
             const message = "No connected wallet provider was found.";
-            onNotice?.({ tone: "bad", message });
+            if (!options.silent) {
+                onNotice?.({ tone: "bad", message });
+            }
             return;
         }
 
         setSmartAccountDiscoveryError("");
         setSmartAccountDropdownOpen(false);
         try {
+            const checkInPermission = await agentApi.ensureSessionKeyAction({
+                walletAddress,
+                action: "checkin"
+            });
             const connectedWallet = await connectThirdwebWallet(async (): Promise<Wallet> => {
                 const personalWallet = EIP1193.fromProvider({
                     provider: provider as Parameters<typeof EIP1193.fromProvider>[0]["provider"],
@@ -175,7 +239,18 @@ export function InheritanceSettings({
                     chain: thirdwebAccountAbstraction.chain,
                     client
                 });
-                const accountWallet = smartWallet(thirdwebAccountAbstraction);
+                const accountWallet = smartWallet({
+                    ...thirdwebAccountAbstraction,
+                    sessionKey: {
+                        address: checkInPermission.sessionKeyAddress,
+                        permissions: {
+                            approvedTargets: checkInPermission.approvedTargets,
+                            nativeTokenLimitPerTransaction: checkInPermission.nativeTokenLimitPerTransaction,
+                            permissionStartTimestamp: new Date(checkInPermission.permissionStartTimestamp),
+                            permissionEndTimestamp: new Date(checkInPermission.permissionEndTimestamp)
+                        }
+                    }
+                });
 
                 await accountWallet.connect({
                     client,
@@ -186,26 +261,44 @@ export function InheritanceSettings({
             });
             if (!connectedWallet) {
                 const message = "Smart account connection was cancelled.";
-                onNotice?.({ tone: "warn", message });
+                if (!options.silent) {
+                    onNotice?.({ tone: "warn", message });
+                }
                 return;
             }
             const smartAccount = connectedWallet.getAccount()?.address ?? thirdwebSmartAccountAddress;
 
             if (!smartAccount) {
                 const message = "Smart account was not returned by the wallet.";
-                onNotice?.({ tone: "bad", message });
+                if (!options.silent) {
+                    onNotice?.({ tone: "bad", message });
+                }
                 return;
             }
 
+            cacheSmartAccount(walletAddress, smartAccount);
+            await agentApi.ensureSessionKeyAction({
+                walletAddress,
+                smartAccountAddress: smartAccount,
+                action: "checkin"
+            });
             useConnectedThirdwebSmartAccount(smartAccount);
             setSmartAccountDropdownOpen(false);
-            onNotice?.({ tone: "ok", message: "Smart account connected." });
+            if (!options.silent) {
+                onNotice?.({ tone: "ok", message: "Smart account connected." });
+            }
         } catch (error) {
             const message = error instanceof Error && error.message
                 ? error.message
                 : "Smart account creation failed.";
-            onNotice?.({ tone: "bad", message });
+            if (!options.silent) {
+                onNotice?.({ tone: "bad", message });
+            }
         }
+    }
+
+    async function handleCreateSmartAccount() {
+        await connectSmartAccount();
     }
 
     async function handleCopySmartAccount() {
@@ -341,29 +434,6 @@ export function InheritanceSettings({
                             </section>
                         )}
 
-                        <section className="inheritance-card agent-budget-card">
-                            <div className="inheritance-section-head">
-                                <div>
-                                    <Activity size={19} />
-                                    <h3>Agent Budget</h3>
-                                    <InfoHint help="This STT funds Somnia agent requests for heartbeat checks and automated distribution." />
-                                </div>
-                            </div>
-                            <div className="input-with-unit budget-input-row">
-                                <Input
-                                    inputMode="decimal"
-                                    min={minAgentBudgetSTT}
-                                    name="agentBudgetSTT"
-                                    onChange={(event) => setAgentBudgetSTT(clampNumber(event.target.value, 0, 1000, true, 5))}
-                                    required
-                                    step="0.01"
-                                    type="text"
-                                    value={agentBudgetSTT}
-                                />
-                                <span>STT</span>
-                            </div>
-                            {submitAttempted && budgetError ? <p className="field-error">{budgetError}</p> : null}
-                        </section>
                     </section>
 
                     <section className="timing-stack">

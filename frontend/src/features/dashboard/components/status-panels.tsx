@@ -38,7 +38,7 @@ export function GuardianStatus({
       <div className="role-chips">
         <RoleChip label="Browser" value={formatAddress(wallet?.address)} />
         <RoleChip label="Monitored" value={formatAddress(readiness?.monitoredWallet.walletAddress)} />
-        <RoleChip label="Agent" value={formatAddress(readiness?.agentWallet.walletAddress)} />
+        <RoleChip label="Session keys" value={readiness?.sessionKey.ready ? "configured" : "missing"} />
       </div>
     </section>
   );

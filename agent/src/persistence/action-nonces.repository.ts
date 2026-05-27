@@ -2,7 +2,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 
-import { JsonStore } from "./json-store.js";
+import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const actionNonceSchema = z.object({
   actionNonce: z.string().min(1),
@@ -39,10 +39,10 @@ export interface ConsumeActionNonceResult {
 }
 
 export class ActionNoncesRepository {
-  private readonly store: JsonStore<ActionNonceRecord[]>;
+  private readonly store: RepositoryStore<ActionNonceRecord[]>;
 
-  public constructor(dataDirectory?: string | URL) {
-    this.store = new JsonStore({
+  public constructor(dataDirectory?: string | URL, store?: RepositoryStore<ActionNonceRecord[]>) {
+    this.store = store ?? new JsonStore({
       filename: "action-nonces.json",
       schema: z.array(actionNonceSchema),
       defaultValue: [],

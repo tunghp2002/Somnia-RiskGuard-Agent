@@ -23,7 +23,13 @@ export interface JsonStoreOptions<T> {
   dataDirectory?: string | URL | undefined;
 }
 
-export class JsonStore<T> {
+export interface RepositoryStore<T> {
+  read(): Promise<T>;
+  write(value: T): Promise<void>;
+  update(mutator: (current: T) => T | Promise<T>): Promise<T>;
+}
+
+export class JsonStore<T> implements RepositoryStore<T> {
   private static readonly writeQueues = new Map<string, Promise<unknown>>();
 
   public readonly filePath: string;

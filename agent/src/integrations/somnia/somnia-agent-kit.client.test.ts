@@ -16,7 +16,7 @@ const allowedPolicy = () => ({
   policyId: "test.policy",
   createdAt: new Date().toISOString(),
   toolName: "claimReward",
-  signerAddress: config.somnia.agentWalletAddress,
+  signerAddress: "0x1111111111111111111111111111111111111111",
   chainId: config.somnia.chainId,
   target: config.somnia.inheritanceRegistryContractAddress,
   calldataSummary: "claimReward()"

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 import { z } from "zod";
 
-import { JsonStore } from "./json-store.js";
+import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const portfolioAssetSchema = z.object({
   symbol: z.string().min(1),
@@ -59,10 +59,10 @@ export type CreatePortfolioSnapshotInput = Omit<
 };
 
 export class PortfolioSnapshotsRepository {
-  private readonly store: JsonStore<PortfolioSnapshot[]>;
+  private readonly store: RepositoryStore<PortfolioSnapshot[]>;
 
-  public constructor(dataDirectory?: string | URL) {
-    this.store = new JsonStore({
+  public constructor(dataDirectory?: string | URL, store?: RepositoryStore<PortfolioSnapshot[]>) {
+    this.store = store ?? new JsonStore({
       filename: "portfolio-snapshots.json",
       schema: portfolioSnapshotsSchema,
       defaultValue: [],

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 
-import { JsonStore } from "./json-store.js";
+import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const riskSnapshotSchema = z.object({
   riskSnapshotId: z.string().uuid(),
@@ -33,10 +33,10 @@ export type CreateRiskSnapshotInput = Omit<
 };
 
 export class RiskSnapshotsRepository {
-  private readonly store: JsonStore<RiskSnapshotRecord[]>;
+  private readonly store: RepositoryStore<RiskSnapshotRecord[]>;
 
-  public constructor(dataDirectory?: string | URL) {
-    this.store = new JsonStore({
+  public constructor(dataDirectory?: string | URL, store?: RepositoryStore<RiskSnapshotRecord[]>) {
+    this.store = store ?? new JsonStore({
       filename: "risk-snapshots.json",
       schema: z.array(riskSnapshotSchema),
       defaultValue: [],

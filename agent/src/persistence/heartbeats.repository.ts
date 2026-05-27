@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 import { z } from "zod";
 
-import { JsonStore } from "./json-store.js";
+import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 const addressSchema = z
   .string()
@@ -58,10 +58,10 @@ export interface SaveHeartbeatSettingsInput {
 }
 
 export class HeartbeatsRepository {
-  private readonly store: JsonStore<HeartbeatRecord[]>;
+  private readonly store: RepositoryStore<HeartbeatRecord[]>;
 
-  public constructor(dataDirectory?: string | URL) {
-    this.store = new JsonStore({
+  public constructor(dataDirectory?: string | URL, store?: RepositoryStore<HeartbeatRecord[]>) {
+    this.store = store ?? new JsonStore({
       filename: "heartbeats.json",
       schema: heartbeatsSchema,
       defaultValue: [],

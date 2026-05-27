@@ -36,7 +36,12 @@ export const telegramBindingRequestSchema = z
     chatId: z.string().regex(/^-?\d+$/),
     telegramUserId: z.string().regex(/^\d+$/).optional(),
     telegramUsername: z.string().min(1).max(64).optional(),
-    telegramDisplayName: z.string().min(1).max(128).optional()
+    telegramDisplayName: z.string().min(1).max(128).optional(),
+    smartAccountAddress: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/)
+      .transform((value) => getAddress(value))
+      .optional()
   })
   .strict();
 
@@ -204,7 +209,8 @@ export class TelegramAlertService {
       chatId: parsed.chatId,
       ...(parsed.telegramUserId ? { telegramUserId: parsed.telegramUserId } : {}),
       ...(parsed.telegramUsername ? { telegramUsername: parsed.telegramUsername } : {}),
-      ...(parsed.telegramDisplayName ? { telegramDisplayName: parsed.telegramDisplayName } : {})
+      ...(parsed.telegramDisplayName ? { telegramDisplayName: parsed.telegramDisplayName } : {}),
+      ...(parsed.smartAccountAddress ? { smartAccountAddress: parsed.smartAccountAddress } : {})
     });
 
     await this.audit.record({
@@ -216,7 +222,8 @@ export class TelegramAlertService {
         chatId: parsed.chatId,
         telegramUserId: parsed.telegramUserId,
         telegramUsername: parsed.telegramUsername,
-        telegramDisplayName: parsed.telegramDisplayName
+        telegramDisplayName: parsed.telegramDisplayName,
+        smartAccountAddress: parsed.smartAccountAddress
       }
     });
 
@@ -569,7 +576,7 @@ export class TelegramAlertService {
   ): Promise<TelegramCallbackResult> {
     const decision = evaluateTelegramSafeActionApproval({
       safeAction: safeAction ?? "unknown",
-      signerAddress: this.config.somnia.agentWalletAddress,
+      signerAddress: "0x0000000000000000000000000000000000000000",
       chainId: this.config.somnia.chainId
     });
 

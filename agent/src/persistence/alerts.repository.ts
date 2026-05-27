@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 import { z } from "zod";
 
-import { JsonStore } from "./json-store.js";
+import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const alertStatusSchema = z.enum(["sent", "failed", "acknowledged"]);
 export const alertSeveritySchema = z.enum(["low", "medium", "high", "critical"]);
@@ -50,10 +50,10 @@ export interface CreateAlertInput {
 }
 
 export class AlertsRepository {
-  private readonly store: JsonStore<AlertRecord[]>;
+  private readonly store: RepositoryStore<AlertRecord[]>;
 
-  public constructor(dataDirectory?: string | URL) {
-    this.store = new JsonStore({
+  public constructor(dataDirectory?: string | URL, store?: RepositoryStore<AlertRecord[]>) {
+    this.store = store ?? new JsonStore({
       filename: "alerts.json",
       schema: alertsSchema,
       defaultValue: [],

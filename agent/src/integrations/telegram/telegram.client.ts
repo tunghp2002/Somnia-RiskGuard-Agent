@@ -5,6 +5,11 @@ export interface TelegramInlineButton {
   callbackData: string;
 }
 
+export interface TelegramBotCommand {
+  command: string;
+  description: string;
+}
+
 export interface TelegramSendMessageInput {
   chatId: string;
   text: string;
@@ -39,6 +44,7 @@ export interface TelegramPollingHandle {
 export interface StartTelegramPollingOptions {
   handleCallback(update: TelegramCallbackUpdate): Promise<{ ok: boolean; message: string }>;
   handleTextMessage?(update: TelegramTextUpdate): Promise<{ ok: boolean; message: string }>;
+  commands?: TelegramBotCommand[];
   intervalMs?: number;
   logger?: Pick<Console, "error" | "info">;
 }
@@ -122,6 +128,9 @@ export class TelegramBotApiClient implements TelegramClient {
     const poll = async () => {
       try {
         await this.deleteWebhook();
+        if (options.commands?.length) {
+          await this.setMyCommands(options.commands);
+        }
       } catch (error) {
         options.logger?.error(
           { error: error instanceof Error ? error.message : "deleteWebhook failed" },
@@ -226,6 +235,29 @@ export class TelegramBotApiClient implements TelegramClient {
 
     if (!response.ok || !payload.ok) {
       throw new Error(payload.description ?? "Telegram deleteWebhook failed");
+    }
+  }
+
+  private async setMyCommands(commands: TelegramBotCommand[]) {
+    if (!this.config.botToken) {
+      throw new Error("Telegram is not configured");
+    }
+
+    const response = await fetch(
+      `https://api.telegram.org/bot${this.config.botToken}/setMyCommands`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ commands })
+      }
+    );
+    const payload = (await response.json()) as {
+      ok?: boolean;
+      description?: string;
+    };
+
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.description ?? "Telegram setMyCommands failed");
     }
   }
 

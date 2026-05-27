@@ -13,6 +13,7 @@ import { RiskSnapshotsRepository } from "../persistence/risk-snapshots.repositor
 import { AuditService } from "../services/audit.service.js";
 import { DemoScenarioService } from "../services/demo-scenario.service.js";
 import { SetupService } from "../services/setup.service.js";
+import type { SessionKeyService } from "../services/session-key.service.js";
 import type { TelegramAlertService } from "../services/telegram-alert.service.js";
 import { HeartbeatsRepository } from "../persistence/heartbeats.repository.js";
 import { HeartbeatService } from "../services/heartbeat.service.js";
@@ -33,6 +34,7 @@ let auditEvents: AuditEventsRepository;
 let telegramAlerts: TelegramAlertService;
 let heartbeats: HeartbeatService;
 let rewards: RewardClaimService;
+const readySessionKeys = { ready: () => true } as unknown as SessionKeyService;
 
 async function signedProof(signer: Wallet, purpose: string) {
   const proofMessage = `${purpose}: ${signer.address}`;
@@ -71,7 +73,8 @@ beforeEach(async () => {
   const setupService = new SetupService(
     users,
     createTestConfig(),
-    audit
+    audit,
+    readySessionKeys
   );
   const demoScenarios = new DemoScenarioService(
     users,
@@ -139,7 +142,7 @@ describe("agent setup API", () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload.data.agentWallet.ready).toBe(true);
+    expect(payload.data.sessionKey.ready).toBe(true);
     expect(payload.meta.requestId).toBeDefined();
   });
 
@@ -291,7 +294,8 @@ describe("agent setup API", () => {
     expect(response.status).toBe(200);
     expect(payload.data.chainId).toBe(50312);
     expect(payload.data.nativeCurrency.symbol).toBe("STT");
-    expect(JSON.stringify(payload)).not.toContain("AGENT_PRIVATE_KEY");
+    expect(JSON.stringify(payload)).not.toContain("THIRDWEB_SECRET_KEY");
+    expect(JSON.stringify(payload)).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
   });
 
   it("moves Telegram Connect sessions from waiting to connected", async () => {

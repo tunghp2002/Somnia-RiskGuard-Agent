@@ -131,4 +131,5 @@ export class InheritanceRegistryClient {
       ...optionalDate("updatedAt", plan.updatedAt)
     };
   }
+
 }

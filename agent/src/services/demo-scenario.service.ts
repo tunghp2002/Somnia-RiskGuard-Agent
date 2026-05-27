@@ -48,6 +48,7 @@ export interface DemoScenarioResult {
 const defaultDemoWalletAddress = "0x1111111111111111111111111111111111111111";
 const demoBeneficiaryAddress = "0x2222222222222222222222222222222222222222";
 const demoRewardTargetAddress = "0x3333333333333333333333333333333333333333";
+const demoAutomationSignerAddress = "0x0000000000000000000000000000000000000000";
 
 export class DemoScenarioService {
   public constructor(
@@ -111,7 +112,7 @@ export class DemoScenarioService {
       metadata: {
         mode: "simulation",
         walletAddress,
-        agentWalletAddress: this.config.somnia.agentWalletAddress,
+        sessionKeyAddress: demoAutomationSignerAddress,
         chainId: this.config.somnia.chainId
       }
     });
@@ -225,7 +226,7 @@ export class DemoScenarioService {
         policyId: "reward-claim.demo-deny",
         createdAt: now,
         toolName: "rewards.claim",
-        signerAddress: this.config.somnia.agentWalletAddress,
+        signerAddress: demoAutomationSignerAddress,
         chainId: this.config.somnia.chainId,
         target: demoRewardTargetAddress,
         calldataSummary: fixture.calldataSummary

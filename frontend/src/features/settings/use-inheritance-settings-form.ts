@@ -15,7 +15,6 @@ import {
   getTokenDecimalsError,
   getTokenSymbolError,
   initialBeneficiaries,
-  minAgentBudgetSTT,
   normalizeBeneficiaryShares,
   rebalanceBeneficiaryShare,
   roundShare,
@@ -54,7 +53,6 @@ export function useInheritanceSettingsForm({
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
   const [tokenSubmitted, setTokenSubmitted] = useState(false);
   const [tokenDraft, setTokenDraft] = useState<TokenDraft>({ address: "", symbol: "", decimals: "" });
-  const [agentBudgetSTT, setAgentBudgetSTT] = useState(String(minAgentBudgetSTT));
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const tokenAddressRef = useRef<HTMLInputElement>(null);
   const tokenSymbolRef = useRef<HTMLInputElement>(null);
@@ -143,14 +141,11 @@ export function useInheritanceSettingsForm({
   const firstShareError = beneficiaries
     .map((beneficiary, index) => getBeneficiaryShareError(beneficiary.sharePercent, index))
     .find(Boolean) ?? "";
-  const budgetError = Number(agentBudgetSTT || 0) < minAgentBudgetSTT
-    ? `Agent budget must be at least ${minAgentBudgetSTT} STT.`
-    : "";
   const smartAccountError = walletAddressPattern.test(smartAccountAddress)
     ? ""
     : "Select a smart account before saving.";
   const assetError = hasProtectedAsset ? "" : "Select native STT or import at least one ERC-20 token.";
-  const submitBlockReason = smartAccountError || firstAddressError || firstShareError || allocationError || assetError || budgetError;
+  const submitBlockReason = smartAccountError || firstAddressError || firstShareError || allocationError || assetError;
   const hasCreatorWallet = walletAddressPattern.test(walletAddress?.trim() ?? "");
 
   function updateSmartAccountSelection(address?: string) {
@@ -305,12 +300,10 @@ export function useInheritanceSettingsForm({
     addBeneficiary,
     addDisabled,
     addToken,
-    agentBudgetSTT,
     allocationError,
     allocationSegments,
     assetError,
     beneficiaries,
-    budgetError,
     canRemove,
     discoveringSmartAccounts,
     findSmartAccounts,
@@ -319,7 +312,6 @@ export function useInheritanceSettingsForm({
     includeNativeAsset,
     intervalDuration,
     removeBeneficiary,
-    setAgentBudgetSTT,
     setGraceDuration,
     setIncludeNativeAsset,
     setIntervalDuration,

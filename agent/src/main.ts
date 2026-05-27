@@ -11,15 +11,20 @@ import {
 } from "./config/env.js";
 import { createLogger } from "./config/logger.js";
 import { createAgentApiServer } from "./api/server.js";
-import { AuditEventsRepository } from "./persistence/audit-events.repository.js";
-import { AlertsRepository } from "./persistence/alerts.repository.js";
-import { ActionNoncesRepository } from "./persistence/action-nonces.repository.js";
-import { PortfolioSnapshotsRepository } from "./persistence/portfolio-snapshots.repository.js";
-import { RiskSnapshotsRepository } from "./persistence/risk-snapshots.repository.js";
-import { TelegramBindingsRepository } from "./persistence/telegram-bindings.repository.js";
-import { UsersRepository } from "./persistence/users.repository.js";
-import { HeartbeatsRepository } from "./persistence/heartbeats.repository.js";
-import { RewardClaimsRepository } from "./persistence/reward-claims.repository.js";
+import { z } from "zod";
+
+import { AuditEventsRepository, auditEventsSchema } from "./persistence/audit-events.repository.js";
+import { AlertsRepository, alertsSchema } from "./persistence/alerts.repository.js";
+import { ActionNoncesRepository, actionNonceSchema } from "./persistence/action-nonces.repository.js";
+import { PortfolioSnapshotsRepository, portfolioSnapshotsSchema } from "./persistence/portfolio-snapshots.repository.js";
+import { RiskSnapshotsRepository, riskSnapshotSchema } from "./persistence/risk-snapshots.repository.js";
+import { TelegramBindingsRepository, telegramBindingsSchema } from "./persistence/telegram-bindings.repository.js";
+import { UsersRepository, usersSchema } from "./persistence/users.repository.js";
+import { HeartbeatsRepository, heartbeatsSchema } from "./persistence/heartbeats.repository.js";
+import { RewardClaimsRepository, rewardClaimsDataSchema } from "./persistence/reward-claims.repository.js";
+import { SupabaseSessionKeysRepository } from "./persistence/session-keys.repository.js";
+import { SupabaseJsonStore } from "./persistence/supabase-json-store.js";
+import type { RepositoryStore } from "./persistence/json-store.js";
 import { DeepSeekClient } from "./integrations/llm/deepseek.client.js";
 import { GroqClient } from "./integrations/llm/groq.client.js";
 import {
@@ -40,7 +45,9 @@ import { DemoScenarioService } from "./services/demo-scenario.service.js";
 import { HeartbeatService } from "./services/heartbeat.service.js";
 import { RewardClaimService } from "./services/reward-claim.service.js";
 import { TelegramAlertService } from "./services/telegram-alert.service.js";
+import { TelegramCheckInService } from "./services/telegram-check-in.service.js";
 import { TelegramConnectService } from "./services/telegram-connect.service.js";
+import { SessionKeyService } from "./services/session-key.service.js";
 import { PortfolioService } from "./services/portfolio.service.js";
 import { PortfolioMonitorJob } from "./jobs/portfolio-monitor.job.js";
 import { HeartbeatJob } from "./jobs/heartbeat.job.js";
@@ -81,16 +88,24 @@ export async function startAgentRuntime(
   options: StartAgentRuntimeOptions = {},
 ): Promise<AgentRuntime> {
   const logger = createLogger(config);
-  const users = new UsersRepository();
-  const auditEvents = new AuditEventsRepository();
+  const users = new UsersRepository(undefined, createSupabaseStore(config, "users.json", usersSchema, []));
+  const auditEvents = new AuditEventsRepository(undefined, createSupabaseStore(config, "audit-events.json", auditEventsSchema, []));
   const audit = new AuditService(auditEvents, logger);
-  const portfolioSnapshots = new PortfolioSnapshotsRepository();
-  const riskSnapshots = new RiskSnapshotsRepository();
-  const telegramBindings = new TelegramBindingsRepository();
-  const heartbeatsRepository = new HeartbeatsRepository();
-  const rewardClaims = new RewardClaimsRepository();
-  const alerts = new AlertsRepository();
-  const actionNonces = new ActionNoncesRepository();
+  const portfolioSnapshots = new PortfolioSnapshotsRepository(undefined, createSupabaseStore(config, "portfolio-snapshots.json", portfolioSnapshotsSchema, []));
+  const riskSnapshots = new RiskSnapshotsRepository(undefined, createSupabaseStore(config, "risk-snapshots.json", z.array(riskSnapshotSchema), []));
+  const telegramBindings = new TelegramBindingsRepository(undefined, createSupabaseStore(config, "telegram-bindings.json", telegramBindingsSchema, []));
+  const heartbeatsRepository = new HeartbeatsRepository(undefined, createSupabaseStore(config, "heartbeats.json", heartbeatsSchema, []));
+  const rewardClaims = new RewardClaimsRepository(undefined, createSupabaseStore(config, "reward-claims.json", rewardClaimsDataSchema, {
+    settings: [],
+    fixtures: [],
+    claims: [],
+  }));
+  const alerts = new AlertsRepository(undefined, createSupabaseStore(config, "alerts.json", alertsSchema, []));
+  const actionNonces = new ActionNoncesRepository(undefined, createSupabaseStore(config, "action-nonces.json", z.array(actionNonceSchema), []));
+  const sessionKeysRepository = config.supabase.url && config.supabase.serviceRoleKey
+    ? new SupabaseSessionKeysRepository(config.supabase.url, config.supabase.serviceRoleKey)
+    : undefined;
+  const sessionKeys = new SessionKeyService(config, sessionKeysRepository);
   const telegramClient = options.telegramClient ?? createTelegramClient(config);
   const somnia = options.somniaClient ?? createSomniaAgentKitClient(config);
   const riskScore = new RiskScoreService(config, riskSnapshots, audit, {
@@ -114,7 +129,13 @@ export async function startAgentRuntime(
       ? { botUsername: config.telegram.botUsername }
       : {},
   );
-  const setupService = new SetupService(users, config, audit);
+  const telegramCheckIn = new TelegramCheckInService(
+    config,
+    telegramBindings,
+    sessionKeys,
+    audit,
+  );
+  const setupService = new SetupService(users, config, audit, sessionKeys);
   const heartbeatReminderNotifier = new TelegramHeartbeatReminderNotifier(
     telegramBindings,
     telegramClient,
@@ -210,7 +231,15 @@ export async function startAgentRuntime(
         data: update.data,
       }),
     handleTextMessage: async (update) =>
-      telegramConnect.confirmFromText({
+      /^\/checkin(?:@\w+)?$/i.test(update.text.trim())
+        ? telegramCheckIn.handleText({
+          chatId: update.chatId,
+          ...(update.telegramUserId
+            ? { telegramUserId: update.telegramUserId }
+            : {}),
+          text: update.text,
+        })
+        : telegramConnect.confirmFromText({
         chatId: update.chatId,
         ...(update.telegramUserId
           ? { telegramUserId: update.telegramUserId }
@@ -223,6 +252,12 @@ export async function startAgentRuntime(
           : {}),
         text: update.text,
       }),
+    commands: [
+      {
+        command: "checkin",
+        description: "Renew smart account heartbeat",
+      },
+    ],
     logger,
   });
 
@@ -259,6 +294,25 @@ export async function startAgentRuntime(
       await close(apiServer);
     },
   };
+}
+
+function createSupabaseStore<T>(
+  config: AgentConfig,
+  filename: string,
+  schema: z.ZodType<T>,
+  defaultValue: T,
+): RepositoryStore<T> | undefined {
+  if (!config.supabase.url || !config.supabase.serviceRoleKey) {
+    return undefined;
+  }
+
+  return new SupabaseJsonStore({
+    filename,
+    schema,
+    defaultValue,
+    supabaseUrl: config.supabase.url,
+    serviceRoleKey: config.supabase.serviceRoleKey,
+  });
 }
 
 function startRuntimeJobs({

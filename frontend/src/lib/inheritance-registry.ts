@@ -1,4 +1,4 @@
-import { BrowserProvider, Contract, formatEther, parseEther } from "ethers";
+import { BrowserProvider, Contract } from "ethers";
 import { getContract, prepareContractCall, prepareTransaction, sendAndConfirmTransaction } from "thirdweb";
 import type { Account } from "thirdweb/wallets";
 
@@ -17,14 +17,12 @@ export interface InheritancePlanInput {
   heartbeatIntervalSeconds: number;
   gracePeriodSeconds: number;
   timelockPeriodSeconds: number;
-  agentBudgetSTT?: string;
 }
 
 const inheritanceRegistryAbi = [
   "function createPlan((address addr,uint256 shareBps)[] beneficiaries,(address token)[] protectedAssets,uint256 heartbeatInterval,uint256 gracePeriod,uint256 timelockPeriod)",
   "function updatePlan((address addr,uint256 shareBps)[] beneficiaries,(address token)[] protectedAssets,uint256 heartbeatInterval,uint256 gracePeriod,uint256 timelockPeriod)",
-  "function cancelPlan()",
-  "function fundAgentBudget(address smartAccount) payable"
+  "function cancelPlan()"
 ];
 
 type RegistryContract = Contract & {
@@ -43,10 +41,6 @@ type RegistryContract = Contract & {
     timelockPeriod: bigint
   ): Promise<{ wait: () => Promise<unknown>; hash: string }>;
   cancelPlan(): Promise<{ wait: () => Promise<unknown>; hash: string }>;
-  fundAgentBudget(
-    smartAccount: string,
-    overrides: { value: bigint }
-  ): Promise<{ wait: () => Promise<unknown>; hash: string }>;
 };
 
 export interface SmartAccountCandidate {
@@ -138,24 +132,6 @@ async function ensureThirdwebSmartAccountDeployed(account: Account) {
   });
 }
 
-async function assertSmartAccountCanFundBudget(smartAccountAddress: string, agentBudgetSTT?: string) {
-  const agentBudget = Number(agentBudgetSTT ?? 0);
-
-  if (!Number.isFinite(agentBudget) || agentBudget <= 0) {
-    return;
-  }
-
-  const requiredBudget = parseEther(agentBudgetSTT ?? "0");
-  const provider = new BrowserProvider(getEthereumProvider());
-  const balance = await provider.getBalance(smartAccountAddress);
-
-  if (balance < requiredBudget) {
-    throw new Error(
-      `Smart account needs at least ${agentBudgetSTT} STT for agent budget. Current balance is ${formatEther(balance)} STT. Transfer STT to the smart account first.`
-    );
-  }
-}
-
 export async function saveInheritancePlan(
   registryAddress: string,
   input: InheritancePlanInput,
@@ -186,13 +162,6 @@ export async function saveInheritancePlan(
   const planTxHash = currentPlan?.active
     ? await waitForPlanTx(registry.updatePlan(...args))
     : await waitForPlanTx(registry.createPlan(...args));
-  const agentBudget = Number(input.agentBudgetSTT ?? 0);
-
-  if (Number.isFinite(agentBudget) && agentBudget > 0) {
-    await waitForPlanTx(registry.fundAgentBudget(smartAccountAddress, {
-      value: parseEther(input.agentBudgetSTT ?? "0")
-    }));
-  }
 
   return planTxHash;
 }
@@ -213,8 +182,6 @@ export async function saveInheritancePlanWithThirdweb(
   }
 
   await ensureThirdwebSmartAccountDeployed(account);
-  await assertSmartAccountCanFundBudget(smartAccountAddress, input.agentBudgetSTT);
-
   const registry = getContract({
     address: registryAddress,
     chain: somniaThirdwebChain,
@@ -240,21 +207,6 @@ export async function saveInheritancePlanWithThirdweb(
     account,
     transaction: planTransaction
   });
-  const agentBudget = Number(input.agentBudgetSTT ?? 0);
-
-  if (Number.isFinite(agentBudget) && agentBudget > 0) {
-    const budgetTransaction = prepareContractCall({
-      contract: registry,
-      method: "function fundAgentBudget(address smartAccount) payable",
-      params: [smartAccountAddress],
-      value: parseEther(input.agentBudgetSTT ?? "0")
-    });
-    await sendAndConfirmTransaction({
-      account,
-      transaction: budgetTransaction
-    });
-  }
-
   return planReceipt.transactionHash;
 }
 

@@ -1,4 +1,4 @@
-import { JsonRpcProvider, Wallet } from "ethers";
+import { JsonRpcProvider } from "ethers";
 import {
   formatEther,
   SomniaAgentKit,
@@ -9,6 +9,7 @@ import type { AgentConfig } from "../../config/env.js";
 import { policyDecisionSchema, type PolicyDecision } from "../../policies/execution-policy.js";
 
 const readOnlyToolNames = new Set(["health", "getBalance", "getPortfolio", "readContract"]);
+const defaultAutomationSignerAddress = "0x0000000000000000000000000000000000000000";
 const defaultSomniaAgentKitContracts = {
   agentRegistry: "0xC9f3452090EEB519467DEa4a390976D38C008347",
   agentManager: "0x77F6dC5924652e32DBa0B4329De0a44a2C95691E",
@@ -117,7 +118,6 @@ export class SomniaAgentKitSdkAdapter implements SomniaAgentKitAdapter {
         token: this.config.publicChain.nativeCurrency.symbol
       },
       contracts: defaultSomniaAgentKitContracts,
-      privateKey: this.config.somnia.agentPrivateKey,
       logLevel: toSomniaAgentKitLogLevel(this.config.logLevel),
       metricsEnabled: true,
       telemetryEnabled: false
@@ -130,7 +130,10 @@ export class SomniaAgentKitSdkAdapter implements SomniaAgentKitAdapter {
   ) {
     const address = parseAddressArg(args, "address")
       ?? parseAddressArg(args, "walletAddress")
-      ?? this.config.somnia.agentWalletAddress;
+      ?? this.config.somnia.monitoredWalletAddress;
+    if (!address) {
+      throw new SomniaIntegrationUnavailableError("Address is required for balance checks");
+    }
     const balanceWei = await kit.getNativeTokenManager().getBalance(address);
 
     return {
@@ -206,14 +209,11 @@ export class SomniaAgentKitSdkAdapter implements SomniaAgentKitAdapter {
 
 export class SomniaAgentKitClient {
   public readonly provider: JsonRpcProvider;
-  public readonly signer: Wallet;
-
   public constructor(
     private readonly config: AgentConfig,
     private readonly adapter?: SomniaAgentKitAdapter
   ) {
     this.provider = new JsonRpcProvider(config.somnia.rpcUrl, config.somnia.chainId);
-    this.signer = new Wallet(config.somnia.agentPrivateKey, this.provider);
   }
 
   public async health() {
@@ -234,7 +234,6 @@ export class SomniaAgentKitClient {
         ok: true,
         executionEnabled: true,
         chainId: this.config.somnia.chainId,
-        agentWalletAddress: this.config.somnia.agentWalletAddress,
         adapter
       };
     } catch (error) {
@@ -271,7 +270,7 @@ export class SomniaAgentKitClient {
 
       if (
         policy.data.toolName !== request.toolName ||
-        policy.data.signerAddress !== this.config.somnia.agentWalletAddress ||
+        policy.data.signerAddress === defaultAutomationSignerAddress ||
         policy.data.chainId !== this.config.somnia.chainId ||
         policy.data.target !== request.target ||
         policy.data.calldataSummary !== request.calldataSummary ||

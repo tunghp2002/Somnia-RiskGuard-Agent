@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 import { z } from "zod";
 
-import { JsonStore } from "./json-store.js";
+import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const userSchema = z.object({
   userId: z.string().uuid(),
@@ -22,10 +22,10 @@ export const usersSchema = z.array(userSchema);
 export type UserRecord = z.infer<typeof userSchema>;
 
 export class UsersRepository {
-  private readonly store: JsonStore<UserRecord[]>;
+  private readonly store: RepositoryStore<UserRecord[]>;
 
-  public constructor(dataDirectory?: string | URL) {
-    this.store = new JsonStore({
+  public constructor(dataDirectory?: string | URL, store?: RepositoryStore<UserRecord[]>) {
+    this.store = store ?? new JsonStore({
       filename: "users.json",
       schema: usersSchema,
       defaultValue: [],

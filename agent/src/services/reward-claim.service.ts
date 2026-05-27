@@ -21,6 +21,7 @@ const addressSchema = z
 
 const moneyNumberSchema = z.number().nonnegative();
 const hexDataSchema = z.string().regex(/^0x[a-fA-F0-9]*$/);
+const automationSignerPlaceholder = "0x0000000000000000000000000000000000000000";
 
 export const rewardSettingsRequestSchema = z
   .object({
@@ -191,7 +192,7 @@ export class RewardClaimService {
       gasUsd: parsed.gasUsd,
       minRewardValueUsd: Number(settings?.minRewardValueUsd ?? this.config.rewards.minRewardValueUsd),
       maxClaimGasUsd: Number(settings?.maxClaimGasUsd ?? this.config.rewards.maxClaimGasUsd),
-      signerAddress: this.config.somnia.agentWalletAddress,
+      signerAddress: automationSignerPlaceholder,
       chainId: this.config.somnia.chainId,
       target: parsed.target,
       calldataSummary: parsed.calldataSummary,
@@ -316,7 +317,7 @@ export class RewardClaimService {
       gasUsd: Number(fixture.gasUsd),
       minRewardValueUsd: Number(settings.minRewardValueUsd),
       maxClaimGasUsd: Number(settings.maxClaimGasUsd),
-      signerAddress: this.config.somnia.agentWalletAddress,
+      signerAddress: automationSignerPlaceholder,
       chainId: this.config.somnia.chainId,
       target: fixture.target,
       calldataSummary: fixture.calldataSummary,

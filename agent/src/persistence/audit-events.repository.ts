@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { z } from "zod";
 
-import { JsonStore } from "./json-store.js";
+import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const auditEventStatusSchema = z.enum([
   "started",
@@ -55,10 +55,10 @@ function sanitizeAuditMetadata(value: unknown): unknown {
 }
 
 export class AuditEventsRepository {
-  private readonly store: JsonStore<AuditEvent[]>;
+  private readonly store: RepositoryStore<AuditEvent[]>;
 
-  public constructor(dataDirectory?: string | URL) {
-    this.store = new JsonStore({
+  public constructor(dataDirectory?: string | URL, store?: RepositoryStore<AuditEvent[]>) {
+    this.store = store ?? new JsonStore({
       filename: "audit-events.json",
       schema: auditEventsSchema,
       defaultValue: [],

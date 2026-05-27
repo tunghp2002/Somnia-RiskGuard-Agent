@@ -1,17 +1,15 @@
-import { Wallet } from "ethers";
-
 import type { AgentConfig } from "../config/env.js";
 import { validateConfig } from "../config/env.js";
-
-const validAgentPrivateKey = `0x${"a".repeat(64)}`;
 
 export const validEnv = {
   NODE_ENV: "development",
   LOG_LEVEL: "info",
   SOMNIA_RPC_URL: "https://dream-rpc.somnia.network",
   SOMNIA_CHAIN_ID: "50312",
-  AGENT_WALLET_ADDRESS: new Wallet(validAgentPrivateKey).address,
-  AGENT_PRIVATE_KEY: validAgentPrivateKey,
+  THIRDWEB_SECRET_KEY: "thirdweb-secret-key",
+  SUPABASE_URL: "https://riskguard.supabase.co",
+  SUPABASE_SERVICE_ROLE_KEY: "supabase-service-role",
+  SESSION_KEY_ENCRYPTION_KEY: `0x${"a".repeat(64)}`,
   GROQ_API_KEY: "groq-test-token",
   GROQ_MODEL: "llama-3.3-70b-versatile",
   DEEPSEEK_API_KEY: "deepseek-test-token",

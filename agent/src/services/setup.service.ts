@@ -2,6 +2,8 @@ import { getAddress, verifyMessage } from "ethers";
 import { z } from "zod";
 
 import type { AgentConfig } from "../config/env.js";
+import type { SessionKeyService } from "./session-key.service.js";
+import type { SessionKeyAction } from "./session-key-actions.js";
 import type { AuditService } from "./audit.service.js";
 import { UsersRepository } from "../persistence/users.repository.js";
 
@@ -67,7 +69,8 @@ export class SetupService {
   public constructor(
     private readonly users: UsersRepository,
     private readonly config: AgentConfig,
-    private readonly audit?: AuditService
+    private readonly audit?: AuditService,
+    private readonly sessionKeys?: SessionKeyService
   ) {}
 
   public async registerMonitoredWallet(input: SetupWalletRequest) {
@@ -114,9 +117,8 @@ export class SetupService {
         ready: users.length > 0,
         walletAddress: users.at(-1)?.walletAddress
       },
-      agentWallet: {
-        ready: Boolean(this.config.somnia.agentWalletAddress),
-        walletAddress: this.config.somnia.agentWalletAddress,
+      sessionKey: {
+        ready: Boolean(this.sessionKeys?.ready()),
         chainId: this.config.somnia.chainId
       },
       configuration: {
@@ -124,5 +126,17 @@ export class SetupService {
         autoClaimEnabled: this.config.rewards.autoClaimEnabled
       }
     };
+  }
+
+  public ensureSessionKeyAction(input: {
+    walletAddress: string;
+    smartAccountAddress?: string;
+    action: SessionKeyAction;
+  }) {
+    if (!this.sessionKeys) {
+      throw new Error("Session key service is not configured");
+    }
+
+    return this.sessionKeys.ensurePermission(input);
   }
 }

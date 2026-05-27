@@ -213,7 +213,7 @@ export function OperatorHealth({
         <HealthRow icon={<RadioTower size={15} />} label="Agent API" value={health ? health.ok === false ? "degraded" : "reachable" : "unavailable"} tone={health ? health.ok === false ? "bad" : "ok" : "warn"} />
         <HealthRow icon={<Bot size={15} />} label="Telegram" value={readableMetadata(health?.telegram)} tone={health?.telegram ? "ok" : "warn"} />
         <HealthRow icon={<Send size={15} />} label="Somnia adapter" value={readableMetadata(health?.somnia)} tone={hasOkFlag(health?.somnia) && health.somnia.ok ? "ok" : "warn"} />
-        <HealthRow icon={<Shield size={15} />} label="Signer" value={readiness?.agentWallet.ready ? formatAddress(readiness.agentWallet.walletAddress) : "missing"} tone={readiness?.agentWallet.ready ? "ok" : "bad"} />
+        <HealthRow icon={<Shield size={15} />} label="Session keys" value={readiness?.sessionKey.ready ? "Supabase encrypted" : "missing"} tone={readiness?.sessionKey.ready ? "ok" : "bad"} />
         <HealthRow icon={<Link2 size={15} />} label="Chain" value={publicChain ? `${publicChain.name} (${publicChain.chainId})` : "unknown"} tone="neutral" />
       </div>
     </section>
