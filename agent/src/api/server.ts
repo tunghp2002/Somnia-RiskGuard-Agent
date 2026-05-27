@@ -19,8 +19,9 @@ import {
   type DemoScenarioService
 } from "../services/demo-scenario.service.js";
 import {
-  telegramBindingRequestSchema,
   telegramCallbackRequestSchema,
+  telegramSignedBindingRequestSchema,
+  telegramUnlinkRequestSchema,
   TelegramAlertServiceError,
   type TelegramAlertService
 } from "../services/telegram-alert.service.js";
@@ -73,7 +74,7 @@ function applyCorsHeaders(request: IncomingMessage, response: Parameters<typeof 
     response.setHeader("Vary", "Origin");
   }
 
-  response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
+  response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", corsRequestHeaders);
 }
 
@@ -563,13 +564,44 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/telegram/bindings") {
+        if (!dependencies.telegramAlerts) {
+          throw new ServerDependencyError("Telegram alert service is not configured");
+        }
+
+        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
+
+        if (!walletAddress) {
+          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
+          return;
+        }
+
+        const binding = await dependencies.telegramAlerts.latestBindingForWallet(walletAddress);
+        sendJson(response, 200, success({
+          connected: Boolean(binding),
+          ...(binding ? { binding } : {})
+        }, requestId));
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/telegram/bindings") {
         if (!dependencies.telegramAlerts) {
           throw new ServerDependencyError("Telegram alert service is not configured");
         }
-        const body = telegramBindingRequestSchema.parse(await readJsonBody(request));
+        const body = telegramSignedBindingRequestSchema.parse(await readJsonBody(request));
         const binding = await dependencies.telegramAlerts.linkChat(body);
         sendJson(response, 201, success(binding, requestId));
+        return;
+      }
+
+      if (request.method === "DELETE" && url.pathname === "/api/telegram/bindings") {
+        if (!dependencies.telegramAlerts) {
+          throw new ServerDependencyError("Telegram alert service is not configured");
+        }
+
+        const body = telegramUnlinkRequestSchema.parse(await readJsonBody(request));
+        const binding = await dependencies.telegramAlerts.unlinkChat(body.walletAddress);
+        sendJson(response, 200, success({ unlinked: Boolean(binding) }, requestId));
         return;
       }
 

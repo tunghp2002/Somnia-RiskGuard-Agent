@@ -122,6 +122,25 @@ describe("TelegramAlertService", () => {
     });
   });
 
+  it("removes Telegram chat bindings for a wallet", async () => {
+    await users.upsertMonitoredWallet(wallet.address);
+    const service = buildService();
+    await service.linkChat({
+      walletAddress: wallet.address,
+      chatId: "987654321"
+    });
+
+    const removed = await service.unlinkChat(wallet.address);
+
+    expect(removed?.chatId).toBe("987654321");
+    await expect(bindings.latestForWallet(wallet.address)).resolves.toBeUndefined();
+    await expect(auditEvents.list()).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ eventType: "telegram.binding.removed" })
+      ])
+    );
+  });
+
   it("fails closed when Telegram health is disabled", async () => {
     const user = await users.upsertMonitoredWallet(wallet.address);
     await bindings.upsert({

@@ -93,6 +93,15 @@ beforeEach(async () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     })),
+    latestBindingForWallet: vi.fn().mockResolvedValue(undefined),
+    unlinkChat: vi.fn().mockResolvedValue({
+      telegramBindingId: "11111111-1111-4111-8111-111111111111",
+      userId: "22222222-2222-4222-8222-222222222222",
+      walletAddress: wallet.address,
+      chatId: "987654321",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }),
     processCallback: vi.fn().mockResolvedValue({ ok: true, message: "ok" }),
     sendRiskAlert: vi.fn().mockResolvedValue({ alertId: "33333333-3333-4333-8333-333333333333" })
   } as unknown as TelegramAlertService;
@@ -364,21 +373,34 @@ describe("agent setup API", () => {
   });
 
   it("exposes Telegram health and binding routes", async () => {
+    const proof = await signedProof(wallet, "Link Telegram");
     const healthResponse = await fetch(`${baseUrl}/api/telegram/health`);
     const bindResponse = await fetch(`${baseUrl}/api/telegram/bindings`, {
       method: "POST",
       body: JSON.stringify({
         walletAddress: wallet.address,
-        chatId: "987654321"
+        chatId: "987654321",
+        ...proof
+      })
+    });
+    const unlinkProof = await signedProof(wallet, "Unlink Telegram");
+    const unlinkResponse = await fetch(`${baseUrl}/api/telegram/bindings`, {
+      method: "DELETE",
+      body: JSON.stringify({
+        walletAddress: wallet.address,
+        ...unlinkProof
       })
     });
     const healthPayload = await healthResponse.json();
     const bindPayload = await bindResponse.json();
+    const unlinkPayload = await unlinkResponse.json();
 
     expect(healthResponse.status).toBe(200);
     expect(healthPayload.data.ok).toBe(true);
     expect(bindResponse.status).toBe(201);
     expect(bindPayload.data.chatId).toBe("987654321");
+    expect(unlinkResponse.status).toBe(200);
+    expect(unlinkPayload.data.unlinked).toBe(true);
   });
 
   it("exposes heartbeat settings, status, beneficiary status, and policy routes", async () => {

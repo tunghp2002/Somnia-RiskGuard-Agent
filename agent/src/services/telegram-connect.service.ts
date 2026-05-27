@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { TelegramAlertServiceError } from "./telegram-alert.service.js";
 import type { TelegramAlertService } from "./telegram-alert.service.js";
 
 export interface TelegramConnectSession {
@@ -106,13 +107,27 @@ export class TelegramConnectService {
       return { ok: false, message: "Open Telegram Connect from the RiskGuard dashboard, then press Start here." };
     }
 
-    const session = await this.confirm({
-      code,
-      chatId: input.chatId,
-      ...(input.telegramUserId ? { telegramUserId: input.telegramUserId } : {}),
-      ...(input.telegramUsername ? { telegramUsername: input.telegramUsername } : {}),
-      ...(input.telegramDisplayName ? { telegramDisplayName: input.telegramDisplayName } : {})
-    });
+    let session: TelegramConnectSession | undefined;
+    try {
+      session = await this.confirm({
+        code,
+        chatId: input.chatId,
+        ...(input.telegramUserId ? { telegramUserId: input.telegramUserId } : {}),
+        ...(input.telegramUsername ? { telegramUsername: input.telegramUsername } : {}),
+        ...(input.telegramDisplayName ? { telegramDisplayName: input.telegramDisplayName } : {})
+      });
+    } catch (error) {
+      const failedSession = this.sessions.get(code.toUpperCase());
+      if (failedSession) {
+        failedSession.status = "failed";
+        this.sessions.set(failedSession.code, failedSession);
+      }
+
+      return {
+        ok: false,
+        message: telegramConnectFailureMessage(error)
+      };
+    }
 
     if (!session) {
       return { ok: false, message: "Telegram Connect code was not found." };
@@ -122,7 +137,10 @@ export class TelegramConnectService {
       return { ok: false, message: "Telegram Connect code expired. Start a new connection." };
     }
 
-    return { ok: true, message: "Telegram connected to RiskGuard." };
+    return {
+      ok: true,
+      message: `Telegram alerts are now enabled for ${formatWallet(session.walletAddress)}. You can return to RiskGuard.`
+    };
   }
 
   private getSingleWaitingSessionCode(text: string): string | undefined {
@@ -137,6 +155,26 @@ export class TelegramConnectService {
 
     return waitingSessions.length === 1 ? waitingSessions[0]?.code : undefined;
   }
+}
+
+function telegramConnectFailureMessage(error: unknown) {
+  if (error instanceof TelegramAlertServiceError) {
+    if (error.code === "monitored_wallet_not_found") {
+      return "RiskGuard could not connect Telegram because this wallet profile is not registered yet. Return to the dashboard, save your profile, then try again.";
+    }
+
+    if (error.code === "telegram_not_configured") {
+      return "RiskGuard Telegram is not configured on the agent server yet.";
+    }
+
+    return error.message;
+  }
+
+  return "RiskGuard could not complete Telegram Connect. Return to the dashboard and try again.";
+}
+
+function formatWallet(walletAddress: string) {
+  return `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
 }
 
 function extractConnectCode(text: string): string | undefined {

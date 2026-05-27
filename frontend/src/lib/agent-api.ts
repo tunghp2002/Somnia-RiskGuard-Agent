@@ -100,6 +100,17 @@ export interface TelegramConnectSession {
   };
 }
 
+export interface TelegramBindingStatus {
+  connected: boolean;
+  binding?: {
+    chatId: string;
+    walletAddress?: string;
+    telegramUserId?: string;
+    telegramUsername?: string;
+    telegramDisplayName?: string;
+  };
+}
+
 export interface UserRecord {
   userId: string;
   walletAddress: string;
@@ -300,9 +311,16 @@ export const agentApi = {
     }),
   getRewards: (walletAddress: string) =>
     request<RewardStatus>(`/api/rewards/status${walletQuery(walletAddress)}`),
-  linkTelegram: (body: { walletAddress: string; chatId: string }) =>
+  linkTelegram: (body: { walletAddress: string; chatId: string; message: string; signature: string }) =>
     request<unknown>("/api/telegram/bindings", {
       method: "POST",
+      body: JSON.stringify(body)
+    }),
+  getTelegramBinding: (walletAddress: string) =>
+    request<TelegramBindingStatus>(`/api/telegram/bindings${walletQuery(walletAddress)}`),
+  unlinkTelegram: (body: { walletAddress: string; message: string; signature: string }) =>
+    request<{ unlinked: boolean }>("/api/telegram/bindings", {
+      method: "DELETE",
       body: JSON.stringify(body)
     }),
   startTelegramConnect: (body: { walletAddress: string }) =>

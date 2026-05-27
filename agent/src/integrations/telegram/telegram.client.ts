@@ -120,6 +120,15 @@ export class TelegramBotApiClient implements TelegramClient {
     const intervalMs = options.intervalMs ?? 1_000;
 
     const poll = async () => {
+      try {
+        await this.deleteWebhook();
+      } catch (error) {
+        options.logger?.error(
+          { error: error instanceof Error ? error.message : "deleteWebhook failed" },
+          "telegram deleteWebhook failed"
+        );
+      }
+
       while (!stopped) {
         try {
           const updates = await this.getUpdates(offset);
@@ -195,6 +204,29 @@ export class TelegramBotApiClient implements TelegramClient {
     }
 
     return payload.result ?? [];
+  }
+
+  private async deleteWebhook() {
+    if (!this.config.botToken) {
+      throw new Error("Telegram is not configured");
+    }
+
+    const response = await fetch(
+      `https://api.telegram.org/bot${this.config.botToken}/deleteWebhook`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ drop_pending_updates: false })
+      }
+    );
+    const payload = (await response.json()) as {
+      ok?: boolean;
+      description?: string;
+    };
+
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.description ?? "Telegram deleteWebhook failed");
+    }
   }
 
   private async answerCallbackQuery(callbackQueryId: string, text: string) {

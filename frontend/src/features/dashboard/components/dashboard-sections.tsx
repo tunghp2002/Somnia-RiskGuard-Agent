@@ -1,5 +1,5 @@
-import type { FormEvent } from "react";
-import { Activity, Bot, Clock3, Cpu, Link2, Loader2, RadioTower, Send, Shield, UserRound, Wallet } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { Activity, Bot, Clock3, Cpu, Link2, Loader2, RadioTower, Send, Shield, Unlink, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,7 @@ function formatTelegramIdentity(session: TelegramConnectSession | null) {
 export function ProfilePanel({
   actionLoading,
   onConnectTelegram,
-  onConnectWallet,
+  onDisconnectTelegram,
   onDisconnectWallet,
   onProfileSubmit,
   telegramSession,
@@ -38,25 +38,22 @@ export function ProfilePanel({
 }: {
   actionLoading: string | null;
   onConnectTelegram: () => void;
-  onConnectWallet: () => void;
+  onDisconnectTelegram: () => void;
   onDisconnectWallet: () => void;
   onProfileSubmit: (event: FormEvent<HTMLFormElement>) => void;
   telegramSession: TelegramConnectSession | null;
   userProfile: UserRecord | null;
   wallet: BrowserWalletState | null;
 }) {
+  const [telegramConfirmOpen, setTelegramConfirmOpen] = useState(false);
+
   if (!wallet) {
     return (
-      <section className="profile-screen">
-        <section className="profile-card">
+      <section className="profile-screen profile-empty-screen">
+        <section className="profile-card profile-empty-card">
           <div>
-            <h2>Profile</h2>
             <p className="muted">You need to connect a wallet before editing your profile.</p>
           </div>
-          <Button className="primary-button" onClick={onConnectWallet} type="button" variant="primary">
-            <Wallet size={16} />
-            Connect wallet
-          </Button>
         </section>
       </section>
     );
@@ -98,40 +95,71 @@ export function ProfilePanel({
           <h2>Connect Telegram</h2>
           <p className="muted">
             {telegramSession?.connected
-              ? `Connected as ${formatTelegramIdentity(telegramSession)}.`
+              ? "Telegram alerts are active for this wallet."
               : telegramConnecting
-                ? "Connecting Telegram. Finish the Start step in the bot window."
+                ? `Connecting Telegram. If the bot only sends /start, send /start ${telegramSession.code}.`
                 : "Connect Telegram to receive RiskGuard alerts for this wallet."}
           </p>
-          {telegramSession?.connected ? (
-            <div className="profile-telegram-status">
-              <span>Connected</span>
-              <strong>{formatTelegramIdentity(telegramSession)}</strong>
+        </div>
+        {telegramSession?.connected ? (
+          <>
+            <div className="profile-telegram-connected-card">
+              <span className="profile-telegram-icon" aria-hidden="true">
+                <Send size={18} />
+              </span>
+              <span className="profile-telegram-identity">{formatTelegramIdentity(telegramSession)}</span>
+              <Button
+                aria-label="Unlink Telegram"
+                className="profile-telegram-unlink"
+                disabled={actionLoading === "telegram-unlink"}
+                onClick={() => setTelegramConfirmOpen(true)}
+                title="Unlink Telegram"
+                type="button"
+                variant="ghost"
+              >
+                <Unlink size={16} />
+              </Button>
             </div>
-          ) : null}
-        </div>
-        <Button
-          className="secondary-button"
-          disabled={actionLoading === "telegram" || telegramConnecting}
-          onClick={onConnectTelegram}
-          type="button"
-          variant="secondary"
-        >
-          {actionLoading === "telegram" || telegramConnecting ? <Loader2 className="spin" size={16} /> : <Send size={16} />}
-          {actionLoading === "telegram"
-            ? "Opening"
-            : telegramConnecting ? "Connecting Telegram" : "Connect Telegram"}
-        </Button>
-      </section>
-
-      <section className="profile-card profile-action-card">
-        <div>
-          <h2>Wallet Session</h2>
-          <p className="muted">Disconnect this wallet from RiskGuard.</p>
-        </div>
-        <Button className="secondary-button" disabled={actionLoading === "wallet"} onClick={onDisconnectWallet} type="button" variant="secondary">
-          Disconnect
-        </Button>
+            {telegramConfirmOpen ? (
+              <div className="profile-modal-overlay" role="presentation">
+                <div aria-modal="true" className="profile-modal" role="dialog">
+                  <h3>Disconnect Telegram</h3>
+                  <p>Are you sure you want to disconnect {formatTelegramIdentity(telegramSession)}?</p>
+                  <div className="profile-modal-actions">
+                    <Button onClick={() => setTelegramConfirmOpen(false)} type="button" variant="secondary">
+                      Cancel
+                    </Button>
+                    <Button
+                      className="confirm-button"
+                      disabled={actionLoading === "telegram-unlink"}
+                      onClick={() => {
+                        setTelegramConfirmOpen(false);
+                        onDisconnectTelegram();
+                      }}
+                      type="button"
+                      variant="primary"
+                    >
+                      {actionLoading === "telegram-unlink" ? "Disconnecting" : "Confirm"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <Button
+            className="secondary-button"
+            disabled={actionLoading === "telegram" || telegramConnecting}
+            onClick={onConnectTelegram}
+            type="button"
+            variant="secondary"
+          >
+            {actionLoading === "telegram" || telegramConnecting ? <Loader2 className="spin" size={16} /> : <Send size={16} />}
+            {actionLoading === "telegram"
+              ? "Opening"
+              : telegramConnecting ? "Connecting Telegram" : "Connect Telegram"}
+          </Button>
+        )}
       </section>
     </section>
   );

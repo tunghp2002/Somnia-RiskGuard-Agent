@@ -195,6 +195,14 @@ const rawEnvSchema = z
         path: ["TELEGRAM_BOT_TOKEN"]
       });
     }
+
+    if (env.TELEGRAM_BOT_TOKEN && !env.TELEGRAM_BOT_USERNAME) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "TELEGRAM_BOT_USERNAME must be set when TELEGRAM_BOT_TOKEN is configured",
+        path: ["TELEGRAM_BOT_USERNAME"]
+      });
+    }
   });
 
 export const secretEnvKeys = [

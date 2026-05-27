@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { getAddress } from "ethers";
+import { getAddress, verifyMessage } from "ethers";
 import { z } from "zod";
 
 import type { AgentConfig } from "../config/env.js";
@@ -40,6 +40,31 @@ export const telegramBindingRequestSchema = z
   })
   .strict();
 
+const signedProofFieldsSchema = z
+  .object({
+    signature: z.string().min(1),
+    message: z.string().min(1)
+  })
+  .strict();
+
+const signedWalletMutationSchema = z
+  .object({
+    walletAddress: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/)
+      .transform((value) => getAddress(value)),
+    signature: z.string().min(1),
+    message: z.string().min(1)
+  })
+  .strict()
+  .superRefine(validateSignedWalletMutation);
+
+export const telegramSignedBindingRequestSchema = telegramBindingRequestSchema
+  .merge(signedProofFieldsSchema)
+  .superRefine(validateSignedWalletMutation);
+
+export const telegramUnlinkRequestSchema = signedWalletMutationSchema;
+
 export const telegramCallbackRequestSchema = z
   .object({
     chatId: z.string().regex(/^-?\d+$/),
@@ -49,7 +74,43 @@ export const telegramCallbackRequestSchema = z
   .strict();
 
 export type TelegramBindingRequest = z.infer<typeof telegramBindingRequestSchema>;
+export type TelegramSignedBindingRequest = z.infer<typeof telegramSignedBindingRequestSchema>;
+export type TelegramUnlinkRequest = z.infer<typeof telegramUnlinkRequestSchema>;
 export type TelegramCallbackRequest = z.infer<typeof telegramCallbackRequestSchema>;
+
+function validateSignedWalletMutation(
+  input: { walletAddress: string; message: string; signature: string },
+  context: z.RefinementCtx
+) {
+  let recoveredAddress: string;
+
+  try {
+    recoveredAddress = verifyMessage(input.message, input.signature);
+  } catch {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Signature must be a valid signed-message proof",
+      path: ["signature"]
+    });
+    return;
+  }
+
+  if (getAddress(recoveredAddress) !== input.walletAddress) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Signature must recover the submitted wallet address",
+      path: ["signature"]
+    });
+  }
+
+  if (!input.message.toLowerCase().includes(input.walletAddress.toLowerCase())) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Signed message must include the submitted wallet address",
+      path: ["message"]
+    });
+  }
+}
 
 export class TelegramAlertServiceError extends Error {
   public constructor(
@@ -156,6 +217,25 @@ export class TelegramAlertService {
         telegramUserId: parsed.telegramUserId,
         telegramUsername: parsed.telegramUsername,
         telegramDisplayName: parsed.telegramDisplayName
+      }
+    });
+
+    return binding;
+  }
+
+  public latestBindingForWallet(walletAddress: string) {
+    return this.bindings.latestForWallet(walletAddress);
+  }
+
+  public async unlinkChat(walletAddress: string) {
+    const binding = await this.bindings.deleteLatestForWallet(walletAddress);
+
+    await this.audit.record({
+      eventType: binding ? "telegram.binding.removed" : "telegram.binding.remove.skipped",
+      status: binding ? "succeeded" : "skipped",
+      metadata: {
+        walletAddress,
+        ...(binding ? { chatId: binding.chatId } : { reason: "binding_not_found" })
       }
     });
 

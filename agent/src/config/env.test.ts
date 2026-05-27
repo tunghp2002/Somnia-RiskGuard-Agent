@@ -154,6 +154,15 @@ describe("agent runtime config", () => {
     ).toThrow(ConfigValidationError);
   });
 
+  it("rejects Telegram bot token without a bot username", () => {
+    expect(() =>
+      validateConfig({
+        ...validEnv,
+        TELEGRAM_BOT_USERNAME: undefined
+      })
+    ).toThrow(ConfigValidationError);
+  });
+
   it("omits secret input values from diagnostics", () => {
     const secretEnv = {
       ...validEnv,

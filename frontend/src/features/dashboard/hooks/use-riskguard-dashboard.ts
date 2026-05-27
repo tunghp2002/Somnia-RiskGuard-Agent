@@ -26,6 +26,7 @@ import {
   connectBrowserWallet,
   disconnectBrowserWallet,
   restoreBrowserWallet,
+  signWalletMessage,
   subscribeBrowserWalletChanges,
   type BrowserWalletState
 } from "@/lib/wallet";
@@ -33,6 +34,14 @@ import type { AccountStatus, DashboardSection, Notice, RiskTone } from "../types
 import { durationToSeconds, errorMessage, formatAddress, isSimulationEvent, readableMetadata } from "../utils";
 
 const telegramConnectTimeoutMs = 60_000;
+
+function telegramUnlinkMessage(walletAddress: string) {
+  return [
+    "RiskGuard Telegram unlink request",
+    `Wallet: ${walletAddress}`,
+    "Action: unlink Telegram alerts"
+  ].join("\n");
+}
 
 export function useRiskGuardDashboard() {
   const thirdwebSmartAccount = useActiveAccount();
@@ -101,7 +110,8 @@ export function useRiskGuardDashboard() {
         healthResult,
         inheritancePlanResult,
         eventsResult,
-        profileResult
+        profileResult,
+        telegramBindingResult
       ] = await Promise.allSettled([
         agentApi.getPublicChain(),
         agentApi.getReadiness(),
@@ -112,7 +122,8 @@ export function useRiskGuardDashboard() {
           ? agentApi.getInheritancePlan(activeInheritanceSmartAccount)
           : Promise.resolve(null),
         agentApi.getAuditEvents(20),
-        wallet ? agentApi.getUserProfile(wallet.address) : Promise.resolve(null)
+        wallet ? agentApi.getUserProfile(wallet.address) : Promise.resolve(null),
+        walletAddress ? agentApi.getTelegramBinding(walletAddress) : Promise.resolve(null)
       ]);
       const failedReads: string[] = [];
 
@@ -168,6 +179,32 @@ export function useRiskGuardDashboard() {
       } else {
         failedReads.push("profile");
         setUserProfile(null);
+      }
+      if (telegramBindingResult.status === "fulfilled") {
+        const telegramBinding = telegramBindingResult.value;
+        if (walletAddress && telegramBinding?.connected && telegramBinding.binding) {
+          const binding = telegramBinding.binding;
+          setTelegramSession((current) => current?.status === "waiting"
+            ? current
+            : {
+                walletAddress,
+                code: "",
+                expiresAt: "",
+                status: "connected",
+                connected: true,
+                botDeepLink: "",
+                binding: {
+                  chatId: binding.chatId,
+                  ...(binding.telegramUserId ? { telegramUserId: binding.telegramUserId } : {}),
+                  ...(binding.telegramUsername ? { telegramUsername: binding.telegramUsername } : {}),
+                  ...(binding.telegramDisplayName ? { telegramDisplayName: binding.telegramDisplayName } : {})
+                }
+              });
+        } else {
+          setTelegramSession((current) => current?.status === "waiting" ? current : null);
+        }
+      } else {
+        failedReads.push("telegram binding");
       }
 
       if (failedReads.length > 0) {
@@ -238,20 +275,35 @@ export function useRiskGuardDashboard() {
       return;
     }
 
+    let stopped = false;
+    const sessionCode = telegramSession.code;
+
     const interval = setInterval(() => {
       void agentApi.getTelegramConnectStatus(telegramSession.walletAddress)
         .then((session) => {
+          if (stopped || session.code !== sessionCode) {
+            return;
+          }
+
           setTelegramSession(session);
           if (session.status === "connected") {
             setNotice({ tone: "ok", message: "Telegram is connected." });
             void loadData();
           } else if (session.status === "expired") {
             setNotice({ tone: "warn", message: "Telegram Connect code expired. Start a new connection." });
+            setTelegramSession(null);
+          } else if (session.status === "failed") {
+            setNotice({
+              tone: "bad",
+              message: "Telegram Connect could not finish. Save your profile, then start a new Telegram connection."
+            });
+            setTelegramSession(null);
           }
         })
         .catch(() => undefined);
     }, 3_000);
     const timeout = setTimeout(() => {
+      stopped = true;
       setTelegramSession(null);
       setNotice({
         tone: "bad",
@@ -260,6 +312,7 @@ export function useRiskGuardDashboard() {
     }, telegramConnectTimeoutMs);
 
     return () => {
+      stopped = true;
       clearInterval(interval);
       clearTimeout(timeout);
     };
@@ -425,6 +478,28 @@ export function useRiskGuardDashboard() {
     }
   }
 
+  async function handleTelegramUnlink() {
+    const walletAddress = wallet?.address ?? activeWalletAddress;
+    if (!walletAddress) {
+      setNotice({ tone: "warn", message: "Connect a wallet before unlinking Telegram." });
+      return;
+    }
+
+    setActionLoading("telegram-unlink");
+    try {
+      const message = telegramUnlinkMessage(walletAddress);
+      const signature = await signWalletMessage(message);
+      await agentApi.unlinkTelegram({ walletAddress, message, signature });
+      setTelegramSession(null);
+      setNotice({ tone: "ok", message: "Telegram alerts have been unlinked." });
+      await loadData();
+    } catch (error) {
+      setNotice({ tone: "bad", message: errorMessage(error) });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   async function handleAnalyzeRisk() {
     setActionLoading("risk-analysis");
     try {
@@ -536,6 +611,7 @@ export function useRiskGuardDashboard() {
       handleInheritancePlanCancel,
       handleInheritancePlanSubmit,
       handleTelegramConnect,
+      handleTelegramUnlink,
       handleProfileSubmit,
       loadData,
       showNotice,

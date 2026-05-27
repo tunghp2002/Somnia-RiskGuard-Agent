@@ -372,6 +372,18 @@ input[type="number"] {
   margin: 0;
 }
 
+.profile-empty-screen {
+  min-height: min(420px, 58vh);
+  place-items: center;
+}
+
+.profile-empty-card {
+  justify-content: center;
+  min-height: 160px;
+  width: min(520px, 100%);
+  text-align: center;
+}
+
 .profile-form {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(190px, 0.9fr) auto;
@@ -400,34 +412,98 @@ input[type="number"] {
   min-height: 122px;
 }
 
-.profile-telegram-status {
-  display: inline-grid;
-  grid-template-columns: auto auto auto;
-  gap: 8px;
+.profile-telegram-connected-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 34px;
   align-items: center;
-  margin-top: 14px;
+  gap: 12px;
+  min-width: 0;
+  width: min(360px, 100%);
   border: 1px solid rgb(148 163 255 / 16%);
   border-radius: 8px;
-  background: rgb(3 7 18 / 38%);
-  padding: 9px 11px;
+  background: rgb(17 17 21 / 72%);
+  padding: 10px 12px;
 }
 
-.profile-telegram-status span,
-.profile-telegram-status a {
-  color: var(--muted);
-  font-size: 0.75rem;
+.profile-telegram-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: rgb(34 211 238 / 10%);
+  color: var(--cyan);
 }
 
-.profile-telegram-status strong {
+.profile-telegram-identity {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
   color: var(--text);
   font-family:
     "JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, monospace;
   font-size: 0.85rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.profile-telegram-status a {
-  color: var(--cyan);
-  text-decoration: none;
+.profile-telegram-unlink {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  color: var(--muted);
+}
+
+.profile-telegram-unlink:hover {
+  color: rgb(254 202 202);
+}
+
+.profile-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 58%);
+  padding: 20px;
+}
+
+.profile-modal {
+  width: min(480px, 100%);
+  border: 1px solid rgb(148 163 255 / 16%);
+  border-radius: 18px;
+  background: rgb(17 17 21 / 98%);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 44%);
+  padding: 28px 30px 22px;
+}
+
+.profile-modal h3 {
+  margin: 0 0 12px;
+  color: var(--text);
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.profile-modal p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+}
+
+.profile-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 30px;
+}
+
+.confirm-button {
+  background: var(--cyan);
+  color: #061014;
 }
 
 .panel-heading div {

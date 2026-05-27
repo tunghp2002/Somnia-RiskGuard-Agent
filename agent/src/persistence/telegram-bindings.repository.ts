@@ -65,6 +65,21 @@ export class TelegramBindingsRepository {
     return bindings.find((binding) => binding.userId === userId && binding.chatId === chatId);
   }
 
+  public async deleteLatestForWallet(walletAddress: string): Promise<TelegramBindingRecord | undefined> {
+    const checksumAddress = getAddress(walletAddress);
+    const latest = await this.latestForWallet(checksumAddress);
+
+    if (!latest) {
+      return undefined;
+    }
+
+    await this.store.update((bindings) =>
+      bindings.filter((binding) => binding.telegramBindingId !== latest.telegramBindingId)
+    );
+
+    return latest;
+  }
+
   public async upsert(input: UpsertTelegramBindingInput): Promise<TelegramBindingRecord> {
     const checksumAddress = getAddress(input.walletAddress);
     const now = new Date().toISOString();
