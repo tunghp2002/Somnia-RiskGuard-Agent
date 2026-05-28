@@ -2,11 +2,13 @@ import { Loader2, LogOut, RefreshCw, Shield, Wallet } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+
+import { navItems } from "../config";
+import { formatAddress } from "../utils";
+
+import type { DashboardSection } from "../types";
 import type { PublicChainMetadata } from "@/lib/agent-api";
 import type { BrowserWalletState } from "@/lib/wallet";
-import { navItems } from "../config";
-import type { DashboardSection } from "../types";
-import { formatAddress } from "../utils";
 
 type NavigationProps = {
   activeSection: DashboardSection;

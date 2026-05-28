@@ -1,4 +1,3 @@
-import type { CSSProperties, ReactNode } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -9,10 +8,13 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+
+import { formatAddress } from "../utils";
+
+import type { RiskTone } from "../types";
 import type { Mode, Readiness, RiskSnapshot } from "@/lib/agent-api";
 import type { BrowserWalletState } from "@/lib/wallet";
-import type { RiskTone } from "../types";
-import { formatAddress } from "../utils";
+import type { CSSProperties, ReactNode } from "react";
 
 export function GuardianStatus({
   ready,

@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import { useActiveAccount } from "thirdweb/react";
 
 import {
@@ -30,8 +29,10 @@ import {
   subscribeBrowserWalletChanges,
   type BrowserWalletState
 } from "@/lib/wallet";
-import type { AccountStatus, DashboardSection, Notice, RiskTone } from "../types";
+
 import { durationToSeconds, errorMessage, formatAddress, isSimulationEvent, readableMetadata } from "../utils";
+
+import type { AccountStatus, DashboardSection, Notice, RiskTone } from "../types";
 
 const telegramConnectTimeoutMs = 60_000;
 
@@ -354,7 +355,7 @@ export function useRiskGuardDashboard() {
     }
   }
 
-  async function handleInheritancePlanSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleInheritancePlanSubmit(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     event.preventDefault();
     if (!wallet) {
       setNotice({ tone: "warn", message: "Connect your wallet before configuring inheritance." });
@@ -498,7 +499,7 @@ export function useRiskGuardDashboard() {
     } catch (error) {
       setNotice({ tone: "bad", message: errorMessage(error) });
     } finally {
-      setActionLoading(null);
+       setActionLoading(null);
     }
   }
 
@@ -518,7 +519,7 @@ export function useRiskGuardDashboard() {
     }
   }
 
-  async function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleProfileSubmit(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     event.preventDefault();
 
     if (!wallet) {

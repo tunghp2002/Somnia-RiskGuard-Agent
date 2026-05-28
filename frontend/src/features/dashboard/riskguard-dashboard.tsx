@@ -1,13 +1,14 @@
 "use client";
 
 import { InheritanceSettings } from "@/features/settings/guardian-settings";
-import { DashboardNoticeToast } from "./components/dashboard-notice-toast";
+
 import {
   DashboardHeader,
   DashboardSidebar,
   FloatingRefreshButton,
   MobileDashboardNav
 } from "./components/dashboard-navigation";
+import { DashboardNoticeToast } from "./components/dashboard-notice-toast";
 import {
   PortfolioWatch,
   ProfilePanel

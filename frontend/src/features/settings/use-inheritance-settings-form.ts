@@ -1,12 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { InheritancePlanStatus } from "@/lib/agent-api";
-import type { SmartAccountCandidate } from "@/lib/inheritance-registry";
-
-import type { BeneficiaryDraft, DurationDraft, TokenDraft } from "./inheritance-settings.types";
 import {
   beneficiariesFromPlan,
-  clampNumber,
   getBeneficiaryAddressError,
   getBeneficiaryShareError,
   getRecipientColor,
@@ -22,6 +17,10 @@ import {
   tokensFromPlan,
   walletAddressPattern
 } from "./inheritance-settings.utils";
+
+import type { BeneficiaryDraft, DurationDraft, TokenDraft } from "./inheritance-settings.types";
+import type { InheritancePlanStatus } from "@/lib/agent-api";
+import type { SmartAccountCandidate } from "@/lib/inheritance-registry";
 
 export function useInheritanceSettingsForm({
   inheritancePlan,
@@ -58,11 +57,60 @@ export function useInheritanceSettingsForm({
   const tokenSymbolRef = useRef<HTMLInputElement>(null);
   const tokenDecimalsRef = useRef<HTMLInputElement>(null);
 
+  const updateSmartAccountSelection = useCallback((address?: string) => {
+    const nextAddress = address ?? "";
+    setSmartAccountAddress(nextAddress);
+    onSmartAccountChange(nextAddress || undefined);
+  }, [onSmartAccountChange]);
+
+  const registerConnectedThirdwebSmartAccount = useCallback((address?: string) => {
+    if (!address || !walletAddressPattern.test(address)) {
+      return;
+    }
+
+    setSmartAccountCandidates((current) => {
+      if (current.some((candidate) => candidate.address.toLowerCase() === address.toLowerCase())) {
+        return current;
+      }
+
+      return [{ address, kind: "contract" }, ...current];
+    });
+    setSmartAccountDiscoveryChecked(true);
+    updateSmartAccountSelection(address);
+  }, [updateSmartAccountSelection]);
+
+  const registerConnectedThirdwebSmartAccounts = useCallback((addresses: string[]) => {
+    const validAddresses = addresses.filter((address) => walletAddressPattern.test(address));
+    if (validAddresses.length === 0) {
+      return;
+    }
+
+    setSmartAccountCandidates((current) => {
+      const next = [...current];
+      for (const address of validAddresses) {
+        if (!next.some((candidate) => candidate.address.toLowerCase() === address.toLowerCase())) {
+          next.push({ address, kind: "contract" });
+        }
+      }
+
+      return next;
+    });
+    setSmartAccountDiscoveryChecked(true);
+
+    if (!smartAccountAddress) {
+      updateSmartAccountSelection(validAddresses[0]);
+    }
+  }, [smartAccountAddress, updateSmartAccountSelection]);
+
   useEffect(() => {
+    // The form keeps an editable local draft, but the selected account can be changed by the dashboard shell.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSmartAccountAddress(selectedSmartAccountAddress ?? "");
   }, [selectedSmartAccountAddress]);
 
   useEffect(() => {
+    // Reset wallet-scoped discovery results when the connected wallet changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSmartAccountCandidates([]);
     setSmartAccountDiscoveryChecked(false);
     setSmartAccountDiscoveryError("");
@@ -70,15 +118,27 @@ export function useInheritanceSettingsForm({
   }, [walletAddress]);
 
   useEffect(() => {
-    useConnectedThirdwebSmartAccount(thirdwebSmartAccountAddress);
-  }, [thirdwebSmartAccountAddress]);
+    // Register smart accounts surfaced by Thirdweb into the editable form draft.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    registerConnectedThirdwebSmartAccount(thirdwebSmartAccountAddress);
+  }, [registerConnectedThirdwebSmartAccount, thirdwebSmartAccountAddress]);
+
+  const connectedSmartAccountAddressesKey = thirdwebConnectedSmartAccountAddresses.join("|");
+  const connectedSmartAccountAddresses = useMemo(
+    () => connectedSmartAccountAddressesKey ? connectedSmartAccountAddressesKey.split("|") : [],
+    [connectedSmartAccountAddressesKey]
+  );
 
   useEffect(() => {
-    useConnectedThirdwebSmartAccounts(thirdwebConnectedSmartAccountAddresses);
-  }, [thirdwebConnectedSmartAccountAddresses.join("|")]);
+    // Register smart accounts surfaced by Thirdweb into the editable form draft.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    registerConnectedThirdwebSmartAccounts(connectedSmartAccountAddresses);
+  }, [connectedSmartAccountAddresses, registerConnectedThirdwebSmartAccounts]);
 
   useEffect(() => {
     if (!inheritancePlan?.active) {
+      // Hydrate the editable draft from the currently loaded on-chain plan.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setBeneficiaries(initialBeneficiaries);
       setIntervalDuration({ days: "30", hours: "0" });
       setGraceDuration({ days: "0", hours: "0" });
@@ -101,23 +161,32 @@ export function useInheritanceSettingsForm({
     [beneficiaries]
   );
 
-  const allocationSegments = useMemo(() => {
-    let offset = 0;
-
-    return beneficiaries.map((beneficiary, index) => {
+  const allocationSegments = useMemo(
+    () => beneficiaries.reduce<{
+      color: string;
+      id: number;
+      offset: number;
+      rest: number;
+      share: number;
+    }[]>((segments, beneficiary, index) => {
+      const previousSegment = segments.at(-1);
+      const offset = previousSegment
+        ? roundShare(previousSegment.offset + previousSegment.share)
+        : 0;
       const share = Math.min(100, Math.max(0, roundShare(Number(beneficiary.sharePercent || 0))));
-      const segment = {
+
+      segments.push({
         color: getRecipientColor(index),
         id: beneficiary.id,
         offset,
         rest: roundShare(100 - share),
         share
-      };
+      });
 
-      offset = roundShare(offset + share);
-      return segment;
-    });
-  }, [beneficiaries]);
+      return segments;
+    }, []),
+    [beneficiaries]
+  );
 
   const lockedShareTotal = useMemo(
     () => beneficiaries
@@ -147,51 +216,6 @@ export function useInheritanceSettingsForm({
   const assetError = hasProtectedAsset ? "" : "Select native STT or import at least one ERC-20 token.";
   const submitBlockReason = smartAccountError || firstAddressError || firstShareError || allocationError || assetError;
   const hasCreatorWallet = walletAddressPattern.test(walletAddress?.trim() ?? "");
-
-  function updateSmartAccountSelection(address?: string) {
-    const nextAddress = address ?? "";
-    setSmartAccountAddress(nextAddress);
-    onSmartAccountChange(nextAddress || undefined);
-  }
-
-  function useConnectedThirdwebSmartAccount(address?: string) {
-    if (!address || !walletAddressPattern.test(address)) {
-      return;
-    }
-
-    setSmartAccountCandidates((current) => {
-      if (current.some((candidate) => candidate.address.toLowerCase() === address.toLowerCase())) {
-        return current;
-      }
-
-      return [{ address, kind: "contract" }, ...current];
-    });
-    setSmartAccountDiscoveryChecked(true);
-    updateSmartAccountSelection(address);
-  }
-
-  function useConnectedThirdwebSmartAccounts(addresses: string[]) {
-    const validAddresses = addresses.filter((address) => walletAddressPattern.test(address));
-    if (validAddresses.length === 0) {
-      return;
-    }
-
-    setSmartAccountCandidates((current) => {
-      const next = [...current];
-      for (const address of validAddresses) {
-        if (!next.some((candidate) => candidate.address.toLowerCase() === address.toLowerCase())) {
-          next.push({ address, kind: "contract" });
-        }
-      }
-
-      return next;
-    });
-    setSmartAccountDiscoveryChecked(true);
-
-    if (!smartAccountAddress) {
-      updateSmartAccountSelection(validAddresses[0]);
-    }
-  }
 
   async function findSmartAccounts() {
     setDiscoveringSmartAccounts(true);
@@ -347,7 +371,7 @@ export function useInheritanceSettingsForm({
     updateBeneficiary,
     updateBeneficiaryShare,
     updateSmartAccountSelection,
-    useConnectedThirdwebSmartAccount,
-    useConnectedThirdwebSmartAccounts
+    registerConnectedThirdwebSmartAccount,
+    registerConnectedThirdwebSmartAccounts
   };
 }

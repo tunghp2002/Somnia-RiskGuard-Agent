@@ -1,8 +1,12 @@
-import { useState, type FormEvent } from "react";
 import { Activity, Bot, Clock3, Cpu, Link2, Loader2, RadioTower, Send, Shield, Unlink, UserRound } from "lucide-react";
+import { useState, type SyntheticEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+import { classForStatus, formatAddress, formatDate, formatUsd, hasOkFlag, readableMetadata } from "../utils";
+import { HealthRow, PanelHeading } from "./status-panels";
+
 import type {
   PortfolioSnapshot,
   PublicChainMetadata,
@@ -11,8 +15,6 @@ import type {
   UserRecord
 } from "@/lib/agent-api";
 import type { BrowserWalletState } from "@/lib/wallet";
-import { classForStatus, formatAddress, formatDate, formatUsd, hasOkFlag, readableMetadata } from "../utils";
-import { HealthRow, PanelHeading } from "./status-panels";
 
 function formatTelegramIdentity(session: TelegramConnectSession | null) {
   const binding = session?.binding;
@@ -40,7 +42,7 @@ export function ProfilePanel({
   onConnectTelegram: () => void;
   onDisconnectTelegram: () => void;
   onDisconnectWallet: () => void;
-  onProfileSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onProfileSubmit: (event: SyntheticEvent<HTMLFormElement, SubmitEvent>) => void;
   telegramSession: TelegramConnectSession | null;
   userProfile: UserRecord | null;
   wallet: BrowserWalletState | null;

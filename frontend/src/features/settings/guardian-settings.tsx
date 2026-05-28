@@ -1,8 +1,3 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { Dialog as DialogPrimitive } from "radix-ui";
-import { useActiveAccount, useConnectedWallets, useConnect } from "thirdweb/react";
-import { EIP1193, smartWallet } from "thirdweb/wallets";
-import type { Wallet } from "thirdweb/wallets";
 import {
     Activity,
     CalendarClock,
@@ -22,16 +17,20 @@ import {
     Users,
     WalletCards
 } from "lucide-react";
+import { Dialog as DialogPrimitive } from "radix-ui";
+import { useEffect, useRef, useState, type CSSProperties, type SyntheticEvent } from "react";
+import { useActiveAccount, useConnectedWallets, useConnect } from "thirdweb/react";
+import { EIP1193, smartWallet, type Wallet } from "thirdweb/wallets";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { agentApi, type InheritancePlanStatus } from "@/lib/agent-api";
-import type { Notice } from "@/features/dashboard/types";
 import {
     thirdwebAccountAbstraction,
     thirdwebClient
 } from "@/lib/thirdweb-client";
+
 import { DurationField, Field, InfoHint } from "./inheritance-settings-controls";
 import {
     clampNumber,
@@ -46,6 +45,7 @@ import {
 } from "./inheritance-settings.utils";
 import { useInheritanceSettingsForm } from "./use-inheritance-settings-form";
 
+import type { Notice } from "@/features/dashboard/types";
 const smartAccountCacheKey = "riskguard.smartAccounts";
 
 function readCachedSmartAccount(ownerAddress?: string) {
@@ -89,7 +89,7 @@ export function InheritanceSettings({
     actionLoading: string | null;
     inheritancePlan?: InheritancePlanStatus | null | undefined;
     onInheritanceCancel: () => void;
-    onInheritanceSubmit: (event: FormEvent<HTMLFormElement>) => void;
+    onInheritanceSubmit: (event: SyntheticEvent<HTMLFormElement, SubmitEvent>) => void;
     onNotice?: (notice: Notice) => void;
     onSmartAccountChange: (address: string | undefined) => void;
     registryAddress?: string | undefined;
@@ -155,7 +155,7 @@ export function InheritanceSettings({
         updateBeneficiary,
         updateBeneficiaryShare,
         updateSmartAccountSelection,
-        useConnectedThirdwebSmartAccount
+        registerConnectedThirdwebSmartAccount
     } = useInheritanceSettingsForm({
         inheritancePlan,
         onSmartAccountChange,
@@ -171,9 +171,9 @@ export function InheritanceSettings({
     useEffect(() => {
         const cachedSmartAccount = readCachedSmartAccount(walletAddress);
         if (cachedSmartAccount) {
-            useConnectedThirdwebSmartAccount(cachedSmartAccount);
+            registerConnectedThirdwebSmartAccount(cachedSmartAccount);
         }
-    }, [walletAddress]);
+    }, [registerConnectedThirdwebSmartAccount, walletAddress]);
 
     useEffect(() => {
         if (!walletAddress || !thirdwebSmartAccountAddress) {
@@ -282,7 +282,7 @@ export function InheritanceSettings({
                 smartAccountAddress: smartAccount,
                 action: "checkin"
             });
-            useConnectedThirdwebSmartAccount(smartAccount);
+            registerConnectedThirdwebSmartAccount(smartAccount);
             setSmartAccountDropdownOpen(false);
             if (!options.silent) {
                 onNotice?.({ tone: "ok", message: "Smart account connected." });

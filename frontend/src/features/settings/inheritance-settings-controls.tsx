@@ -1,11 +1,12 @@
-import type { ReactNode } from "react";
 import { Info } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-import type { DurationDraft } from "./inheritance-settings.types";
 import { clampNumber } from "./inheritance-settings.utils";
+
+import type { DurationDraft } from "./inheritance-settings.types";
+import type { ReactNode } from "react";
 
 export function Field({
   children,

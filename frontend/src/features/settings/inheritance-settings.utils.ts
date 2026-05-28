@@ -1,6 +1,5 @@
-import type { InheritancePlanStatus } from "@/lib/agent-api";
-
 import type { BeneficiaryDraft, DurationDraft, TokenDraft } from "./inheritance-settings.types";
+import type { InheritancePlanStatus } from "@/lib/agent-api";
 
 export const initialBeneficiaries: BeneficiaryDraft[] = [
   { id: 1, address: "", sharePercent: 100, locked: false }
@@ -39,7 +38,7 @@ export function getShareInputValue(value: string) {
 }
 
 export function getRecipientColor(index: number) {
-  return recipientColors[index % recipientColors.length];
+  return recipientColors[index % recipientColors.length] ?? recipientColors[0] ?? "#a78bfa";
 }
 
 export function formatDurationPreview(duration: DurationDraft) {
