@@ -1,4 +1,11 @@
-export type Notice = { tone: "ok" | "warn" | "bad"; message: string };
+export type Notice = {
+  tone: "ok" | "warn" | "bad";
+  message: string;
+  action?: {
+    label: string;
+    url: string;
+  };
+};
 
 export type DashboardSection =
   | "overview"

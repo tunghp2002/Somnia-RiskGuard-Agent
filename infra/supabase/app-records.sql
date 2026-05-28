@@ -27,3 +27,5 @@ alter table public.app_records enable row level security;
 
 revoke all on public.app_records from anon;
 revoke all on public.app_records from authenticated;
+
+select pg_notify('pgrst', 'reload schema');

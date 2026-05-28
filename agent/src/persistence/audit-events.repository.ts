@@ -40,6 +40,10 @@ function sanitizeAuditMetadata(value: unknown): unknown {
     return value.map((item) => sanitizeAuditMetadata(item));
   }
 
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+
   if (!value || typeof value !== "object") {
     return value;
   }

@@ -88,6 +88,11 @@ export class SupabaseJsonStore<T> implements RepositoryStore<T> {
 
     if (!response.ok) {
       const text = await response.text();
+      if (response.status === 404 && text.includes("PGRST205")) {
+        throw new Error(
+          `Supabase table public.${this.options.tableName ?? "app_records"} is missing or not in the schema cache. Run infra/supabase/setup.sql in Supabase SQL Editor, then restart the agent. Original response: ${text}`
+        );
+      }
       throw new Error(`Supabase app record request failed (${response.status}): ${text}`);
     }
 

@@ -20,6 +20,11 @@ export interface TelegramSendMessageResult {
   messageId?: string;
 }
 
+export interface TelegramDeleteMessageInput {
+  chatId: string;
+  messageId: string;
+}
+
 export interface TelegramCallbackUpdate {
   updateId: number;
   callbackQueryId: string;
@@ -52,6 +57,7 @@ export interface StartTelegramPollingOptions {
 export interface TelegramClient {
   health(): Promise<{ ok: boolean; enabled: boolean; reason?: string }> | { ok: boolean; enabled: boolean; reason?: string };
   sendMessage(input: TelegramSendMessageInput): Promise<TelegramSendMessageResult>;
+  deleteMessage?(input: TelegramDeleteMessageInput): Promise<void>;
   startPolling?(options: StartTelegramPollingOptions): TelegramPollingHandle;
 }
 
@@ -65,6 +71,10 @@ export class DisabledTelegramClient implements TelegramClient {
   }
 
   public async sendMessage(): Promise<TelegramSendMessageResult> {
+    throw new Error("Telegram is not configured");
+  }
+
+  public async deleteMessage(): Promise<void> {
     throw new Error("Telegram is not configured");
   }
 }
@@ -120,6 +130,24 @@ export class TelegramBotApiClient implements TelegramClient {
     return messageId ? { messageId } : {};
   }
 
+  public async deleteMessage(input: TelegramDeleteMessageInput): Promise<void> {
+    if (!this.config.enabled || !this.config.botToken) {
+      throw new Error("Telegram is not configured");
+    }
+
+    await fetch(
+      `https://api.telegram.org/bot${this.config.botToken}/deleteMessage`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chat_id: input.chatId,
+          message_id: input.messageId
+        })
+      }
+    );
+  }
+
   public startPolling(options: StartTelegramPollingOptions): TelegramPollingHandle {
     let stopped = false;
     let offset = 0;
@@ -156,7 +184,27 @@ export class TelegramBotApiClient implements TelegramClient {
 
             const textUpdate = this.toTextUpdate(update);
             if (textUpdate && options.handleTextMessage) {
+              const isCheckIn = /^\/checkin(?:@\w+)?$/i.test(textUpdate.text.trim());
+              const pending = isCheckIn
+                ? await this.sendMessage({
+                    chatId: textUpdate.chatId,
+                    text: "Checking in..."
+                  })
+                : undefined;
               const result = await options.handleTextMessage(textUpdate);
+              if (pending?.messageId) {
+                try {
+                  await this.deleteMessage({
+                    chatId: textUpdate.chatId,
+                    messageId: pending.messageId
+                  });
+                } catch (error) {
+                  options.logger?.error(
+                    { error: error instanceof Error ? error.message : "delete checking message failed" },
+                    "telegram delete checking message failed"
+                  );
+                }
+              }
               await this.sendMessage({
                 chatId: textUpdate.chatId,
                 text: result.message

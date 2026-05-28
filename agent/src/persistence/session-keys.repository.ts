@@ -102,6 +102,11 @@ export class SupabaseSessionKeysRepository implements SessionKeysRepository {
     });
 
     if (!smartAccountAddress) {
+      const active = await this.findActiveByWallet(walletAddress, input.action);
+      if (active) {
+        return active;
+      }
+
       params.set("smart_account_address", "is.null");
     }
 
@@ -123,6 +128,7 @@ export class SupabaseSessionKeysRepository implements SessionKeysRepository {
     const now = new Date().toISOString();
     const existing = smartAccountAddress
       ? await this.findBySmartAccount(smartAccountAddress, input.action)
+        ?? await this.findPendingByWallet(walletAddress, input.action, input.sessionKeyAddress)
       : await this.findForGrant({ walletAddress, action: input.action });
     const row = toRow({
       ...input,
@@ -172,6 +178,41 @@ export class SupabaseSessionKeysRepository implements SessionKeysRepository {
       smart_account_address: `eq.${smartAccountAddress}`,
       action: `eq.${action}`,
       status: "neq.revoked",
+      order: "updated_at.desc",
+      limit: "1"
+    });
+    const data = await this.request<SupabaseSessionKeyRow[]>(`?${params.toString()}`);
+    return data[0] ? fromRow(data[0]) : undefined;
+  }
+
+  private async findPendingByWallet(
+    walletAddress: string,
+    action: SessionKeyAction,
+    sessionKeyAddress: string
+  ): Promise<SessionKeyRecord | undefined> {
+    const params = new URLSearchParams({
+      select: "*",
+      wallet_address: `eq.${walletAddress}`,
+      action: `eq.${action}`,
+      session_key_address: `eq.${getAddress(sessionKeyAddress)}`,
+      smart_account_address: "is.null",
+      status: "eq.pending",
+      order: "updated_at.desc",
+      limit: "1"
+    });
+    const data = await this.request<SupabaseSessionKeyRow[]>(`?${params.toString()}`);
+    return data[0] ? fromRow(data[0]) : undefined;
+  }
+
+  private async findActiveByWallet(
+    walletAddress: string,
+    action: SessionKeyAction
+  ): Promise<SessionKeyRecord | undefined> {
+    const params = new URLSearchParams({
+      select: "*",
+      wallet_address: `eq.${walletAddress}`,
+      action: `eq.${action}`,
+      status: "eq.active",
       order: "updated_at.desc",
       limit: "1"
     });

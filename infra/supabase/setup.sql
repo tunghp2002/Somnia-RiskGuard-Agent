@@ -56,3 +56,5 @@ create unique index if not exists session_keys_active_smart_action_idx
 alter table public.session_keys enable row level security;
 revoke all on public.session_keys from anon;
 revoke all on public.session_keys from authenticated;
+
+select pg_notify('pgrst', 'reload schema');

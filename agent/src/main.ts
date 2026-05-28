@@ -102,9 +102,10 @@ export async function startAgentRuntime(
   }));
   const alerts = new AlertsRepository(undefined, createSupabaseStore(config, "alerts.json", alertsSchema, []));
   const actionNonces = new ActionNoncesRepository(undefined, createSupabaseStore(config, "action-nonces.json", z.array(actionNonceSchema), []));
-  const sessionKeysRepository = config.supabase.url && config.supabase.serviceRoleKey
-    ? new SupabaseSessionKeysRepository(config.supabase.url, config.supabase.serviceRoleKey)
-    : undefined;
+  const sessionKeysRepository = new SupabaseSessionKeysRepository(
+    config.supabase.url,
+    config.supabase.serviceRoleKey,
+  );
   const sessionKeys = new SessionKeyService(config, sessionKeysRepository);
   const telegramClient = options.telegramClient ?? createTelegramClient(config);
   const somnia = options.somniaClient ?? createSomniaAgentKitClient(config);
@@ -301,11 +302,7 @@ function createSupabaseStore<T>(
   filename: string,
   schema: z.ZodType<T>,
   defaultValue: T,
-): RepositoryStore<T> | undefined {
-  if (!config.supabase.url || !config.supabase.serviceRoleKey) {
-    return undefined;
-  }
-
+): RepositoryStore<T> {
   return new SupabaseJsonStore({
     filename,
     schema,

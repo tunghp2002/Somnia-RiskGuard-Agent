@@ -13,17 +13,12 @@ import {
 export class SessionKeyService {
   public constructor(
     private readonly config: AgentConfig,
-    private readonly repository?: SessionKeysRepository,
+    private readonly repository: SessionKeysRepository,
     private readonly now: () => Date = () => new Date()
   ) {}
 
   public ready() {
-    return Boolean(
-      this.repository &&
-      this.config.supabase.url &&
-      this.config.supabase.serviceRoleKey &&
-      this.config.supabase.sessionKeyEncryptionKey
-    );
+    return true;
   }
 
   public async ensurePermission(input: {
@@ -117,19 +112,10 @@ export class SessionKeyService {
   }
 
   private requireRepository() {
-    if (!this.repository) {
-      throw new Error("Supabase session key repository is not configured.");
-    }
-
     return this.repository;
   }
 
   private requireEncryptionKey() {
-    const encryptionKey = this.config.supabase.sessionKeyEncryptionKey;
-    if (!encryptionKey) {
-      throw new Error("SESSION_KEY_ENCRYPTION_KEY is required for session key storage.");
-    }
-
-    return encryptionKey;
+    return this.config.supabase.sessionKeyEncryptionKey;
   }
 }

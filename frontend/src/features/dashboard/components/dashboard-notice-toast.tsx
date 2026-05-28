@@ -29,9 +29,24 @@ export function DashboardNoticeToast({ notice }: { notice: Notice | null }) {
     }
 
     const meta = noticeMeta[notice.tone];
+    const description = notice.action ? (
+      <span>
+        {notice.message}{" "}
+        <a
+          href={notice.action.url}
+          rel="noreferrer"
+          style={{ color: "#a855f7", textDecoration: "underline" }}
+          target="_blank"
+        >
+          {notice.action.label}
+        </a>
+      </span>
+    ) : notice.message;
+
     meta.method(meta.title, {
-      description: notice.message,
-      duration: notice.tone === "bad" ? 6_000 : 4_000,
+      description,
+      closeButton: true,
+      duration: notice.tone === "bad" ? 20_000 : 10_000,
       id: dashboardNoticeToastId
     });
 

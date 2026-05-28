@@ -45,6 +45,20 @@ const requiredNonEmptyString = (fieldName: string) =>
     message: `${fieldName} is required`
   });
 
+const sessionKeyEncryptionKeySchema = requiredNonEmptyString("SESSION_KEY_ENCRYPTION_KEY")
+  .refine((value) => {
+    const normalized = value.startsWith("0x") ? value.slice(2) : value;
+    if (/^[a-fA-F0-9]{64}$/.test(normalized)) {
+      return true;
+    }
+
+    try {
+      return Buffer.from(value, "base64").length === 32;
+    } catch {
+      return false;
+    }
+  }, "Must be a 32-byte hex or base64 key");
+
 const defaultModelString = (defaultValue: string) =>
   z.preprocess(
     (value) => (value === "" ? undefined : value),
@@ -106,11 +120,11 @@ const rawEnvSchema = z
   SOMNIA_CHAIN_ID: integerFromString("SOMNIA_CHAIN_ID").pipe(
     z.number().int().positive()
   ),
-  THIRDWEB_SECRET_KEY: optionalNonEmptyString,
+  THIRDWEB_SECRET_KEY: requiredNonEmptyString("THIRDWEB_SECRET_KEY"),
   THIRDWEB_CLIENT_ID: optionalNonEmptyString,
-  SUPABASE_URL: optionalNonEmptyString,
-  SUPABASE_SERVICE_ROLE_KEY: optionalNonEmptyString,
-  SESSION_KEY_ENCRYPTION_KEY: optionalNonEmptyString,
+  SUPABASE_URL: z.string({ error: "SUPABASE_URL is required" }).url("Must be a valid URL"),
+  SUPABASE_SERVICE_ROLE_KEY: requiredNonEmptyString("SUPABASE_SERVICE_ROLE_KEY"),
+  SESSION_KEY_ENCRYPTION_KEY: sessionKeyEncryptionKeySchema,
   MONITORED_WALLET_ADDRESS: optionalEthereumAddressSchema,
   GROQ_API_KEY: requiredNonEmptyString("GROQ_API_KEY"),
   GROQ_MODEL: defaultModelString("llama-3.3-70b-versatile"),

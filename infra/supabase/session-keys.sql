@@ -28,3 +28,5 @@ alter table public.session_keys enable row level security;
 
 revoke all on public.session_keys from anon;
 revoke all on public.session_keys from authenticated;
+
+select pg_notify('pgrst', 'reload schema');

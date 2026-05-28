@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type SyntheticEvent,
+} from "react";
 import { useActiveAccount } from "thirdweb/react";
 
 import {
@@ -13,13 +20,13 @@ import {
   type Readiness,
   type RiskSnapshot,
   type TelegramConnectSession,
-  type UserRecord
+  type UserRecord,
 } from "@/lib/agent-api";
 import {
   cancelInheritancePlan,
   cancelInheritancePlanWithThirdweb,
   saveInheritancePlan,
-  saveInheritancePlanWithThirdweb
+  saveInheritancePlanWithThirdweb,
 } from "@/lib/inheritance-registry";
 import {
   connectBrowserWallet,
@@ -27,12 +34,23 @@ import {
   restoreBrowserWallet,
   signWalletMessage,
   subscribeBrowserWalletChanges,
-  type BrowserWalletState
+  type BrowserWalletState,
 } from "@/lib/wallet";
 
-import { durationToSeconds, errorMessage, formatAddress, isSimulationEvent, readableMetadata } from "../utils";
+import {
+  durationToSeconds,
+  errorMessage,
+  formatAddress,
+  isSimulationEvent,
+  readableMetadata,
+} from "../utils";
 
-import type { AccountStatus, DashboardSection, Notice, RiskTone } from "../types";
+import type {
+  AccountStatus,
+  DashboardSection,
+  Notice,
+  RiskTone,
+} from "../types";
 
 const telegramConnectTimeoutMs = 60_000;
 
@@ -40,26 +58,65 @@ function telegramUnlinkMessage(walletAddress: string) {
   return [
     "RiskGuard Telegram unlink request",
     `Wallet: ${walletAddress}`,
-    "Action: unlink Telegram alerts"
+    "Action: unlink Telegram alerts",
   ].join("\n");
+}
+
+function transactionUrl(
+  publicChain: PublicChainMetadata | null,
+  txHash: string,
+) {
+  return publicChain?.blockExplorerUrl
+    ? `${publicChain.blockExplorerUrl.replace(/\/$/, "")}/tx/${txHash}`
+    : undefined;
+}
+
+function openTransaction(
+  publicChain: PublicChainMetadata | null,
+  txHash: string,
+) {
+  const url = transactionUrl(publicChain, txHash);
+  if (url && typeof window !== "undefined") {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
+function transactionNoticeAction(
+  publicChain: PublicChainMetadata | null,
+  txHash: string,
+): Notice["action"] | undefined {
+  const url = transactionUrl(publicChain, txHash);
+  return url
+    ? {
+        label: formatAddress(txHash),
+        url,
+      }
+    : undefined;
 }
 
 export function useRiskGuardDashboard() {
   const thirdwebSmartAccount = useActiveAccount();
-  const [activeSection, setActiveSection] = useState<DashboardSection>("overview");
+  const [activeSection, setActiveSection] =
+    useState<DashboardSection>("overview");
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
-  const [accountStatus, setAccountStatus] = useState<AccountStatus>("restoring");
+  const [accountStatus, setAccountStatus] =
+    useState<AccountStatus>("restoring");
   const [wallet, setWallet] = useState<BrowserWalletState | null>(null);
   const mode: Mode = "testnet";
-  const [publicChain, setPublicChain] = useState<PublicChainMetadata | null>(null);
+  const [publicChain, setPublicChain] = useState<PublicChainMetadata | null>(
+    null,
+  );
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
   const [risk, setRisk] = useState<RiskSnapshot | null>(null);
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
-  const [inheritancePlan, setInheritancePlan] = useState<InheritancePlanStatus | null>(null);
-  const [selectedSmartAccountAddress, setSelectedSmartAccountAddress] = useState<string>();
+  const [inheritancePlan, setInheritancePlan] =
+    useState<InheritancePlanStatus | null>(null);
+  const [selectedSmartAccountAddress, setSelectedSmartAccountAddress] =
+    useState<string>();
   const [events, setEvents] = useState<AuditEvent[]>([]);
-  const [telegramSession, setTelegramSession] = useState<TelegramConnectSession | null>(null);
+  const [telegramSession, setTelegramSession] =
+    useState<TelegramConnectSession | null>(null);
   const [userProfile, setUserProfile] = useState<UserRecord | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [loading, setLoading] = useState(false);
@@ -67,10 +124,14 @@ export function useRiskGuardDashboard() {
   const loadRequestRef = useRef(0);
 
   const activeWalletAddress = wallet?.address;
-  const activeInheritanceSmartAccount = selectedSmartAccountAddress ?? thirdwebSmartAccount?.address;
-  const guardianReady = Boolean(readiness?.sessionKey.ready && readiness.monitoredWallet.ready);
+  const activeInheritanceSmartAccount =
+    selectedSmartAccountAddress ?? thirdwebSmartAccount?.address;
+  const guardianReady = Boolean(
+    readiness?.sessionKey.ready && readiness.monitoredWallet.ready,
+  );
   const riskScore = risk?.score ?? 0;
-  const riskTone: RiskTone = riskScore >= 75 ? "bad" : riskScore >= 50 ? "warn" : "ok";
+  const riskTone: RiskTone =
+    riskScore >= 75 ? "bad" : riskScore >= 50 ? "warn" : "ok";
 
   const receipts = useMemo(() => {
     const fromAudit = events.map((event) => ({
@@ -78,7 +139,7 @@ export function useRiskGuardDashboard() {
       title: event.eventType.replaceAll(".", " "),
       status: event.status,
       detail: readableMetadata(event.metadata),
-      createdAt: event.createdAt
+      createdAt: event.createdAt,
     }));
 
     return fromAudit.slice(0, 8);
@@ -112,19 +173,25 @@ export function useRiskGuardDashboard() {
         inheritancePlanResult,
         eventsResult,
         profileResult,
-        telegramBindingResult
+        telegramBindingResult,
       ] = await Promise.allSettled([
         agentApi.getPublicChain(),
         agentApi.getReadiness(),
-        walletAddress ? agentApi.getPortfolio(walletAddress) : Promise.resolve(null),
+        walletAddress
+          ? agentApi.getPortfolio(walletAddress)
+          : Promise.resolve(null),
         walletAddress ? agentApi.getRisk(walletAddress) : Promise.resolve(null),
         agentApi.getHealth(),
         activeInheritanceSmartAccount
           ? agentApi.getInheritancePlan(activeInheritanceSmartAccount)
           : Promise.resolve(null),
         agentApi.getAuditEvents(20),
-        wallet ? agentApi.getUserProfile(wallet.address) : Promise.resolve(null),
-        walletAddress ? agentApi.getTelegramBinding(walletAddress) : Promise.resolve(null)
+        wallet
+          ? agentApi.getUserProfile(wallet.address)
+          : Promise.resolve(null),
+        walletAddress
+          ? agentApi.getTelegramBinding(walletAddress)
+          : Promise.resolve(null),
       ]);
       const failedReads: string[] = [];
 
@@ -142,9 +209,10 @@ export function useRiskGuardDashboard() {
       }
 
       if (portfolioResult.status === "fulfilled") {
-        const nextPortfolio = portfolioResult.value?.source === "demo"
-          ? null
-          : portfolioResult.value;
+        const nextPortfolio =
+          portfolioResult.value?.source === "demo"
+            ? null
+            : portfolioResult.value;
         setPortfolio(nextPortfolio);
       } else {
         failedReads.push("portfolio");
@@ -169,7 +237,9 @@ export function useRiskGuardDashboard() {
         setInheritancePlan(null);
       }
       if (eventsResult.status === "fulfilled") {
-        const nextEvents = eventsResult.value.events.filter((event) => !isSimulationEvent(event));
+        const nextEvents = eventsResult.value.events.filter(
+          (event) => !isSimulationEvent(event),
+        );
         setEvents(nextEvents);
       } else {
         failedReads.push("audit events");
@@ -183,27 +253,43 @@ export function useRiskGuardDashboard() {
       }
       if (telegramBindingResult.status === "fulfilled") {
         const telegramBinding = telegramBindingResult.value;
-        if (walletAddress && telegramBinding?.connected && telegramBinding.binding) {
+        if (
+          walletAddress &&
+          telegramBinding?.connected &&
+          telegramBinding.binding
+        ) {
           const binding = telegramBinding.binding;
-          setTelegramSession((current) => current?.status === "waiting"
-            ? current
-            : {
-                walletAddress,
-                code: "",
-                expiresAt: "",
-                status: "connected",
-                connected: true,
-                botDeepLink: "",
-                binding: {
-                  chatId: binding.chatId,
-                  ...(binding.telegramUserId ? { telegramUserId: binding.telegramUserId } : {}),
-                  ...(binding.telegramUsername ? { telegramUsername: binding.telegramUsername } : {}),
-                  ...(binding.telegramDisplayName ? { telegramDisplayName: binding.telegramDisplayName } : {}),
-                  ...(binding.smartAccountAddress ? { smartAccountAddress: binding.smartAccountAddress } : {})
-                }
-              });
+          setTelegramSession((current) =>
+            current?.status === "waiting"
+              ? current
+              : {
+                  walletAddress,
+                  code: "",
+                  expiresAt: "",
+                  status: "connected",
+                  connected: true,
+                  botDeepLink: "",
+                  binding: {
+                    chatId: binding.chatId,
+                    ...(binding.telegramUserId
+                      ? { telegramUserId: binding.telegramUserId }
+                      : {}),
+                    ...(binding.telegramUsername
+                      ? { telegramUsername: binding.telegramUsername }
+                      : {}),
+                    ...(binding.telegramDisplayName
+                      ? { telegramDisplayName: binding.telegramDisplayName }
+                      : {}),
+                    ...(binding.smartAccountAddress
+                      ? { smartAccountAddress: binding.smartAccountAddress }
+                      : {}),
+                  },
+                },
+          );
         } else {
-          setTelegramSession((current) => current?.status === "waiting" ? current : null);
+          setTelegramSession((current) =>
+            current?.status === "waiting" ? current : null,
+          );
         }
       } else {
         failedReads.push("telegram binding");
@@ -212,7 +298,7 @@ export function useRiskGuardDashboard() {
       if (failedReads.length > 0) {
         setNotice({
           tone: "warn",
-          message: `Some agent API reads are unavailable: ${failedReads.join(", ")}.`
+          message: `Some agent API reads are unavailable: ${failedReads.join(", ")}.`,
         });
       }
     } catch (error) {
@@ -256,21 +342,25 @@ export function useRiskGuardDashboard() {
     };
   }, []);
 
-  useEffect(() => subscribeBrowserWalletChanges(() => {
-    loadRequestRef.current += 1;
-    restoreBrowserWallet()
-      .then((restored) => {
-        setWallet(restored);
-        setAccountStatus(restored ? "connected" : "expired");
-        clearWalletScopedState();
-      })
-      .catch(() => {
-        setWallet(null);
-        setSelectedSmartAccountAddress(undefined);
-        setAccountStatus("error");
-        clearWalletScopedState();
-      });
-  }), [clearWalletScopedState]);
+  useEffect(
+    () =>
+      subscribeBrowserWalletChanges(() => {
+        loadRequestRef.current += 1;
+        restoreBrowserWallet()
+          .then((restored) => {
+            setWallet(restored);
+            setAccountStatus(restored ? "connected" : "expired");
+            clearWalletScopedState();
+          })
+          .catch(() => {
+            setWallet(null);
+            setSelectedSmartAccountAddress(undefined);
+            setAccountStatus("error");
+            clearWalletScopedState();
+          });
+      }),
+    [clearWalletScopedState],
+  );
 
   useEffect(() => {
     if (!telegramSession || telegramSession.status !== "waiting") {
@@ -281,7 +371,8 @@ export function useRiskGuardDashboard() {
     const sessionCode = telegramSession.code;
 
     const interval = setInterval(() => {
-      void agentApi.getTelegramConnectStatus(telegramSession.walletAddress)
+      void agentApi
+        .getTelegramConnectStatus(telegramSession.walletAddress)
         .then((session) => {
           if (stopped || session.code !== sessionCode) {
             return;
@@ -292,12 +383,16 @@ export function useRiskGuardDashboard() {
             setNotice({ tone: "ok", message: "Telegram is connected." });
             void loadData();
           } else if (session.status === "expired") {
-            setNotice({ tone: "warn", message: "Telegram Connect code expired. Start a new connection." });
+            setNotice({
+              tone: "warn",
+              message: "Telegram Connect code expired. Start a new connection.",
+            });
             setTelegramSession(null);
           } else if (session.status === "failed") {
             setNotice({
               tone: "bad",
-              message: "Telegram Connect could not finish. Save your profile, then start a new Telegram connection."
+              message:
+                "Telegram Connect could not finish. Save your profile, then start a new Telegram connection.",
             });
             setTelegramSession(null);
           }
@@ -309,7 +404,8 @@ export function useRiskGuardDashboard() {
       setTelegramSession(null);
       setNotice({
         tone: "bad",
-        message: "Telegram did not connect in time. Check the bot username and try again."
+        message:
+          "Telegram did not connect in time. Check the bot username and try again.",
       });
     }, telegramConnectTimeoutMs);
 
@@ -318,7 +414,12 @@ export function useRiskGuardDashboard() {
       clearInterval(interval);
       clearTimeout(timeout);
     };
-  }, [loadData, telegramSession?.code, telegramSession?.status, telegramSession?.walletAddress]);
+  }, [
+    loadData,
+    telegramSession?.code,
+    telegramSession?.status,
+    telegramSession?.walletAddress,
+  ]);
 
   async function handleConnectWallet() {
     setActionLoading("wallet");
@@ -355,62 +456,107 @@ export function useRiskGuardDashboard() {
     }
   }
 
-  async function handleInheritancePlanSubmit(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
+  async function handleInheritancePlanSubmit(
+    event: SyntheticEvent<HTMLFormElement, SubmitEvent>,
+  ) {
     event.preventDefault();
     if (!wallet) {
-      setNotice({ tone: "warn", message: "Connect your wallet before configuring inheritance." });
+      setNotice({
+        tone: "warn",
+        message: "Connect your wallet before configuring inheritance.",
+      });
       return;
     }
 
     const registryAddress = publicChain?.contracts.inheritanceRegistry;
     if (!registryAddress) {
-      setNotice({ tone: "warn", message: "Inheritance Registry is not deployed/configured for this chain yet." });
+      setNotice({
+        tone: "warn",
+        message:
+          "Inheritance Registry is not deployed/configured for this chain yet.",
+      });
       return;
     }
 
     const form = new FormData(event.currentTarget);
-    const smartAccountAddress = String(form.get("smartAccountAddress") ?? "").trim();
+    const smartAccountAddress = String(
+      form.get("smartAccountAddress") ?? "",
+    ).trim();
     const includeNativeAsset = form.get("includeNativeAsset") === "true";
-    const erc20Assets = form.getAll("erc20Assets")
+    const erc20Assets = form
+      .getAll("erc20Assets")
       .map((value) => String(value))
       .map((value) => value.trim())
       .filter(Boolean);
     const protectedAssets = [
-      ...(includeNativeAsset ? ["0x0000000000000000000000000000000000000000"] : []),
-      ...erc20Assets
+      ...(includeNativeAsset
+        ? ["0x0000000000000000000000000000000000000000"]
+        : []),
+      ...erc20Assets,
     ];
-    const beneficiaryAddresses = form.getAll("beneficiaryAddress").map((value) => String(value).trim());
-    const sharePercents = form.getAll("sharePercent").map((value) => Number(value || 0));
+    const beneficiaryAddresses = form
+      .getAll("beneficiaryAddress")
+      .map((value) => String(value).trim());
+    const sharePercents = form
+      .getAll("sharePercent")
+      .map((value) => Number(value || 0));
     const beneficiaries = beneficiaryAddresses
-      .map((address, index) => ({ address, sharePercent: sharePercents[index] ?? 0 }))
+      .map((address, index) => ({
+        address,
+        sharePercent: sharePercents[index] ?? 0,
+      }))
       .filter((beneficiary) => beneficiary.address);
-    const shareTotal = beneficiaries.reduce((total, beneficiary) => total + beneficiary.sharePercent, 0);
-    const intervalSeconds = Number(form.get("intervalSeconds") ?? durationToSeconds(form, "interval", 30));
-    const graceSeconds = Number(form.get("graceSeconds") ?? durationToSeconds(form, "grace", 0));
-    const timelockSeconds = Number(form.get("timelockSeconds") ?? durationToSeconds(form, "timelock", 0));
+    const shareTotal = beneficiaries.reduce(
+      (total, beneficiary) => total + beneficiary.sharePercent,
+      0,
+    );
+    const intervalSeconds = Number(
+      form.get("intervalSeconds") ?? durationToSeconds(form, "interval", 30),
+    );
+    const graceSeconds = Number(
+      form.get("graceSeconds") ?? durationToSeconds(form, "grace", 0),
+    );
+    const timelockSeconds = Number(
+      form.get("timelockSeconds") ?? durationToSeconds(form, "timelock", 0),
+    );
 
     if (beneficiaries.length === 0) {
-      setNotice({ tone: "warn", message: "Add at least one recipient wallet address." });
+      setNotice({
+        tone: "warn",
+        message: "Add at least one recipient wallet address.",
+      });
       return;
     }
 
     if (!/^0x[a-fA-F0-9]{40}$/.test(smartAccountAddress)) {
-      setNotice({ tone: "warn", message: "Select a valid smart account address." });
+      setNotice({
+        tone: "warn",
+        message: "Select a valid smart account address.",
+      });
       return;
     }
 
     if (protectedAssets.length === 0) {
-      setNotice({ tone: "warn", message: "Select native STT or add at least one ERC-20 token." });
+      setNotice({
+        tone: "warn",
+        message: "Select native STT or add at least one ERC-20 token.",
+      });
       return;
     }
 
     if (Math.abs(shareTotal - 100) > 0.001) {
-      setNotice({ tone: "warn", message: "Recipient shares must add up to exactly 100%." });
+      setNotice({
+        tone: "warn",
+        message: "Recipient shares must add up to exactly 100%.",
+      });
       return;
     }
 
     if (intervalSeconds < 86_400) {
-      setNotice({ tone: "warn", message: "Heartbeat renewal window must be at least 1 day." });
+      setNotice({
+        tone: "warn",
+        message: "Heartbeat renewal window must be at least 1 day.",
+      });
       return;
     }
 
@@ -422,21 +568,35 @@ export function useRiskGuardDashboard() {
         protectedAssets,
         heartbeatIntervalSeconds: intervalSeconds,
         gracePeriodSeconds: graceSeconds,
-        timelockPeriodSeconds: timelockSeconds
+        timelockPeriodSeconds: timelockSeconds,
       };
-      const txHash = thirdwebSmartAccount?.address.toLowerCase() === smartAccountAddress.toLowerCase()
-        ? await saveInheritancePlanWithThirdweb(registryAddress, planInput, thirdwebSmartAccount, inheritancePlan)
-        : await saveInheritancePlan(registryAddress, planInput, inheritancePlan);
+      const txHash =
+        thirdwebSmartAccount?.address.toLowerCase() ===
+        smartAccountAddress.toLowerCase()
+          ? await saveInheritancePlanWithThirdweb(
+              registryAddress,
+              planInput,
+              thirdwebSmartAccount,
+              inheritancePlan,
+            )
+          : await saveInheritancePlan(
+              registryAddress,
+              planInput,
+              inheritancePlan,
+            );
+      openTransaction(publicChain, txHash);
       await agentApi.ensureSessionKeyAction({
         walletAddress: wallet.address,
         smartAccountAddress,
-        action: "checkin"
+        action: "checkin",
       });
+      const txAction = transactionNoticeAction(publicChain, txHash);
       setNotice({
         tone: "ok",
         message: inheritancePlan?.active
-          ? `Inheritance plan updated on-chain: ${formatAddress(txHash)}`
-          : `Inheritance plan created on-chain: ${formatAddress(txHash)}`
+          ? "Inheritance plan updated on-chain."
+          : "Inheritance plan created on-chain.",
+        ...(txAction ? { action: txAction } : {}),
       });
       await loadData();
     } catch (error) {
@@ -449,7 +609,10 @@ export function useRiskGuardDashboard() {
   async function handleTelegramConnect() {
     const walletAddress = wallet?.address ?? activeWalletAddress;
     if (!walletAddress) {
-      setNotice({ tone: "warn", message: "Connect a wallet before starting Telegram Connect." });
+      setNotice({
+        tone: "warn",
+        message: "Connect a wallet before starting Telegram Connect.",
+      });
       return;
     }
 
@@ -461,18 +624,25 @@ export function useRiskGuardDashboard() {
     setActionLoading("telegram");
     try {
       if (wallet && !userProfile) {
-        setUserProfile(await agentApi.updateUserProfile({
-          walletAddress: wallet.address,
-          displayName: formatAddress(wallet.address)
-        }));
+        setUserProfile(
+          await agentApi.updateUserProfile({
+            walletAddress: wallet.address,
+            displayName: formatAddress(wallet.address),
+          }),
+        );
       }
       const session = await agentApi.startTelegramConnect({
         walletAddress,
-        ...(activeInheritanceSmartAccount ? { smartAccountAddress: activeInheritanceSmartAccount } : {})
+        ...(activeInheritanceSmartAccount
+          ? { smartAccountAddress: activeInheritanceSmartAccount }
+          : {}),
       });
       setTelegramSession(session);
       window.open(session.botDeepLink, "_blank", "noopener,noreferrer");
-      setNotice({ tone: "ok", message: "Telegram bot opened. Press Start in Telegram to connect." });
+      setNotice({
+        tone: "ok",
+        message: "Telegram bot opened. Press Start in Telegram to connect.",
+      });
       await loadData();
     } catch (error) {
       setNotice({ tone: "bad", message: errorMessage(error) });
@@ -484,7 +654,10 @@ export function useRiskGuardDashboard() {
   async function handleTelegramUnlink() {
     const walletAddress = wallet?.address ?? activeWalletAddress;
     if (!walletAddress) {
-      setNotice({ tone: "warn", message: "Connect a wallet before unlinking Telegram." });
+      setNotice({
+        tone: "warn",
+        message: "Connect a wallet before unlinking Telegram.",
+      });
       return;
     }
 
@@ -499,7 +672,7 @@ export function useRiskGuardDashboard() {
     } catch (error) {
       setNotice({ tone: "bad", message: errorMessage(error) });
     } finally {
-       setActionLoading(null);
+      setActionLoading(null);
     }
   }
 
@@ -507,10 +680,13 @@ export function useRiskGuardDashboard() {
     setActionLoading("risk-analysis");
     try {
       const nextRisk = await agentApi.analyzeRisk(
-        activeWalletAddress ? { walletAddress: activeWalletAddress } : {}
+        activeWalletAddress ? { walletAddress: activeWalletAddress } : {},
       );
       setRisk(nextRisk);
-      setNotice({ tone: "ok", message: `${nextRisk.provider} generated a fresh risk analysis.` });
+      setNotice({
+        tone: "ok",
+        message: `${nextRisk.provider} generated a fresh risk analysis.`,
+      });
       await loadData();
     } catch (error) {
       setNotice({ tone: "bad", message: errorMessage(error) });
@@ -519,11 +695,16 @@ export function useRiskGuardDashboard() {
     }
   }
 
-  async function handleProfileSubmit(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
+  async function handleProfileSubmit(
+    event: SyntheticEvent<HTMLFormElement, SubmitEvent>,
+  ) {
     event.preventDefault();
 
     if (!wallet) {
-      setNotice({ tone: "warn", message: "Connect your wallet before editing your profile." });
+      setNotice({
+        tone: "warn",
+        message: "Connect your wallet before editing your profile.",
+      });
       return;
     }
 
@@ -539,7 +720,7 @@ export function useRiskGuardDashboard() {
     try {
       const profile = await agentApi.updateUserProfile({
         walletAddress: wallet.address,
-        displayName
+        displayName,
       });
       setUserProfile(profile);
       setNotice({ tone: "ok", message: "Profile saved." });
@@ -552,27 +733,51 @@ export function useRiskGuardDashboard() {
 
   async function handleInheritancePlanCancel() {
     if (!wallet) {
-      setNotice({ tone: "warn", message: "Connect your wallet before cancelling inheritance." });
+      setNotice({
+        tone: "warn",
+        message: "Connect your wallet before cancelling inheritance.",
+      });
       return;
     }
 
     const registryAddress = publicChain?.contracts.inheritanceRegistry;
     if (!registryAddress) {
-      setNotice({ tone: "warn", message: "Inheritance Registry is not deployed/configured for this chain yet." });
+      setNotice({
+        tone: "warn",
+        message:
+          "Inheritance Registry is not deployed/configured for this chain yet.",
+      });
       return;
     }
 
     if (!inheritancePlan?.active) {
-      setNotice({ tone: "warn", message: "No active inheritance plan found for this account." });
+      setNotice({
+        tone: "warn",
+        message: "No active inheritance plan found for this account.",
+      });
       return;
     }
 
     setActionLoading("inheritance-cancel");
     try {
-      const txHash = thirdwebSmartAccount?.address.toLowerCase() === inheritancePlan.smartAccount.toLowerCase()
-        ? await cancelInheritancePlanWithThirdweb(registryAddress, thirdwebSmartAccount)
-        : await cancelInheritancePlan(registryAddress);
-      setNotice({ tone: "ok", message: `Inheritance plan cancelled on-chain: ${formatAddress(txHash)}` });
+      const txHash =
+        thirdwebSmartAccount?.address.toLowerCase() ===
+        inheritancePlan.smartAccount.toLowerCase()
+          ? await cancelInheritancePlanWithThirdweb(
+              registryAddress,
+              thirdwebSmartAccount,
+            )
+          : await cancelInheritancePlan(
+              registryAddress,
+              inheritancePlan.smartAccount,
+            );
+      openTransaction(publicChain, txHash);
+      const txAction = transactionNoticeAction(publicChain, txHash);
+      setNotice({
+        tone: "ok",
+        message: "Inheritance plan cancelled on-chain.",
+        ...(txAction ? { action: txAction } : {}),
+      });
       await loadData();
     } catch (error) {
       setNotice({ tone: "bad", message: errorMessage(error) });
@@ -605,7 +810,7 @@ export function useRiskGuardDashboard() {
       wallet,
       activeWalletAddress,
       activeInheritanceSmartAccount,
-      selectedSmartAccountAddress
+      selectedSmartAccountAddress,
     },
     actions: {
       handleAnalyzeRisk,
@@ -620,7 +825,7 @@ export function useRiskGuardDashboard() {
       showNotice,
       setActiveSection,
       setMobileMoreOpen,
-      setSelectedSmartAccountAddress
-    }
+      setSelectedSmartAccountAddress,
+    },
   };
 }

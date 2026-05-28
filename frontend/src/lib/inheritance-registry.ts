@@ -210,7 +210,17 @@ export async function saveInheritancePlanWithThirdweb(
   return planReceipt.transactionHash;
 }
 
-export async function cancelInheritancePlan(registryAddress: string) {
+export async function cancelInheritancePlan(registryAddress: string, expectedSmartAccount?: string) {
+  const { signerAddress, signerCode } = await getConnectedSignerAddress();
+
+  if (signerCode === "0x") {
+    throw new Error("Connect the smart account before cancelling this inheritance plan.");
+  }
+
+  if (expectedSmartAccount && signerAddress.toLowerCase() !== expectedSmartAccount.toLowerCase()) {
+    throw new Error("Select the plan smart account as the active wallet before cancelling this plan.");
+  }
+
   const registry = await getRegistryContract(registryAddress);
 
   return waitForPlanTx(registry.cancelPlan());
