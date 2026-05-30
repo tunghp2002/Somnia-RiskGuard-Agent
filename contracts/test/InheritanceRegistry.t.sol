@@ -11,6 +11,7 @@ import {
 
 interface VmRegistry {
     function deal(address account, uint256 balance) external;
+    function etch(address target, bytes calldata newRuntimeBytecode) external;
     function expectRevert() external;
     function expectRevert(bytes4 selector) external;
     function prank(address sender) external;
@@ -35,7 +36,7 @@ contract MockToken {
 contract MockSmartAccount {
     mapping(address => bool) public authorizedExecutor;
 
-    receive() external payable {}
+    receive() external payable { }
 
     function setAuthorizedExecutor(address executor, bool authorized) external {
         authorizedExecutor[executor] = authorized;
@@ -83,23 +84,28 @@ contract MockAgentPlatform {
         uint256 requestId,
         ResponseStatus status
     ) external {
-        registry.handleHeartbeatResponse(requestId, _responses(status), status, AgentRequest({
-            id: 0,
-            requester: address(0),
-            callbackAddress: address(0),
-            callbackSelector: bytes4(0),
-            subcommittee: new address[](0),
-            responses: new Response[](0),
-            responseCount: 0,
-            failureCount: 0,
-            threshold: 0,
-            createdAt: 0,
-            deadline: 0,
-            status: ResponseStatus.None,
-            consensusType: ConsensusType.Majority,
-            remainingBudget: 0,
-            perAgentBudget: 0
-        }));
+        registry.handleHeartbeatResponse(
+            requestId,
+            _responses(status),
+            status,
+            AgentRequest({
+                id: 0,
+                requester: address(0),
+                callbackAddress: address(0),
+                callbackSelector: bytes4(0),
+                subcommittee: new address[](0),
+                responses: new Response[](0),
+                responseCount: 0,
+                failureCount: 0,
+                threshold: 0,
+                createdAt: 0,
+                deadline: 0,
+                status: ResponseStatus.None,
+                consensusType: ConsensusType.Majority,
+                remainingBudget: 0,
+                perAgentBudget: 0
+            })
+        );
     }
 
     function respondDistribution(
@@ -107,23 +113,28 @@ contract MockAgentPlatform {
         uint256 requestId,
         ResponseStatus status
     ) external {
-        registry.handleDistributionResponse(requestId, _responses(status), status, AgentRequest({
-            id: 0,
-            requester: address(0),
-            callbackAddress: address(0),
-            callbackSelector: bytes4(0),
-            subcommittee: new address[](0),
-            responses: new Response[](0),
-            responseCount: 0,
-            failureCount: 0,
-            threshold: 0,
-            createdAt: 0,
-            deadline: 0,
-            status: ResponseStatus.None,
-            consensusType: ConsensusType.Majority,
-            remainingBudget: 0,
-            perAgentBudget: 0
-        }));
+        registry.handleDistributionResponse(
+            requestId,
+            _responses(status),
+            status,
+            AgentRequest({
+                id: 0,
+                requester: address(0),
+                callbackAddress: address(0),
+                callbackSelector: bytes4(0),
+                subcommittee: new address[](0),
+                responses: new Response[](0),
+                responseCount: 0,
+                failureCount: 0,
+                threshold: 0,
+                createdAt: 0,
+                deadline: 0,
+                status: ResponseStatus.None,
+                consensusType: ConsensusType.Majority,
+                remainingBudget: 0,
+                perAgentBudget: 0
+            })
+        );
     }
 
     function _responses(ResponseStatus status) private view returns (Response[] memory responses) {
@@ -135,12 +146,23 @@ contract MockAgentPlatform {
         }
     }
 
-    receive() external payable {}
+    receive() external payable { }
 }
 
 contract RevertingReceiver {
     receive() external payable {
         revert("reject native");
+    }
+}
+
+contract MockReactivityPrecompile {
+    function invoke(
+        RiskGuardInheritanceRegistry registry,
+        address emitter,
+        bytes32[] calldata eventTopics,
+        bytes calldata data
+    ) external {
+        registry.onEvent(emitter, eventTopics, data);
     }
 }
 
@@ -151,7 +173,6 @@ contract InheritanceRegistryTest {
     address private constant BENEFICIARY_A = address(0xB0B);
     address private constant BENEFICIARY_B = address(0xCAFE);
     address private constant AGENT = address(0xA6E17);
-
     RiskGuardInheritanceRegistry private registry;
     MockSmartAccount private smartAccount;
     MockToken private token;
@@ -164,6 +185,7 @@ contract InheritanceRegistryTest {
         token = new MockToken();
         platform = new MockAgentPlatform();
         smartAccount.setAuthorizedExecutor(address(registry), true);
+        vm.etch(registry.somniaReactivityPrecompile(), address(new MockReactivityPrecompile()).code);
     }
 
     function testCreatePlanStoresActivePlanTimingBeneficiariesAndAssets() public {
@@ -296,6 +318,64 @@ contract InheritanceRegistryTest {
         assert(registry.nextDeadlineAt(address(smartAccount)) == 1_040 days);
     }
 
+    function testReactivityScheduleTransfersAtTimelock() public {
+        vm.deal(address(smartAccount), 10 ether);
+
+        vm.prank(address(smartAccount));
+        registry.createPlan(_singleBeneficiary(), _nativeAsset(), 1 days, 0, 0);
+
+        uint256 timestampMs = registry.timelockEndsAt(address(smartAccount)) * 1000;
+        assert(registry.currentDistributionScheduleMs(address(smartAccount)) == timestampMs);
+
+        vm.warp(1_001 days);
+        MockReactivityPrecompile(registry.somniaReactivityPrecompile())
+            .invoke(
+                registry, registry.somniaReactivityPrecompile(), _scheduleTopics(timestampMs), ""
+            );
+
+        assert(BENEFICIARY_A.balance == 10 ether);
+        assert(registry.distributionComplete(address(smartAccount)));
+    }
+
+    function testStaleReactivityScheduleIsSkippedAfterCheckIn() public {
+        vm.deal(address(smartAccount), 10 ether);
+
+        vm.prank(address(smartAccount));
+        registry.createPlan(_singleBeneficiary(), _nativeAsset(), 1 days, 0, 0);
+        uint256 staleTimestampMs = registry.currentDistributionScheduleMs(address(smartAccount));
+
+        vm.warp(1_000 days + 12 hours);
+        vm.prank(address(smartAccount));
+        registry.checkIn();
+        uint256 currentTimestampMs = registry.currentDistributionScheduleMs(address(smartAccount));
+
+        assert(currentTimestampMs != staleTimestampMs);
+
+        vm.warp(1_001 days);
+        MockReactivityPrecompile(registry.somniaReactivityPrecompile())
+            .invoke(
+                registry,
+                registry.somniaReactivityPrecompile(),
+                _scheduleTopics(staleTimestampMs),
+                ""
+            );
+
+        assert(BENEFICIARY_A.balance == 0);
+        assert(!registry.distributionComplete(address(smartAccount)));
+
+        vm.warp(1_001 days + 12 hours);
+        MockReactivityPrecompile(registry.somniaReactivityPrecompile())
+            .invoke(
+                registry,
+                registry.somniaReactivityPrecompile(),
+                _scheduleTopics(currentTimestampMs),
+                ""
+            );
+
+        assert(BENEFICIARY_A.balance == 10 ether);
+        assert(registry.distributionComplete(address(smartAccount)));
+    }
+
     function testBeneficiaryChangeUsesTimelockAndBlocksAfterExpiry() public {
         vm.prank(address(smartAccount));
         registry.createPlan(_beneficiaries60_40(), _nativeAsset(), 30 days, 7 days, 2 days);
@@ -372,7 +452,9 @@ contract InheritanceRegistryTest {
         RevertingReceiver badBeneficiary = new RevertingReceiver();
         vm.deal(address(smartAccount), 10 ether);
         vm.prank(address(smartAccount));
-        registry.createPlan(_beneficiariesBadReceiver60_40(address(badBeneficiary)), _nativeAsset(), 1 days, 0, 0);
+        registry.createPlan(
+            _beneficiariesBadReceiver60_40(address(badBeneficiary)), _nativeAsset(), 1 days, 0, 0
+        );
         registry.configureAgent(address(platform), 7, 8);
         registry.fundAgentBudget{ value: 1 ether }(address(smartAccount));
 
@@ -392,7 +474,9 @@ contract InheritanceRegistryTest {
         RevertingReceiver badBeneficiary = new RevertingReceiver();
         vm.deal(address(smartAccount), 10 ether);
         vm.prank(address(smartAccount));
-        registry.createPlan(_threeBeneficiariesWithBadMiddle(address(badBeneficiary)), _nativeAsset(), 1 days, 0, 0);
+        registry.createPlan(
+            _threeBeneficiariesWithBadMiddle(address(badBeneficiary)), _nativeAsset(), 1 days, 0, 0
+        );
         registry.configureAgent(address(platform), 7, 8);
         registry.fundAgentBudget{ value: 1 ether }(address(smartAccount));
 
@@ -506,7 +590,8 @@ contract InheritanceRegistryTest {
 
         assert(address(unauthorizedAccount).balance == 1 ether);
         assert(BENEFICIARY_A.balance == 0);
-        (RiskGuardInheritanceRegistry.Plan memory plan,,) = registry.getPlan(address(unauthorizedAccount));
+        (RiskGuardInheritanceRegistry.Plan memory plan,,) =
+            registry.getPlan(address(unauthorizedAccount));
         assert(plan.state == RiskGuardInheritanceRegistry.PlanState.Active);
     }
 
@@ -606,5 +691,11 @@ contract InheritanceRegistryTest {
         list = new RiskGuardInheritanceRegistry.ProtectedAsset[](2);
         list[0] = RiskGuardInheritanceRegistry.ProtectedAsset(address(token));
         list[1] = RiskGuardInheritanceRegistry.ProtectedAsset(address(token));
+    }
+
+    function _scheduleTopics(uint256 timestampMs) private view returns (bytes32[] memory topics) {
+        topics = new bytes32[](2);
+        topics[0] = registry.SOMNIA_SCHEDULE_EVENT_TOPIC();
+        topics[1] = bytes32(timestampMs);
     }
 }

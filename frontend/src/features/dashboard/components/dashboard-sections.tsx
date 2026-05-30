@@ -186,7 +186,7 @@ export function PortfolioWatch({
             <strong>{formatUsd(asset.valueUsd)}</strong>
           </div>
         ))}
-        {!portfolio ? <p className="muted">No portfolio snapshot yet. Connect a wallet or start the agent monitor.</p> : null}
+        {!portfolio ? <p className="muted">No portfolio snapshot yet. Connect a wallet to prepare RiskGuard policy checks.</p> : null}
       </div>
       <div className="signal-list">
         {(portfolio?.riskSignals ?? []).map((signal) => (

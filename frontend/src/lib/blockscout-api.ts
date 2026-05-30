@@ -1,0 +1,207 @@
+export type BlockscoutAccountScope = "all" | "eoa" | "smart";
+
+export interface AccountOption {
+  id: BlockscoutAccountScope;
+  label: string;
+  address?: string;
+}
+
+export interface NativeAssetBalance {
+  accountLabel: string;
+  address: string;
+  balance: string;
+  symbol: string;
+}
+
+export interface TokenAssetBalance {
+  accountLabel: string;
+  address: string;
+  balance: string;
+  decimals: number;
+  iconUrl?: string;
+  name: string;
+  symbol: string;
+  tokenAddress: string;
+  type: string;
+}
+
+export interface NftAssetBalance {
+  accountLabel: string;
+  address: string;
+  collectionAddress: string;
+  collectionName: string;
+  id: string;
+  imageUrl?: string;
+  name: string;
+}
+
+export interface AccountAssetSnapshot {
+  native: NativeAssetBalance[];
+  tokens: TokenAssetBalance[];
+  nfts: NftAssetBalance[];
+}
+
+interface BlockscoutAddressInfo {
+  coin_balance?: string | null;
+}
+
+interface BlockscoutTokenInfo {
+  address_hash?: string;
+  decimals?: string | number | null;
+  icon_url?: string | null;
+  name?: string | null;
+  symbol?: string | null;
+  type?: string | null;
+}
+
+interface BlockscoutTokenBalance {
+  token?: BlockscoutTokenInfo | null;
+  token_id?: string | null;
+  value?: string | null;
+}
+
+interface BlockscoutNftItem {
+  id?: string | number | null;
+  image_url?: string | null;
+  metadata?: {
+    image?: string;
+    image_url?: string;
+    name?: string;
+  } | null;
+  token?: BlockscoutTokenInfo | null;
+  token_id?: string | null;
+  token_instance?: {
+    id?: string | number | null;
+    image_url?: string | null;
+    metadata?: {
+      image?: string;
+      image_url?: string;
+      name?: string;
+    } | null;
+  } | null;
+}
+
+interface BlockscoutList<T> {
+  items?: T[];
+}
+
+const somniaLogoUrl =
+  "https://cdn.discordapp.com/attachments/1306948682137993287/1509106005529854053/somnia.png?ex=6a1b43bd&is=6a19f23d&hm=3c42e4b1f65e61c501cd63663991efdfba31b582ea07c3a21f32ed29eb62bf05";
+
+export { somniaLogoUrl };
+
+function apiBase(blockExplorerUrl: string) {
+  return `${blockExplorerUrl.replace(/\/$/, "")}/api/v2`;
+}
+
+async function fetchJson<T>(url: string): Promise<T> {
+  const response = await fetch(url, { cache: "no-store" });
+
+  if (!response.ok) {
+    throw new Error(`Blockscout request failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+function normalizeIpfsUrl(url?: string | null) {
+  if (!url) {
+    return undefined;
+  }
+
+  return url.startsWith("ipfs://")
+    ? `https://ipfs.io/ipfs/${url.slice("ipfs://".length)}`
+    : url;
+}
+
+function formatUnits(value: string, decimals: number) {
+  const raw = value.replace(/^0+/, "") || "0";
+
+  if (decimals <= 0) {
+    return raw;
+  }
+
+  const padded = raw.padStart(decimals + 1, "0");
+  const integer = padded.slice(0, -decimals);
+  const fraction = padded.slice(-decimals).replace(/0+$/, "");
+  const shortFraction = fraction.slice(0, 6);
+
+  return shortFraction ? `${integer}.${shortFraction}` : integer;
+}
+
+export async function fetchAccountAssets({
+  accounts,
+  blockExplorerUrl,
+  nativeDecimals,
+  nativeSymbol,
+}: {
+  accounts: Array<{ label: string; address: string }>;
+  blockExplorerUrl: string;
+  nativeDecimals: number;
+  nativeSymbol: string;
+}): Promise<AccountAssetSnapshot> {
+  const baseUrl = apiBase(blockExplorerUrl);
+  const snapshots = await Promise.all(
+    accounts.map(async (account) => {
+      const encodedAddress = encodeURIComponent(account.address);
+      const [addressInfo, tokenPayload, nftPayload] = await Promise.all([
+        fetchJson<BlockscoutAddressInfo>(`${baseUrl}/addresses/${encodedAddress}`),
+        fetchJson<BlockscoutTokenBalance[] | BlockscoutList<BlockscoutTokenBalance>>(
+          `${baseUrl}/addresses/${encodedAddress}/tokens?type=ERC-20`,
+        ).catch(() => fetchJson<BlockscoutTokenBalance[]>(`${baseUrl}/addresses/${encodedAddress}/token-balances`)),
+        fetchJson<BlockscoutList<BlockscoutNftItem>>(`${baseUrl}/addresses/${encodedAddress}/nft`).catch(() => ({ items: [] })),
+      ]);
+      const tokenItems = Array.isArray(tokenPayload) ? tokenPayload : tokenPayload.items ?? [];
+      const nftItems = nftPayload.items ?? [];
+
+      return {
+        native: {
+          accountLabel: account.label,
+          address: account.address,
+          balance: formatUnits(addressInfo.coin_balance ?? "0", nativeDecimals),
+          symbol: nativeSymbol,
+        },
+        tokens: tokenItems
+          .filter((item) => item.token?.type !== "ERC-721" && item.token?.type !== "ERC-1155")
+          .map((item) => {
+            const decimals = Number(item.token?.decimals ?? 18);
+            const iconUrl = normalizeIpfsUrl(item.token?.icon_url);
+            const token = {
+              accountLabel: account.label,
+              address: account.address,
+              balance: formatUnits(item.value ?? "0", Number.isFinite(decimals) ? decimals : 18),
+              decimals: Number.isFinite(decimals) ? decimals : 18,
+              name: item.token?.name ?? "Unknown token",
+              symbol: item.token?.symbol ?? "TOKEN",
+              tokenAddress: item.token?.address_hash ?? "",
+              type: item.token?.type ?? "ERC-20",
+            };
+
+            return iconUrl ? { ...token, iconUrl } : token;
+          }),
+        nfts: nftItems.map((item) => {
+          const instance = item.token_instance;
+          const metadata = instance?.metadata ?? item.metadata ?? {};
+
+          const imageUrl = normalizeIpfsUrl(instance?.image_url ?? item.image_url ?? metadata.image_url ?? metadata.image);
+
+          return {
+            accountLabel: account.label,
+            address: account.address,
+            collectionAddress: item.token?.address_hash ?? "",
+            collectionName: item.token?.name ?? "NFT Collection",
+            id: String(instance?.id ?? item.id ?? item.token_id ?? "unknown"),
+            name: metadata.name ?? item.token?.name ?? "NFT",
+            ...(imageUrl ? { imageUrl } : {}),
+          };
+        }),
+      };
+    }),
+  );
+
+  return {
+    native: snapshots.map((snapshot) => snapshot.native),
+    tokens: snapshots.flatMap((snapshot) => snapshot.tokens),
+    nfts: snapshots.flatMap((snapshot) => snapshot.nfts),
+  };
+}

@@ -2,6 +2,7 @@
 
 import { InheritanceSettings } from "@/features/settings/guardian-settings";
 
+import { AccountAssetsPanel } from "./components/account-assets-panel";
 import {
   DashboardHeader,
   DashboardSidebar,
@@ -10,12 +11,10 @@ import {
 } from "./components/dashboard-navigation";
 import { DashboardNoticeToast } from "./components/dashboard-notice-toast";
 import {
-  PortfolioWatch,
   ProfilePanel
 } from "./components/dashboard-sections";
 import {
-  GuardianStatus,
-  RiskScore
+  RiskPolicyGuard
 } from "./components/status-panels";
 import { useRiskGuardDashboard } from "./hooks/use-riskguard-dashboard";
 
@@ -43,20 +42,19 @@ export function RiskGuardDashboard() {
 
         {state.activeSection === "overview" ? (
           <section className="rg-overview">
-            <GuardianStatus
-              mode={state.mode}
-              readiness={state.readiness}
-              ready={state.guardianReady}
-              wallet={state.wallet}
+            <AccountAssetsPanel
+              accountOptions={state.accountOptions}
+              onSelectedScopeChange={actions.setSelectedAssetAccountScope}
+              publicChain={state.publicChain}
+              selectedScope={state.selectedAssetAccountScope}
             />
-            <RiskScore
+            <RiskPolicyGuard
               actionLoading={state.actionLoading}
-              onAnalyzeRisk={actions.handleAnalyzeRisk}
-              risk={state.risk}
-              score={state.riskScore}
-              tone={state.riskTone}
+              config={state.riskGuardConfig}
+              moduleReady={state.riskGuardModuleReady}
+              onConfigure={actions.handleConfigureRiskPolicy}
+              rules={state.riskGuardRules}
             />
-            <PortfolioWatch loading={state.loading} portfolio={state.portfolio} />
           </section>
         ) : null}
 

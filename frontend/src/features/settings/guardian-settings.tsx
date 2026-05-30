@@ -99,12 +99,13 @@ export function InheritanceSettings({
     const thirdwebSmartAccount = useActiveAccount();
     const { connect: connectThirdwebWallet, isConnecting: creatingSmartAccount } = useConnect();
     const [copiedSmartAccount, setCopiedSmartAccount] = useState(false);
-    const [cancelAfterSmartConnect, setCancelAfterSmartConnect] = useState(false);
-    const [submitAfterSmartConnect, setSubmitAfterSmartConnect] = useState(false);
     const [connectingForCancel, setConnectingForCancel] = useState(false);
     const [connectingForSubmit, setConnectingForSubmit] = useState(false);
+    const [autoConnectingSmartAccount, setAutoConnectingSmartAccount] = useState(false);
     const [checkInAuthorization, setCheckInAuthorization] = useState<SessionKeyActionPermission | null>(null);
     const checkInAuthorizationResolverRef = useRef<((approved: boolean) => void) | null>(null);
+    const autoConnectAttemptRef = useRef<string | null>(null);
+    const connectSmartAccountRef = useRef<((options?: { grantCheckIn?: boolean; silent?: boolean }) => Promise<string | undefined>) | null>(null);
     const pendingSubmitFormRef = useRef<HTMLFormElement | null>(null);
     const thirdwebSmartAccountAddress = thirdwebSmartAccount?.address;
     const thirdwebConnectedSmartAccountAddresses = useConnectedWallets()
@@ -189,34 +190,13 @@ export function InheritanceSettings({
         cacheSmartAccount(walletAddress, thirdwebSmartAccountAddress);
     }, [thirdwebSmartAccountAddress, walletAddress]);
 
-    useEffect(() => {
-        if (
-            !cancelAfterSmartConnect ||
-            !inheritancePlan?.active ||
-            !thirdwebSmartAccountAddress ||
-            thirdwebSmartAccountAddress.toLowerCase() !== inheritancePlan.smartAccount.toLowerCase()
-        ) {
-            return;
-        }
+    function requestCheckInAuthorization(permission: SessionKeyActionPermission) {
+        setCheckInAuthorization(permission);
 
-        setCancelAfterSmartConnect(false);
-        onInheritanceCancel();
-    }, [cancelAfterSmartConnect, inheritancePlan?.active, inheritancePlan?.smartAccount, onInheritanceCancel, thirdwebSmartAccountAddress]);
-
-    useEffect(() => {
-        const targetSmartAccount = smartAccountAddress || inheritancePlan?.smartAccount;
-        if (
-            !submitAfterSmartConnect ||
-            !pendingSubmitFormRef.current ||
-            !targetSmartAccount ||
-            thirdwebSmartAccountAddress?.toLowerCase() !== targetSmartAccount.toLowerCase()
-        ) {
-            return;
-        }
-
-        setSubmitAfterSmartConnect(false);
-        pendingSubmitFormRef.current.requestSubmit();
-    }, [inheritancePlan?.smartAccount, smartAccountAddress, submitAfterSmartConnect, thirdwebSmartAccountAddress]);
+        return new Promise<boolean>((resolve) => {
+            checkInAuthorizationResolverRef.current = resolve;
+        });
+    }
 
     async function connectSmartAccount(options: { grantCheckIn?: boolean; silent?: boolean } = {}) {
         if (!thirdwebClient) {
@@ -277,14 +257,14 @@ export function InheritanceSettings({
                     ? {
                         ...thirdwebAccountAbstraction,
                         sessionKey: {
-                        address: checkInPermission.sessionKeyAddress,
-                        permissions: {
-                            approvedTargets: checkInPermission.approvedTargets,
-                            nativeTokenLimitPerTransaction: checkInPermission.nativeTokenLimitPerTransaction,
-                            permissionStartTimestamp: new Date(checkInPermission.permissionStartTimestamp),
-                            permissionEndTimestamp: new Date(checkInPermission.permissionEndTimestamp)
+                            address: checkInPermission.sessionKeyAddress,
+                            permissions: {
+                                approvedTargets: checkInPermission.approvedTargets,
+                                nativeTokenLimitPerTransaction: checkInPermission.nativeTokenLimitPerTransaction,
+                                permissionStartTimestamp: new Date(checkInPermission.permissionStartTimestamp),
+                                permissionEndTimestamp: new Date(checkInPermission.permissionEndTimestamp)
+                            }
                         }
-                    }
                     }
                     : thirdwebAccountAbstraction);
 
@@ -337,13 +317,82 @@ export function InheritanceSettings({
         }
     }
 
-    function requestCheckInAuthorization(permission: SessionKeyActionPermission) {
-        setCheckInAuthorization(permission);
+    useEffect(() => {
+        connectSmartAccountRef.current = connectSmartAccount;
+    });
 
-        return new Promise<boolean>((resolve) => {
-            checkInAuthorizationResolverRef.current = resolve;
+    useEffect(() => {
+        if (!walletAddress || thirdwebSmartAccountAddress) {
+            return;
+        }
+
+        const cachedSmartAccount = readCachedSmartAccount(walletAddress);
+        if (!cachedSmartAccount) {
+            return;
+        }
+        const cachedSmartAccountAddress = cachedSmartAccount;
+
+        const normalizedWallet = walletAddress.toLowerCase();
+        if (autoConnectAttemptRef.current === normalizedWallet) {
+            return;
+        }
+
+        autoConnectAttemptRef.current = normalizedWallet;
+        let cancelled = false;
+
+        async function reconnectCachedSmartAccount() {
+            const provider = typeof window === "undefined" ? undefined : window.ethereum;
+            if (!provider) {
+                return;
+            }
+
+            const accounts = await provider.request<string[]>({
+                method: "eth_accounts"
+            });
+            if (!accounts.some((address) => address.toLowerCase() === normalizedWallet)) {
+                return;
+            }
+
+            setAutoConnectingSmartAccount(true);
+            let timeoutId: number | undefined;
+            try {
+                const connectedSmartAccount = await Promise.race([
+                    connectSmartAccountRef.current?.({
+                        grantCheckIn: false,
+                        silent: true
+                    }) ?? Promise.resolve(undefined),
+                    new Promise<undefined>((resolve) => {
+                        timeoutId = window.setTimeout(() => resolve(undefined), 6_000);
+                    })
+                ]);
+
+                if (
+                    !cancelled &&
+                    connectedSmartAccount &&
+                    connectedSmartAccount.toLowerCase() !== cachedSmartAccountAddress.toLowerCase()
+                ) {
+                    cacheSmartAccount(walletAddress, connectedSmartAccount);
+                }
+            } finally {
+                if (timeoutId) {
+                    window.clearTimeout(timeoutId);
+                }
+                if (!cancelled) {
+                    setAutoConnectingSmartAccount(false);
+                }
+            }
+        }
+
+        void reconnectCachedSmartAccount().catch(() => {
+            if (!cancelled) {
+                setAutoConnectingSmartAccount(false);
+            }
         });
-    }
+
+        return () => {
+            cancelled = true;
+        };
+    }, [thirdwebSmartAccountAddress, walletAddress]);
 
     function resolveCheckInAuthorization(approved: boolean) {
         checkInAuthorizationResolverRef.current?.(approved);
@@ -368,7 +417,7 @@ export function InheritanceSettings({
                 });
 
                 if (connectedSmartAccount?.toLowerCase() === inheritancePlan.smartAccount.toLowerCase()) {
-                    setCancelAfterSmartConnect(true);
+                    onInheritanceCancel();
                     return;
                 }
 
@@ -402,7 +451,7 @@ export function InheritanceSettings({
                 });
 
                 if (connectedSmartAccount?.toLowerCase() === targetSmartAccount.toLowerCase()) {
-                    setSubmitAfterSmartConnect(true);
+                    pendingSubmitFormRef.current.requestSubmit();
                     return;
                 }
 
@@ -484,8 +533,12 @@ export function InheritanceSettings({
                                             onClick={toggleSmartAccountDropdown}
                                             type="button"
                                         >
-                                            <span>{smartAccountAddress ? formatAddressPreview(smartAccountAddress) : "Select smart account"}</span>
-                                            {discoveringSmartAccounts ? <Loader2 className="spin" size={16} /> : <ChevronDown size={16} />}
+                                            <span>
+                                                {smartAccountAddress
+                                                    ? formatAddressPreview(smartAccountAddress)
+                                                    : autoConnectingSmartAccount ? "Connecting smart account" : "Select smart account"}
+                                            </span>
+                                            {discoveringSmartAccounts || (autoConnectingSmartAccount && !smartAccountAddress) ? <Loader2 className="spin" size={16} /> : <ChevronDown size={16} />}
                                         </button>
                                         {smartAccountAddress ? (
                                             <Button
@@ -811,8 +864,8 @@ export function InheritanceSettings({
                             {connectingForSubmit
                                 ? "Connecting account"
                                 : actionLoading === "inheritance-plan"
-                                  ? "Saving plan"
-                                : hasActivePlan ? "Update inheritance plan" : "Create inheritance plan"}
+                                    ? "Saving plan"
+                                    : hasActivePlan ? "Update inheritance plan" : "Create inheritance plan"}
                         </Button>
                     </section>
                 </aside>

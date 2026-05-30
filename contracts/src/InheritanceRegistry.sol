@@ -69,6 +69,10 @@ interface ISmartAccountExecutor {
     ) external returns (bytes[] memory results);
 }
 
+interface ISomniaEventHandler {
+    function onEvent(address emitter, bytes32[] calldata eventTopics, bytes calldata data) external;
+}
+
 /**
  * @title RiskGuardInheritanceRegistry
  * @notice Smart-account dead-man switch for one active inheritance plan per smart account.
@@ -88,7 +92,13 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     uint256 public constant MAX_DURATION = 3650 days;
     address public constant SOMNIA_REACTIVITY_PRECOMPILE =
         address(0x0000000000000000000000000000000000000100);
+    bytes32 public constant SOMNIA_SCHEDULE_EVENT_TOPIC = keccak256("Schedule(uint256)");
     address public constant NATIVE_ASSET = address(0);
+    uint256 public constant DEFAULT_REACTIVITY_PRIORITY_FEE_PER_GAS = 2 gwei;
+    uint256 public constant DEFAULT_REACTIVITY_MAX_FEE_PER_GAS = 10 gwei;
+    uint256 public constant DEFAULT_REACTIVITY_GAS_LIMIT = 2_000_000;
+    address private constant LOCAL_REACTIVITY_PRECOMPILE_MOCK =
+        address(0x0000000000000000000000000000000000010100);
 
     enum PlanState {
         None,
@@ -144,6 +154,7 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     error UnknownAgentRequest();
     error DistributionNotReady();
     error MaxRetriesReached();
+    error InvalidReactivityGasConfig();
 
     mapping(address => Plan) public plans;
     mapping(address => Beneficiary[]) private _beneficiaries;
@@ -158,13 +169,19 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     mapping(address => uint256) public agentBudgetOf;
     mapping(address => uint256) public pendingHeartbeatRequestId;
     mapping(address => uint256) public pendingDistributionRequestId;
+    mapping(address => uint256) public currentDistributionScheduleMs;
+    mapping(uint256 => address[]) private _scheduledSmartAccounts;
 
     address public admin;
     address public keeper;
+    address public immutable somniaReactivityPrecompile;
     IAgentRequester public agentPlatform;
     uint256 public heartbeatAgentId;
     uint256 public distributionAgentId;
     uint256 public agentRewardPerCall = 0.01 ether;
+    uint256 public reactivityPriorityFeePerGas = DEFAULT_REACTIVITY_PRIORITY_FEE_PER_GAS;
+    uint256 public reactivityMaxFeePerGas = DEFAULT_REACTIVITY_MAX_FEE_PER_GAS;
+    uint256 public reactivityGasLimit = DEFAULT_REACTIVITY_GAS_LIMIT;
     mapping(uint256 => address) public pendingHeartbeatSmartAccount;
     mapping(uint256 => address) public pendingDistributionSmartAccount;
 
@@ -186,20 +203,30 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     event BeneficiariesChangeProposed(address indexed smartAccount, uint256 effectiveAt);
     event BeneficiariesChangeConfirmed(address indexed smartAccount);
     event BeneficiariesChangeCancelled(address indexed smartAccount);
-    event AgentConfigured(address indexed platform, uint256 heartbeatAgentId, uint256 distributionAgentId);
+    event AgentConfigured(
+        address indexed platform, uint256 heartbeatAgentId, uint256 distributionAgentId
+    );
     event AgentBudgetFunded(uint256 amount, uint256 total);
     event AgentRewardPerCallUpdated(uint256 newReward);
-    event AgentHeartbeatRequested(uint256 indexed requestId, address indexed smartAccount, address indexed triggeredBy);
+    event AgentHeartbeatRequested(
+        uint256 indexed requestId, address indexed smartAccount, address indexed triggeredBy
+    );
     event AgentHeartbeatSucceeded(uint256 indexed requestId, address indexed smartAccount);
-    event AgentHeartbeatFailed(uint256 indexed requestId, address indexed smartAccount, ResponseStatus status);
+    event AgentHeartbeatFailed(
+        uint256 indexed requestId, address indexed smartAccount, ResponseStatus status
+    );
     event DistributionAgentRequested(
         uint256 indexed requestId,
         address indexed smartAccount,
         address indexed triggeredBy,
         uint256 retryCount
     );
-    event DistributionAgentSucceeded(uint256 indexed requestId, address indexed smartAccount, uint256 settledCount);
-    event DistributionAgentFailed(uint256 indexed requestId, address indexed smartAccount, ResponseStatus status);
+    event DistributionAgentSucceeded(
+        uint256 indexed requestId, address indexed smartAccount, uint256 settledCount
+    );
+    event DistributionAgentFailed(
+        uint256 indexed requestId, address indexed smartAccount, ResponseStatus status
+    );
     event DistributionTransferSkipped(
         address indexed smartAccount,
         address indexed beneficiary,
@@ -207,6 +234,14 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         uint256 amount
     );
     event DistributionComplete(address indexed smartAccount);
+    event ReactivityBudgetFunded(address indexed funder, uint256 amount, uint256 totalBalance);
+    event ReactivityGasConfigUpdated(
+        uint256 priorityFeePerGas, uint256 maxFeePerGas, uint256 gasLimit
+    );
+    event DistributionScheduled(
+        address indexed smartAccount, uint256 indexed timestampMs, uint64 subscriptionId
+    );
+    event DistributionScheduleFailed(address indexed smartAccount, uint256 indexed timestampMs);
     event ReactiveDistributionSkipped(address indexed smartAccount, string reason);
     event ReactiveDistributionSucceeded(address indexed smartAccount, uint256 settledCount);
 
@@ -226,16 +261,19 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     }
 
     modifier onlyReactivityPrecompile() {
-        if (msg.sender != SOMNIA_REACTIVITY_PRECOMPILE) revert OnlyReactivityPrecompile();
+        if (msg.sender != somniaReactivityPrecompile) revert OnlyReactivityPrecompile();
         _;
     }
 
     constructor() {
         admin = msg.sender;
+        somniaReactivityPrecompile = block.chainid == 31_337
+            ? LOCAL_REACTIVITY_PRECOMPILE_MOCK
+            : SOMNIA_REACTIVITY_PRECOMPILE;
     }
 
     receive() external payable {
-        revert AgentBudgetInsufficient();
+        emit ReactivityBudgetFunded(msg.sender, msg.value, address(this).balance);
     }
 
     function createPlan(
@@ -268,6 +306,7 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
             state: PlanState.Active
         });
 
+        _scheduleDistribution(smartAccount);
         emit PlanCreated(smartAccount, heartbeatInterval, gracePeriod, timelockPeriod);
     }
 
@@ -297,6 +336,7 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         plan.timelockPeriod = timelockPeriod;
         plan.updatedAt = block.timestamp;
 
+        _scheduleDistribution(msg.sender);
         emit PlanUpdated(msg.sender, heartbeatInterval, gracePeriod, timelockPeriod);
     }
 
@@ -324,6 +364,7 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
 
         plan.lastHeartbeatAt = block.timestamp;
         plan.updatedAt = block.timestamp;
+        _scheduleDistribution(msg.sender);
         emit HeartbeatCheckedIn(msg.sender, block.timestamp);
     }
 
@@ -332,10 +373,11 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         emit KeeperSet(newKeeper);
     }
 
-    function configureAgent(address platform, uint256 nextHeartbeatAgentId, uint256 nextDistributionAgentId)
-        external
-        onlyAdmin
-    {
+    function configureAgent(
+        address platform,
+        uint256 nextHeartbeatAgentId,
+        uint256 nextDistributionAgentId
+    ) external onlyAdmin {
         if (platform == address(0)) revert ZeroAddress();
         agentPlatform = IAgentRequester(platform);
         heartbeatAgentId = nextHeartbeatAgentId;
@@ -354,6 +396,21 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         emit AgentRewardPerCallUpdated(newReward);
     }
 
+    function setReactivityGasConfig(
+        uint256 priorityFeePerGas,
+        uint256 maxFeePerGas,
+        uint256 gasLimit
+    ) external onlyAdmin {
+        if (priorityFeePerGas == 0 || maxFeePerGas < priorityFeePerGas || gasLimit == 0) {
+            revert InvalidReactivityGasConfig();
+        }
+
+        reactivityPriorityFeePerGas = priorityFeePerGas;
+        reactivityMaxFeePerGas = maxFeePerGas;
+        reactivityGasLimit = gasLimit;
+        emit ReactivityGasConfigUpdated(priorityFeePerGas, maxFeePerGas, gasLimit);
+    }
+
     function proposeBeneficiaries(Beneficiary[] calldata next) external {
         Plan storage plan = plans[msg.sender];
         if (plan.state != PlanState.Active) revert NoActivePlan();
@@ -364,10 +421,9 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         _validateBeneficiaries(msg.sender, next);
         delete _pendingBeneficiaries[msg.sender];
         for (uint256 i; i < next.length; ++i) {
-            _pendingBeneficiaries[msg.sender].push(Beneficiary({
-                addr: next[i].addr,
-                shareBps: next[i].shareBps
-            }));
+            _pendingBeneficiaries[msg.sender].push(
+                Beneficiary({ addr: next[i].addr, shareBps: next[i].shareBps })
+            );
         }
         pendingBeneficiariesAt[msg.sender] = block.timestamp;
         emit BeneficiariesChangeProposed(msg.sender, block.timestamp + BENEFICIARY_TIMELOCK);
@@ -409,7 +465,11 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         return _pendingBeneficiaries[smartAccount];
     }
 
-    function triggerAgentHeartbeat(address smartAccount) external onlyAuthorized(smartAccount) nonReentrant {
+    function triggerAgentHeartbeat(address smartAccount)
+        external
+        onlyAuthorized(smartAccount)
+        nonReentrant
+    {
         Plan storage plan = plans[smartAccount];
         if (plan.state != PlanState.Active) revert NoActivePlan();
         if (block.timestamp >= plan.lastHeartbeatAt + plan.heartbeatInterval + plan.gracePeriod) {
@@ -439,15 +499,21 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         ResponseStatus status,
         AgentRequest memory
     ) external {
-        if (msg.sender != address(agentPlatform)) revert OnlyAgentPlatform();
+        if (msg.sender != address(agentPlatform)) {
+            revert OnlyAgentPlatform();
+        }
         address smartAccount = pendingHeartbeatSmartAccount[requestId];
         if (smartAccount == address(0)) revert UnknownAgentRequest();
         delete pendingHeartbeatSmartAccount[requestId];
         delete pendingHeartbeatRequestId[smartAccount];
 
-        if (status == ResponseStatus.Success && responses.length > 0 && plans[smartAccount].state == PlanState.Active) {
+        if (
+            status == ResponseStatus.Success && responses.length > 0
+                && plans[smartAccount].state == PlanState.Active
+        ) {
             plans[smartAccount].lastHeartbeatAt = block.timestamp;
             plans[smartAccount].updatedAt = block.timestamp;
+            _scheduleDistribution(smartAccount);
             emit HeartbeatCheckedIn(smartAccount, block.timestamp);
             emit AgentHeartbeatSucceeded(requestId, smartAccount);
         } else {
@@ -459,7 +525,9 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         if (distributionComplete[smartAccount]) revert AlreadyExecuted();
         if (!_isTimelockReady(plans[smartAccount])) revert DistributionNotReady();
         if (address(agentPlatform) == address(0)) revert AgentNotConfigured();
-        if (distributionRetryCount[smartAccount] >= MAX_DISTRIBUTION_RETRIES) revert MaxRetriesReached();
+        if (distributionRetryCount[smartAccount] >= MAX_DISTRIBUTION_RETRIES) {
+            revert MaxRetriesReached();
+        }
         if (pendingDistributionRequestId[smartAccount] != 0) revert AgentRequestPending();
 
         uint256 deposit = _agentDeposit();
@@ -475,10 +543,7 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         pendingDistributionSmartAccount[requestId] = smartAccount;
         pendingDistributionRequestId[smartAccount] = requestId;
         emit DistributionAgentRequested(
-            requestId,
-            smartAccount,
-            msg.sender,
-            distributionRetryCount[smartAccount]
+            requestId, smartAccount, msg.sender, distributionRetryCount[smartAccount]
         );
     }
 
@@ -504,23 +569,43 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         emit DistributionAgentSucceeded(requestId, smartAccount, settled);
     }
 
-    function onEvent(address emitter, bytes32[] calldata, bytes calldata data)
+    function onEvent(address emitter, bytes32[] calldata eventTopics, bytes calldata)
         external
         onlyReactivityPrecompile
         nonReentrant
     {
-        address smartAccount = data.length == 32 ? abi.decode(data, (address)) : address(0);
-        if (emitter != SOMNIA_REACTIVITY_PRECOMPILE) {
-            emit ReactiveDistributionSkipped(smartAccount, "non-system event");
-            return;
-        }
-        if (smartAccount == address(0) || !_isTimelockReady(plans[smartAccount])) {
-            emit ReactiveDistributionSkipped(smartAccount, "timelock not ready");
+        if (emitter != somniaReactivityPrecompile) {
+            emit ReactiveDistributionSkipped(address(0), "non-system event");
             return;
         }
 
-        uint256 settled = _executeDistribution(smartAccount, true);
-        emit ReactiveDistributionSucceeded(smartAccount, settled);
+        if (eventTopics.length < 2 || eventTopics[0] != SOMNIA_SCHEDULE_EVENT_TOPIC) {
+            emit ReactiveDistributionSkipped(address(0), "non-schedule event");
+            return;
+        }
+
+        uint256 timestampMs = uint256(eventTopics[1]);
+        address[] storage smartAccounts = _scheduledSmartAccounts[timestampMs];
+        if (smartAccounts.length == 0) {
+            emit ReactiveDistributionSkipped(address(0), "unknown schedule");
+            return;
+        }
+
+        for (uint256 i; i < smartAccounts.length; ++i) {
+            address smartAccount = smartAccounts[i];
+            if (currentDistributionScheduleMs[smartAccount] != timestampMs) {
+                emit ReactiveDistributionSkipped(smartAccount, "stale schedule");
+                continue;
+            }
+
+            if (!_isTimelockReady(plans[smartAccount])) {
+                emit ReactiveDistributionSkipped(smartAccount, "timelock not ready");
+                continue;
+            }
+
+            uint256 settled = _executeDistribution(smartAccount, true);
+            emit ReactiveDistributionSucceeded(smartAccount, settled);
+        }
     }
 
     function executeInheritance(address smartAccount) external nonReentrant {
@@ -540,8 +625,20 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         return _beneficiaries[smartAccount];
     }
 
-    function getProtectedAssets(address smartAccount) external view returns (ProtectedAsset[] memory) {
+    function getProtectedAssets(address smartAccount)
+        external
+        view
+        returns (ProtectedAsset[] memory)
+    {
         return _protectedAssets[smartAccount];
+    }
+
+    function getScheduledSmartAccounts(uint256 timestampMs)
+        external
+        view
+        returns (address[] memory)
+    {
+        return _scheduledSmartAccounts[timestampMs];
     }
 
     function getPlan(address smartAccount)
@@ -588,7 +685,10 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         return _isTimelockReady(plan);
     }
 
-    function _executeDistribution(address smartAccount, bool skipOnFail) private returns (uint256 settledCount) {
+    function _executeDistribution(address smartAccount, bool skipOnFail)
+        private
+        returns (uint256 settledCount)
+    {
         Plan storage plan = plans[smartAccount];
         if (plan.state != PlanState.Active || distributionComplete[smartAccount]) return 0;
         if (!_isTimelockReady(plan)) return 0;
@@ -604,7 +704,11 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
                 continue;
             }
 
-            for (uint256 beneficiaryIndex; beneficiaryIndex < beneficiaries.length; ++beneficiaryIndex) {
+            for (
+                uint256 beneficiaryIndex;
+                beneficiaryIndex < beneficiaries.length;
+                ++beneficiaryIndex
+            ) {
                 Beneficiary storage beneficiary = beneficiaries[beneficiaryIndex];
                 if (assetSettled[smartAccount][token][beneficiary.addr]) {
                     continue;
@@ -615,7 +719,9 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
                     continue;
                 }
 
-                bool ok = _executeSingleTransfer(smartAccount, beneficiary.addr, token, amount, skipOnFail);
+                bool ok = _executeSingleTransfer(
+                    smartAccount, beneficiary.addr, token, amount, skipOnFail
+                );
                 if (ok) {
                     assetSettled[smartAccount][token][beneficiary.addr] = true;
                     ++settledCount;
@@ -672,7 +778,11 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
                 continue;
             }
 
-            for (uint256 beneficiaryIndex; beneficiaryIndex < beneficiaries.length; ++beneficiaryIndex) {
+            for (
+                uint256 beneficiaryIndex;
+                beneficiaryIndex < beneficiaries.length;
+                ++beneficiaryIndex
+            ) {
                 if (!assetSettled[smartAccount][token][beneficiaries[beneficiaryIndex].addr]) {
                     return false;
                 }
@@ -701,7 +811,11 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
             address token = assets[assetIndex].token;
             delete assetSnapshot[smartAccount][token];
             delete assetSnapshotSet[smartAccount][token];
-            for (uint256 beneficiaryIndex; beneficiaryIndex < beneficiaries.length; ++beneficiaryIndex) {
+            for (
+                uint256 beneficiaryIndex;
+                beneficiaryIndex < beneficiaries.length;
+                ++beneficiaryIndex
+            ) {
                 delete assetSettled[smartAccount][token][beneficiaries[beneficiaryIndex].addr];
             }
         }
@@ -714,10 +828,10 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         if (smartAccount.code.length == 0) revert NotSmartAccount();
     }
 
-    function _validateBeneficiaries(
-        address smartAccount,
-        Beneficiary[] calldata beneficiaries
-    ) private pure {
+    function _validateBeneficiaries(address smartAccount, Beneficiary[] calldata beneficiaries)
+        private
+        pure
+    {
         uint256 len = beneficiaries.length;
         if (len == 0 || len > MAX_BENEFICIARIES) revert TooManyBeneficiaries();
 
@@ -739,25 +853,20 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         if (total != BPS_TOTAL) revert InvalidShares();
     }
 
-    function _setBeneficiaries(
-        address smartAccount,
-        Beneficiary[] calldata beneficiaries
-    ) private {
+    function _setBeneficiaries(address smartAccount, Beneficiary[] calldata beneficiaries) private {
         _validateBeneficiaries(smartAccount, beneficiaries);
         delete _beneficiaries[smartAccount];
 
         for (uint256 i; i < beneficiaries.length; ++i) {
-            _beneficiaries[smartAccount].push(Beneficiary({
-                addr: beneficiaries[i].addr,
-                shareBps: beneficiaries[i].shareBps
-            }));
+            _beneficiaries[smartAccount].push(
+                Beneficiary({ addr: beneficiaries[i].addr, shareBps: beneficiaries[i].shareBps })
+            );
         }
     }
 
-    function _setProtectedAssets(
-        address smartAccount,
-        ProtectedAsset[] calldata protectedAssets
-    ) private {
+    function _setProtectedAssets(address smartAccount, ProtectedAsset[] calldata protectedAssets)
+        private
+    {
         uint256 len = protectedAssets.length;
         if (len == 0 || len > MAX_PROTECTED_ASSETS) revert TooManyProtectedAssets();
 
@@ -776,7 +885,49 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
 
     function _isTimelockReady(Plan storage plan) private view returns (bool) {
         if (plan.state != PlanState.Active) return false;
-        return block.timestamp >= plan.lastHeartbeatAt + plan.heartbeatInterval + plan.gracePeriod + plan.timelockPeriod;
+        return block.timestamp
+            >= plan.lastHeartbeatAt + plan.heartbeatInterval + plan.gracePeriod
+                + plan.timelockPeriod;
+    }
+
+    function _scheduleDistribution(address smartAccount) private {
+        uint256 timestamp = timelockEndsAt(smartAccount);
+        if (timestamp <= block.timestamp) {
+            return;
+        }
+
+        uint256 timestampMs = timestamp * 1000;
+        currentDistributionScheduleMs[smartAccount] = timestampMs;
+        _scheduledSmartAccounts[timestampMs].push(smartAccount);
+
+        bytes32[4] memory eventTopics =
+            [SOMNIA_SCHEDULE_EVENT_TOPIC, bytes32(timestampMs), bytes32(0), bytes32(0)];
+        bytes memory payload = abi.encodeWithSelector(
+            bytes4(
+                keccak256(
+                    "subscribe((bytes32[4],address,address,address,address,bytes4,uint256,uint256,uint256,bool,bool))"
+                )
+            ),
+            eventTopics,
+            address(0),
+            address(0),
+            somniaReactivityPrecompile,
+            address(this),
+            ISomniaEventHandler.onEvent.selector,
+            reactivityPriorityFeePerGas,
+            reactivityMaxFeePerGas,
+            reactivityGasLimit,
+            true,
+            false
+        );
+
+        (bool ok, bytes memory result) = somniaReactivityPrecompile.call(payload);
+        if (!ok || result.length < 32) {
+            emit DistributionScheduleFailed(smartAccount, timestampMs);
+            return;
+        }
+
+        emit DistributionScheduled(smartAccount, timestampMs, uint64(uint256(bytes32(result))));
     }
 
     function _validateDuration(uint256 duration, bool heartbeat) private pure {

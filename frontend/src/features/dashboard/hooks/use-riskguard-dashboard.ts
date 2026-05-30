@@ -48,11 +48,78 @@ import {
 import type {
   AccountStatus,
   DashboardSection,
+  GuardRuleId,
   Notice,
-  RiskTone,
+  RiskGuardConfig,
+  RiskGuardRule,
 } from "../types";
+import type {
+  AccountOption,
+  BlockscoutAccountScope,
+} from "@/lib/blockscout-api";
 
 const telegramConnectTimeoutMs = 60_000;
+const riskGuardConfigStorageKey = "riskguard-policy-config";
+
+const defaultRiskGuardConfig: RiskGuardConfig = {
+  enabled: false,
+  selectedRules: ["large-transfer", "unlimited-approve", "new-contract"],
+  largeTransferMode: "amount",
+  largeTransferThreshold: "",
+};
+
+function loadStoredRiskGuardConfig(): RiskGuardConfig {
+  if (typeof window === "undefined") {
+    return defaultRiskGuardConfig;
+  }
+
+  try {
+    const stored = window.localStorage.getItem(riskGuardConfigStorageKey);
+
+    if (!stored) {
+      return defaultRiskGuardConfig;
+    }
+
+    const parsed = JSON.parse(stored) as Partial<RiskGuardConfig>;
+    const validRules: GuardRuleId[] = [
+      "large-transfer",
+      "unlimited-approve",
+      "new-contract",
+    ];
+    const selectedRules = (
+      parsed.selectedRules ?? defaultRiskGuardConfig.selectedRules
+    ).filter((rule): rule is GuardRuleId =>
+      validRules.includes(rule as GuardRuleId),
+    );
+    const legacyPercentSelected = (parsed.selectedRules ?? []).includes(
+      "balance-percent" as GuardRuleId,
+    );
+    const largeTransferMode =
+      parsed.largeTransferMode ??
+      (legacyPercentSelected
+        ? "percent"
+        : defaultRiskGuardConfig.largeTransferMode);
+
+    return {
+      enabled: Boolean(parsed.enabled),
+      selectedRules:
+        legacyPercentSelected && !selectedRules.includes("large-transfer")
+          ? [...selectedRules, "large-transfer"]
+          : selectedRules,
+      largeTransferMode,
+      largeTransferThreshold:
+        parsed.largeTransferThreshold ??
+        (largeTransferMode === "percent"
+          ? (parsed as { nativePercentThreshold?: string })
+              .nativePercentThreshold
+          : (parsed as { nativeAmountThreshold?: string })
+              .nativeAmountThreshold) ??
+        defaultRiskGuardConfig.largeTransferThreshold,
+    };
+  } catch {
+    return defaultRiskGuardConfig;
+  }
+}
 
 function telegramUnlinkMessage(walletAddress: string) {
   return [
@@ -114,6 +181,11 @@ export function useRiskGuardDashboard() {
     useState<InheritancePlanStatus | null>(null);
   const [selectedSmartAccountAddress, setSelectedSmartAccountAddress] =
     useState<string>();
+  const [selectedAssetAccountScope, setSelectedAssetAccountScope] =
+    useState<BlockscoutAccountScope>("all");
+  const [riskGuardConfig, setRiskGuardConfig] = useState<RiskGuardConfig>(
+    loadStoredRiskGuardConfig,
+  );
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [telegramSession, setTelegramSession] =
     useState<TelegramConnectSession | null>(null);
@@ -125,13 +197,78 @@ export function useRiskGuardDashboard() {
 
   const activeWalletAddress = wallet?.address;
   const activeInheritanceSmartAccount =
-    selectedSmartAccountAddress ?? thirdwebSmartAccount?.address;
+    selectedSmartAccountAddress ??
+    thirdwebSmartAccount?.address ??
+    inheritancePlan?.smartAccount;
   const guardianReady = Boolean(
     readiness?.sessionKey.ready && readiness.monitoredWallet.ready,
   );
-  const riskScore = risk?.score ?? 0;
-  const riskTone: RiskTone =
-    riskScore >= 75 ? "bad" : riskScore >= 50 ? "warn" : "ok";
+  const riskGuardModuleReady = riskGuardConfig.enabled;
+  const riskGuardRules: RiskGuardRule[] = useMemo(
+    () => [
+      {
+        id: "large-transfer",
+        label: "Large SOMI transfer",
+        status:
+          riskGuardModuleReady &&
+          riskGuardConfig.selectedRules.includes("large-transfer")
+            ? "armed"
+            : "needs-module",
+        detail:
+          riskGuardConfig.largeTransferMode === "percent"
+            ? `Agent validates transfers over ${riskGuardConfig.largeTransferThreshold || "0"}% of account SOMI.`
+            : `Agent validates native transfers.`,
+      },
+      {
+        id: "unlimited-approve",
+        label: "Unlimited approve",
+        status:
+          riskGuardModuleReady &&
+          riskGuardConfig.selectedRules.includes("unlimited-approve")
+            ? "armed"
+            : "needs-module",
+        detail:
+          "Block max uint256 approvals unless an approval proof is attached.",
+      },
+      {
+        id: "new-contract",
+        label: "New contract interaction",
+        status:
+          riskGuardModuleReady &&
+          riskGuardConfig.selectedRules.includes("new-contract")
+            ? "armed"
+            : "needs-module",
+        detail:
+          "Require review before calling a target the smart account has not used before.",
+      },
+    ],
+    [riskGuardConfig, riskGuardModuleReady],
+  );
+  const accountOptions: AccountOption[] = useMemo(() => {
+    const options: AccountOption[] = [{ id: "all", label: "All accounts" }];
+
+    if (activeWalletAddress) {
+      options.push({ id: "eoa", label: "EOA", address: activeWalletAddress });
+    }
+
+    if (activeInheritanceSmartAccount) {
+      options.push({
+        id: "smart",
+        label: "Smart account",
+        address: activeInheritanceSmartAccount,
+      });
+    }
+
+    return options.filter((option, index, list) => {
+      const address = option.address?.toLowerCase();
+
+      return (
+        !address ||
+        list.findIndex((item) => item.address?.toLowerCase() === address) ===
+          index
+      );
+    });
+  }, [activeInheritanceSmartAccount, activeWalletAddress]);
 
   const receipts = useMemo(() => {
     const fromAudit = events.map((event) => ({
@@ -676,23 +813,19 @@ export function useRiskGuardDashboard() {
     }
   }
 
-  async function handleAnalyzeRisk() {
-    setActionLoading("risk-analysis");
-    try {
-      const nextRisk = await agentApi.analyzeRisk(
-        activeWalletAddress ? { walletAddress: activeWalletAddress } : {},
+  function handleConfigureRiskPolicy(nextConfig: RiskGuardConfig) {
+    setRiskGuardConfig(nextConfig);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        riskGuardConfigStorageKey,
+        JSON.stringify(nextConfig),
       );
-      setRisk(nextRisk);
-      setNotice({
-        tone: "ok",
-        message: `${nextRisk.provider} generated a fresh risk analysis.`,
-      });
-      await loadData();
-    } catch (error) {
-      setNotice({ tone: "bad", message: errorMessage(error) });
-    } finally {
-      setActionLoading(null);
     }
+    setNotice({
+      tone: "ok",
+      message:
+        "RiskGuard policy saved locally. On-chain module install is the next integration step.",
+    });
   }
 
   async function handleProfileSubmit(
@@ -803,8 +936,11 @@ export function useRiskGuardDashboard() {
       readiness,
       receipts,
       risk,
-      riskScore,
-      riskTone,
+      accountOptions,
+      selectedAssetAccountScope,
+      riskGuardConfig,
+      riskGuardModuleReady,
+      riskGuardRules,
       telegramSession,
       userProfile,
       wallet,
@@ -813,7 +949,7 @@ export function useRiskGuardDashboard() {
       selectedSmartAccountAddress,
     },
     actions: {
-      handleAnalyzeRisk,
+      handleConfigureRiskPolicy,
       handleConnectWallet,
       handleDisconnectWallet,
       handleInheritancePlanCancel,
@@ -824,6 +960,7 @@ export function useRiskGuardDashboard() {
       loadData,
       showNotice,
       setActiveSection,
+      setSelectedAssetAccountScope,
       setMobileMoreOpen,
       setSelectedSmartAccountAddress,
     },

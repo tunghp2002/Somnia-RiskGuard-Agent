@@ -21,3 +21,22 @@ export type AccountStatus =
   | "error";
 
 export type RiskTone = "ok" | "warn" | "bad";
+
+export type GuardRuleId =
+  | "large-transfer"
+  | "unlimited-approve"
+  | "new-contract";
+
+export type RiskGuardRule = {
+  id: GuardRuleId;
+  label: string;
+  status: "armed" | "needs-module" | "needs-settings";
+  detail: string;
+};
+
+export type RiskGuardConfig = {
+  enabled: boolean;
+  selectedRules: GuardRuleId[];
+  largeTransferMode: "amount" | "percent";
+  largeTransferThreshold: string;
+};

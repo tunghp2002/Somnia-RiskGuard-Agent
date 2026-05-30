@@ -1,9 +1,10 @@
 import { BrowserProvider, Contract } from "ethers";
 import { getContract, prepareContractCall, prepareTransaction, sendAndConfirmTransaction } from "thirdweb";
-import type { Account } from "thirdweb/wallets";
+import { EIP1193, smartWallet, type Account } from "thirdweb/wallets";
+
+import { somniaThirdwebChain, thirdwebAccountAbstraction, thirdwebClient } from "@/lib/thirdweb-client";
 
 import type { InheritancePlanStatus } from "@/lib/agent-api";
-import { somniaThirdwebChain, thirdwebClient } from "@/lib/thirdweb-client";
 
 export interface BeneficiaryInput {
   address: string;
@@ -24,6 +25,8 @@ const inheritanceRegistryAbi = [
   "function updatePlan((address addr,uint256 shareBps)[] beneficiaries,(address token)[] protectedAssets,uint256 heartbeatInterval,uint256 gracePeriod,uint256 timelockPeriod)",
   "function cancelPlan()"
 ];
+const planWriteGasLimit = 6_000_000n;
+const cancelPlanGasLimit = 1_000_000n;
 
 type RegistryContract = Contract & {
   createPlan(
@@ -132,6 +135,41 @@ async function ensureThirdwebSmartAccountDeployed(account: Account) {
   });
 }
 
+function isPaymasterOrBundlerError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return /paymaster|bundler|useroperation|aa95|out of gas|internal server error|status:?\s*500/i.test(message);
+}
+
+async function connectUserPaidThirdwebSmartAccount(expectedSmartAccountAddress: string) {
+  if (!thirdwebClient) {
+    throw new Error("Thirdweb client is not configured.");
+  }
+
+  const personalWallet = EIP1193.fromProvider({
+    provider: getEthereumProvider() as Parameters<typeof EIP1193.fromProvider>[0]["provider"],
+    walletId: "app.subwallet"
+  });
+  const personalAccount = await personalWallet.connect({
+    chain: somniaThirdwebChain,
+    client: thirdwebClient
+  });
+  const accountWallet = smartWallet({
+    ...thirdwebAccountAbstraction,
+    sponsorGas: false
+  });
+  const account = await accountWallet.connect({
+    client: thirdwebClient,
+    personalAccount
+  });
+
+  if (account.address.toLowerCase() !== expectedSmartAccountAddress.toLowerCase()) {
+    throw new Error("User-paid smart account fallback returned a different smart account address.");
+  }
+
+  return account;
+}
+
 export async function saveInheritancePlan(
   registryAddress: string,
   input: InheritancePlanInput,
@@ -195,6 +233,7 @@ export async function saveInheritancePlanWithThirdweb(
   const planTransaction = prepareContractCall({
     contract: registry,
     method,
+    gas: planWriteGasLimit,
     params: [
       beneficiaries,
       protectedAssets,
@@ -206,6 +245,18 @@ export async function saveInheritancePlanWithThirdweb(
   const planReceipt = await sendAndConfirmTransaction({
     account,
     transaction: planTransaction
+  }).catch(async (error: unknown) => {
+    if (!isPaymasterOrBundlerError(error)) {
+      throw error;
+    }
+
+    const userPaidAccount = await connectUserPaidThirdwebSmartAccount(smartAccountAddress);
+    await ensureThirdwebSmartAccountDeployed(userPaidAccount);
+
+    return sendAndConfirmTransaction({
+      account: userPaidAccount,
+      transaction: planTransaction
+    });
   });
   return planReceipt.transactionHash;
 }
@@ -239,11 +290,23 @@ export async function cancelInheritancePlanWithThirdweb(registryAddress: string,
   const transaction = prepareContractCall({
     contract: registry,
     method: "function cancelPlan()",
+    gas: cancelPlanGasLimit,
     params: []
   });
   const receipt = await sendAndConfirmTransaction({
     account,
     transaction
+  }).catch(async (error: unknown) => {
+    if (!isPaymasterOrBundlerError(error)) {
+      throw error;
+    }
+
+    const userPaidAccount = await connectUserPaidThirdwebSmartAccount(account.address);
+
+    return sendAndConfirmTransaction({
+      account: userPaidAccount,
+      transaction
+    });
   });
 
   return receipt.transactionHash;

@@ -1,8 +1,7 @@
 "use client";
 
 import { createThirdwebClient, defineChain } from "thirdweb";
-import { createWallet } from "thirdweb/wallets";
-import type { Wallet } from "thirdweb/wallets";
+import { createWallet, type Wallet } from "thirdweb/wallets";
 
 import publicChains from "../../../config/public-chains.json";
 

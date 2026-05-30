@@ -36,9 +36,10 @@ The previous standalone locked vault contract has been removed from the active c
 
 Current Somnia Testnet deployment:
 
-- `RiskGuardInheritanceRegistry`: `0xc0Fdb3c055F3B7C5fA93343349E0f713bC8e1D2c`
+- `RiskGuardInheritanceRegistry`: `0x84dc6ef1639F198fBD0C4BAEd9A5fc90C59dFEF0`
 - deployer: `0x64769A00fB002b7ED192834443C9c819565Ab702`
-- transaction: `0x2c92b3d3352f32f529b99c625bd8048cf20e1c9b306b9e493b0ad627071c335a`
+- transaction: `0x0337a6a51d765f16e67e48df96865fd0daedd74cba976cd7d1c25e1fbc5facc2`
+- Reactivity funding transaction: `0x48849791032e4b4a782585daa67738560feb250d6f6e521236883c1e863f4297` (`32 STT`)
 
 Deploy the registry with Foundry:
 
