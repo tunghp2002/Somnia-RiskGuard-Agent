@@ -41,6 +41,67 @@ Current Somnia Testnet deployment:
 - transaction: `0x0337a6a51d765f16e67e48df96865fd0daedd74cba976cd7d1c25e1fbc5facc2`
 - Reactivity funding transaction: `0x48849791032e4b4a782585daa67738560feb250d6f6e521236883c1e863f4297` (`32 STT`)
 
+RiskGuard hook approval gate deployment on Somnia Testnet:
+
+- `RiskGuardApprovalStore`: `0x134c11CE88272933986c8A7B2C9D3F14158bd427`
+- `RiskGuardHookModule`: `0xAF37941610EE34c6DDd2FADD74403c1b401950Db`
+- deployer: `0x64769A00fB002b7ED192834443C9c819565Ab702`
+- `RiskGuardApprovalStore` transaction: `0xc12fc12e00687e4297a1239e865e13d06c64e4e166df177b7cd36b2b6f60f645`
+- `RiskGuardHookModule` transaction: `0x193e958d60204f27eb5acc9f6dcf5b0a7b5594d7c469e9f487c39fa92d871205`
+- deployed: `2026-05-30`
+- note: this hook decodes ERC-7579 `execute(bytes32,bytes)` calldata as well as the legacy `execute(address,uint256,bytes)` / `executeBatch(address[],uint256[],bytes[])` shapes.
+
+For a smart account test install, register the approval route after installing the hook:
+
+```solidity
+RiskGuardApprovalStore(0x134c11CE88272933986c8A7B2C9D3F14158bd427).registerAgentAndHook(
+  agentAddress,
+  0xAF37941610EE34c6DDd2FADD74403c1b401950Db
+);
+```
+
+The frontend and agent use Thirdweb's ERC-7579 beta smart account preset:
+
+```ts
+smartWallet(Config.erc7579({
+  chain,
+  sponsorGas: true,
+  factoryAddress,
+  validatorAddress,
+}));
+```
+
+Thirdweb ERC-7579 modular account deployment on Somnia Testnet:
+
+- `DefaultValidator`: `0x60A206E8927d8e2e02c48e4CdD499fCe66eB82a5`
+- `ModularAccountFactory`: `0xE5B5897f84AfE449B2Afc962AD8164425C89AD8D`
+- deployer/owner: `0x64769A00fB002b7ED192834443C9c819565Ab702`
+- publisher: `0xdd99b75f095d0c4d5112aCe938e4e6ed962fb024`
+- `DefaultValidator` transaction: `0x9f1968cc5731968ac87d0dfa62e392294acad17ad8069d47654b2f67b2dfb2ff`
+- `ModularAccount` implementation/reference transaction: `0x2fda481ade86f7732d1949a4c71884b355e010a6ecb7c67117829e8341e7d71d`
+- `ModularAccountFactory` transaction: `0x713284e24b32fd681502c4d24fbd3d89a96bb1e6ee8015ebefe88a43b8cb5f33`
+- deployed: `2026-05-31`
+- note: deploy uses Thirdweb's CREATE2 factory `0x4e59b44847b379578588920ca78fbf26c0b4956c`, so `contractAddress` is null in transaction receipts; the Thirdweb SDK returns the resolved deployed contract addresses above.
+
+Deploy or redeploy the Thirdweb ERC-7579 contracts:
+
+```bash
+pnpm --dir frontend exec node scripts/deploy-thirdweb-modular.mjs
+```
+
+Required environment variables:
+
+- `WALLET_DEPLOYER_PRIVATE_KEY`
+- `THIRDWEB_SECRET_KEY` or `THIRDWEB_CLIENT_ID`
+- optional `SOMNIA_RPC_URL`; otherwise the script uses `config/public-chains.json`
+
+After deployment, set:
+
+- `config/public-chains.json` under `chains.somnia-testnet.contracts.riskGuardModularAccountFactory`
+- `config/public-chains.json` under `chains.somnia-testnet.contracts.riskGuardDefaultValidator`
+- optionally `.env` as `RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS`
+- optionally `.env` as `RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS`
+
 Deploy the registry with Foundry:
 
 ```bash

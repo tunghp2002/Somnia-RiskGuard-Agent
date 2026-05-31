@@ -59,7 +59,7 @@ export function RiskPolicyGuard({
   actionLoading: string | null;
   config: RiskGuardConfig;
   moduleReady: boolean;
-  onConfigure: (config: RiskGuardConfig) => void;
+  onConfigure: (config: RiskGuardConfig) => Promise<boolean> | boolean;
   rules: RiskGuardRule[];
 }) {
   const [draftConfig, setDraftConfig] = useState<RiskGuardConfig>(config);
@@ -165,7 +165,7 @@ export function RiskPolicyGuard({
           <form
             aria-modal="true"
             className="profile-modal risk-policy-modal"
-            onSubmit={(event) => {
+            onSubmit={async (event) => {
               event.preventDefault();
               const error = validateDraftConfig();
 
@@ -174,8 +174,10 @@ export function RiskPolicyGuard({
                 return;
               }
 
-              onConfigure({ ...draftConfig, enabled: true });
-              setModalOpen(false);
+              const configured = await onConfigure({ ...draftConfig, enabled: true });
+              if (configured) {
+                setModalOpen(false);
+              }
             }}
             role="dialog"
           >
@@ -245,7 +247,13 @@ export function RiskPolicyGuard({
               <Button onClick={() => setModalOpen(false)} type="button" variant="secondary">
                 Cancel
               </Button>
-              <Button className="confirm-button" type="submit" variant="primary">
+              <Button
+                className="confirm-button"
+                disabled={actionLoading === "risk-policy"}
+                type="submit"
+                variant="primary"
+              >
+                {actionLoading === "risk-policy" ? <Loader2 className="spin" size={16} /> : null}
                 Confirm
               </Button>
             </div>

@@ -9,6 +9,7 @@ import {
   sendAndConfirmTransaction,
 } from "thirdweb";
 import { privateKeyToAccount, smartWallet } from "thirdweb/wallets";
+import { Config } from "thirdweb/wallets/smart";
 import type { SessionKeyService } from "./session-key.service.js";
 
 export class TelegramCheckInService {
@@ -132,14 +133,26 @@ export class TelegramCheckInService {
       testnet: true,
     });
     const sessionKeyAccount = privateKeyToAccount({ client, privateKey });
+    const factoryAddress =
+      this.config.publicChain.contracts.riskGuardModularAccountFactory;
+    const validatorAddress =
+      this.config.publicChain.contracts.riskGuardDefaultValidator;
 
-    const accountWallet = smartWallet({
+    if (!factoryAddress || !validatorAddress) {
+      throw new Error(
+        "ERC-7579 modular account factory and default validator are not configured for this chain.",
+      );
+    }
+
+    const accountWallet = smartWallet(Config.erc7579({
       chain,
+      factoryAddress,
       sponsorGas: true,
+      validatorAddress,
       overrides: {
         accountAddress: smartAccountAddress,
       },
-    });
+    }));
     const account = await accountWallet.connect({
       client,
       personalAccount: sessionKeyAccount,

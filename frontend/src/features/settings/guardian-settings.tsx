@@ -27,7 +27,8 @@ import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { agentApi, type InheritancePlanStatus, type SessionKeyActionPermission } from "@/lib/agent-api";
 import {
-    thirdwebAccountAbstraction,
+    createThirdwebAccountAbstraction,
+    somniaThirdwebChain,
     thirdwebClient
 } from "@/lib/thirdweb-client";
 
@@ -250,12 +251,11 @@ export function InheritanceSettings({
                     walletId: "app.subwallet"
                 });
                 const personalAccount = await personalWallet.connect({
-                    chain: thirdwebAccountAbstraction.chain,
+                    chain: somniaThirdwebChain,
                     client
                 });
                 const accountWallet = smartWallet(checkInPermission
-                    ? {
-                        ...thirdwebAccountAbstraction,
+                    ? createThirdwebAccountAbstraction({
                         sessionKey: {
                             address: checkInPermission.sessionKeyAddress,
                             permissions: {
@@ -265,8 +265,8 @@ export function InheritanceSettings({
                                 permissionEndTimestamp: new Date(checkInPermission.permissionEndTimestamp)
                             }
                         }
-                    }
-                    : thirdwebAccountAbstraction);
+                    })
+                    : createThirdwebAccountAbstraction());
 
                 await accountWallet.connect({
                     client,

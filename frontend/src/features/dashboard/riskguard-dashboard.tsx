@@ -16,6 +16,7 @@ import {
 import {
   RiskPolicyGuard
 } from "./components/status-panels";
+import { TransferPanel } from "./components/transfer-panel";
 import { useRiskGuardDashboard } from "./hooks/use-riskguard-dashboard";
 
 export function RiskGuardDashboard() {
@@ -68,6 +69,18 @@ export function RiskGuardDashboard() {
               onProfileSubmit={actions.handleProfileSubmit}
               telegramSession={state.telegramSession}
               userProfile={state.userProfile}
+              wallet={state.wallet}
+            />
+          ) : null}
+
+          {state.activeSection === "transfer" ? (
+            <TransferPanel
+              actionLoading={state.actionLoading}
+              estimateTransfer={actions.handleTransferEstimate}
+              onConnectWallet={actions.handleConnectWallet}
+              onTransferSubmit={actions.handleTransferSubmit}
+              publicChain={state.publicChain}
+              smartAccountAddress={state.activeInheritanceSmartAccount}
               wallet={state.wallet}
             />
           ) : null}

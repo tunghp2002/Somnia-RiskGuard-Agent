@@ -12,7 +12,12 @@
         "decimals": 18
       },
       "contracts": {
-        "inheritanceRegistry": "0x84dc6ef1639F198fBD0C4BAEd9A5fc90C59dFEF0"
+        "inheritanceRegistry": "0x84dc6ef1639F198fBD0C4BAEd9A5fc90C59dFEF0",
+        "riskGuardApprovalStore": "0x134c11CE88272933986c8A7B2C9D3F14158bd427",
+        "riskGuardHookModule": "0xAF37941610EE34c6DDd2FADD74403c1b401950Db",
+        "riskGuardAgent": "0x64769A00fB002b7ED192834443C9c819565Ab702",
+        "riskGuardModularAccountFactory": "0xE5B5897f84AfE449B2Afc962AD8164425C89AD8D",
+        "riskGuardDefaultValidator": "0x60A206E8927d8e2e02c48e4CdD499fCe66eB82a5"
       }
     }
   }

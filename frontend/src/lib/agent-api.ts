@@ -56,6 +56,11 @@ export interface PublicChainMetadata {
   };
   contracts: {
     inheritanceRegistry?: string;
+    riskGuardApprovalStore?: string;
+    riskGuardHookModule?: string;
+    riskGuardAgent?: string;
+    riskGuardModularAccountFactory?: string;
+    riskGuardDefaultValidator?: string;
   };
 }
 

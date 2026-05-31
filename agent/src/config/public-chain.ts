@@ -28,7 +28,12 @@ const publicChainSchema = z.object({
     decimals: z.number().int().nonnegative()
   }),
   contracts: z.object({
-    inheritanceRegistry: optionalAddressSchema
+    inheritanceRegistry: optionalAddressSchema,
+    riskGuardApprovalStore: optionalAddressSchema,
+    riskGuardHookModule: optionalAddressSchema,
+    riskGuardAgent: optionalAddressSchema,
+    riskGuardModularAccountFactory: optionalAddressSchema,
+    riskGuardDefaultValidator: optionalAddressSchema
   }).default({})
 });
 

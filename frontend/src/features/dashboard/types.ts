@@ -9,6 +9,7 @@ export type Notice = {
 
 export type DashboardSection =
   | "overview"
+  | "transfer"
   | "profile"
   | "inheritance";
 
@@ -39,4 +40,23 @@ export type RiskGuardConfig = {
   selectedRules: GuardRuleId[];
   largeTransferMode: "amount" | "percent";
   largeTransferThreshold: string;
+};
+
+export type TransferSource = "eoa" | "smart";
+
+export type NativeTransferInput = {
+  source: TransferSource;
+  recipient: string;
+  amount: string;
+};
+
+export type NativeTransferEstimate = {
+  sourceAddress: string;
+  amountWei: string;
+  balanceWei: string;
+  gasWei: string;
+  gasToken: string;
+  gasLabel: string;
+  totalWei: string;
+  totalLabel: string;
 };

@@ -29,6 +29,16 @@ import {
   saveInheritancePlanWithThirdweb,
 } from "@/lib/inheritance-registry";
 import {
+  configureRiskGuardPolicyWithThirdweb,
+  connectRiskGuardSmartAccount,
+} from "@/lib/riskguard-module";
+import {
+  estimateNativeTransfer,
+  getNativeTransferValidationError,
+  sendNativeTransferFromEoa,
+  sendNativeTransferFromSmartAccount,
+} from "@/lib/native-transfer";
+import {
   connectBrowserWallet,
   disconnectBrowserWallet,
   restoreBrowserWallet,
@@ -50,6 +60,8 @@ import type {
   DashboardSection,
   GuardRuleId,
   Notice,
+  NativeTransferEstimate,
+  NativeTransferInput,
   RiskGuardConfig,
   RiskGuardRule,
 } from "../types";
@@ -194,6 +206,7 @@ export function useRiskGuardDashboard() {
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const loadRequestRef = useRef(0);
+  const autoSmartAccountAttemptRef = useRef<string | null>(null);
 
   const activeWalletAddress = wallet?.address;
   const activeInheritanceSmartAccount =
@@ -218,29 +231,7 @@ export function useRiskGuardDashboard() {
           riskGuardConfig.largeTransferMode === "percent"
             ? `Agent validates transfers over ${riskGuardConfig.largeTransferThreshold || "0"}% of account SOMI.`
             : `Agent validates native transfers.`,
-      },
-      {
-        id: "unlimited-approve",
-        label: "Unlimited approve",
-        status:
-          riskGuardModuleReady &&
-          riskGuardConfig.selectedRules.includes("unlimited-approve")
-            ? "armed"
-            : "needs-module",
-        detail:
-          "Block max uint256 approvals unless an approval proof is attached.",
-      },
-      {
-        id: "new-contract",
-        label: "New contract interaction",
-        status:
-          riskGuardModuleReady &&
-          riskGuardConfig.selectedRules.includes("new-contract")
-            ? "armed"
-            : "needs-module",
-        detail:
-          "Require review before calling a target the smart account has not used before.",
-      },
+      }
     ],
     [riskGuardConfig, riskGuardModuleReady],
   );
@@ -478,6 +469,42 @@ export function useRiskGuardDashboard() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    const walletAddress = wallet?.address;
+
+    if (!walletAddress || thirdwebSmartAccount?.address) {
+      return;
+    }
+
+    const normalizedWallet = walletAddress.toLowerCase();
+    if (autoSmartAccountAttemptRef.current === normalizedWallet) {
+      return;
+    }
+
+    autoSmartAccountAttemptRef.current = normalizedWallet;
+    let stopped = false;
+
+    connectRiskGuardSmartAccount()
+      .then((account) => {
+        if (stopped) {
+          return;
+        }
+
+        setSelectedSmartAccountAddress(account.address);
+      })
+      .catch(() => {
+        if (stopped) {
+          return;
+        }
+
+        autoSmartAccountAttemptRef.current = null;
+      });
+
+    return () => {
+      stopped = true;
+    };
+  }, [thirdwebSmartAccount?.address, wallet?.address]);
 
   useEffect(
     () =>
@@ -813,19 +840,135 @@ export function useRiskGuardDashboard() {
     }
   }
 
-  function handleConfigureRiskPolicy(nextConfig: RiskGuardConfig) {
-    setRiskGuardConfig(nextConfig);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        riskGuardConfigStorageKey,
-        JSON.stringify(nextConfig),
-      );
+  async function handleConfigureRiskPolicy(nextConfig: RiskGuardConfig) {
+    const approvalStoreAddress = publicChain?.contracts.riskGuardApprovalStore;
+    const hookModuleAddress = publicChain?.contracts.riskGuardHookModule;
+    const agentAddress = publicChain?.contracts.riskGuardAgent;
+
+    if (!approvalStoreAddress || !hookModuleAddress || !agentAddress) {
+      setNotice({
+        tone: "warn",
+        message: "RiskGuard contracts are not configured for this chain yet.",
+      });
+      return false;
     }
-    setNotice({
-      tone: "ok",
-      message:
-        "RiskGuard policy saved locally. On-chain module install is the next integration step.",
+
+    setActionLoading("risk-policy");
+    try {
+      const connectedWallet = wallet ?? await connectBrowserWallet();
+      if (!wallet) {
+        setWallet(connectedWallet);
+        setAccountStatus("connected");
+      }
+
+      const riskGuardSmartAccount = thirdwebSmartAccount ?? await connectRiskGuardSmartAccount();
+      setSelectedSmartAccountAddress(riskGuardSmartAccount.address);
+
+      const result = await configureRiskGuardPolicyWithThirdweb({
+        account: riskGuardSmartAccount,
+        agentAddress,
+        approvalStoreAddress,
+        config: nextConfig,
+        hookModuleAddress,
+      });
+
+      openTransaction(publicChain, result.registerTxHash);
+      setRiskGuardConfig(nextConfig);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          riskGuardConfigStorageKey,
+          JSON.stringify(nextConfig),
+        );
+      }
+      const txAction = transactionNoticeAction(publicChain, result.registerTxHash);
+      setNotice({
+        tone: "ok",
+        message: "RiskGuard hook installed and approval route registered on-chain.",
+        ...(txAction ? { action: txAction } : {}),
+      });
+      await loadData();
+      return true;
+    } catch (error) {
+      setNotice({ tone: "bad", message: errorMessage(error) });
+      return false;
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  const handleTransferEstimate = useCallback(async (input: NativeTransferInput): Promise<NativeTransferEstimate> => {
+    const connectedWallet = wallet ?? await connectBrowserWallet();
+    if (!wallet) {
+      setWallet(connectedWallet);
+      setAccountStatus("connected");
+    }
+
+    const smartAccount =
+      input.source === "smart"
+        ? thirdwebSmartAccount ?? await connectRiskGuardSmartAccount()
+        : undefined;
+
+    if (smartAccount) {
+      setSelectedSmartAccountAddress(smartAccount.address);
+    }
+
+    return estimateNativeTransfer(input, {
+      eoaAddress: connectedWallet.address,
+      smartAccount,
+      smartAccountAddress: smartAccount?.address ?? activeInheritanceSmartAccount,
+      symbol: publicChain?.nativeCurrency.symbol ?? "STT",
     });
+  }, [activeInheritanceSmartAccount, publicChain?.nativeCurrency.symbol, thirdwebSmartAccount, wallet]);
+
+  async function handleTransferSubmit(input: NativeTransferInput) {
+    const connectedWallet = wallet ?? await connectBrowserWallet();
+    if (!wallet) {
+      setWallet(connectedWallet);
+      setAccountStatus("connected");
+    }
+
+    const smartAccount =
+      input.source === "smart"
+        ? thirdwebSmartAccount ?? await connectRiskGuardSmartAccount()
+        : undefined;
+
+    if (smartAccount) {
+      setSelectedSmartAccountAddress(smartAccount.address);
+    }
+
+    const validationError = getNativeTransferValidationError(input, {
+      eoaAddress: connectedWallet.address,
+      smartAccountAddress: smartAccount?.address ?? activeInheritanceSmartAccount,
+    });
+
+    if (validationError) {
+      setNotice({ tone: "warn", message: validationError });
+      return false;
+    }
+
+    setActionLoading("transfer");
+    try {
+      const txHash = input.source === "smart"
+        ? await sendNativeTransferFromSmartAccount(input, smartAccount!)
+        : await sendNativeTransferFromEoa(input);
+      const txAction = transactionNoticeAction(publicChain, txHash);
+
+      openTransaction(publicChain, txHash);
+      setNotice({
+        tone: "ok",
+        message: input.source === "smart"
+          ? "Smart account transfer submitted on-chain."
+          : "EOA transfer submitted on-chain.",
+        ...(txAction ? { action: txAction } : {}),
+      });
+      await loadData();
+      return true;
+    } catch (error) {
+      setNotice({ tone: "bad", message: errorMessage(error) });
+      return false;
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function handleProfileSubmit(
@@ -956,6 +1099,8 @@ export function useRiskGuardDashboard() {
       handleInheritancePlanSubmit,
       handleTelegramConnect,
       handleTelegramUnlink,
+      handleTransferEstimate,
+      handleTransferSubmit,
       handleProfileSubmit,
       loadData,
       showNotice,

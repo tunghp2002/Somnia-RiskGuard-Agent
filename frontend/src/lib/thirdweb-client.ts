@@ -1,7 +1,9 @@
 "use client";
 
 import { createThirdwebClient, defineChain } from "thirdweb";
+import { Config } from "thirdweb/wallets/smart";
 import { createWallet, type Wallet } from "thirdweb/wallets";
+import type { SmartWalletOptions } from "thirdweb/wallets";
 
 import publicChains from "../../../config/public-chains.json";
 
@@ -34,7 +36,33 @@ export const thirdwebWallets = [
   createWallet("me.rainbow")
 ] as unknown as Wallet[];
 
-export const thirdwebAccountAbstraction = {
-  chain: somniaThirdwebChain,
-  sponsorGas: true
-} as const;
+function requireModularAccountContracts() {
+  const { riskGuardModularAccountFactory, riskGuardDefaultValidator } = publicChain.contracts;
+
+  if (!riskGuardModularAccountFactory || !riskGuardDefaultValidator) {
+    throw new Error(
+      "ERC-7579 modular account factory and default validator are not configured for this chain."
+    );
+  }
+
+  return { riskGuardModularAccountFactory, riskGuardDefaultValidator };
+}
+
+export function createThirdwebAccountAbstraction(
+  options: {
+    sponsorGas?: boolean;
+    overrides?: SmartWalletOptions["overrides"];
+    sessionKey?: SmartWalletOptions["sessionKey"];
+  } = {}
+): SmartWalletOptions {
+  const { riskGuardModularAccountFactory, riskGuardDefaultValidator } = requireModularAccountContracts();
+
+  return Config.erc7579({
+    chain: somniaThirdwebChain,
+    factoryAddress: riskGuardModularAccountFactory,
+    sponsorGas: options.sponsorGas ?? true,
+    validatorAddress: riskGuardDefaultValidator,
+    ...(options.sessionKey ? { sessionKey: options.sessionKey } : {}),
+    ...(options.overrides ? { overrides: options.overrides } : {})
+  });
+}

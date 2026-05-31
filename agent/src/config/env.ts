@@ -140,6 +140,11 @@ const rawEnvSchema = z
     z.number().int().positive()
   ),
   INHERITANCE_REGISTRY_CONTRACT_ADDRESS: optionalEthereumAddressSchema,
+  RISK_GUARD_APPROVAL_STORE_ADDRESS: optionalEthereumAddressSchema,
+  RISK_GUARD_HOOK_MODULE_ADDRESS: optionalEthereumAddressSchema,
+  RISK_GUARD_AGENT_ADDRESS: optionalEthereumAddressSchema,
+  RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS: optionalEthereumAddressSchema,
+  RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS: optionalEthereumAddressSchema,
   AUTO_CLAIM_ENABLED: booleanFromString,
   MAX_CLAIM_GAS_USD: numberFromString("MAX_CLAIM_GAS_USD").pipe(
     z.number().nonnegative()
@@ -226,7 +231,12 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
       decimals: Number(env.PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS)
     },
     contracts: {
-      inheritanceRegistry: env.INHERITANCE_REGISTRY_CONTRACT_ADDRESS
+      inheritanceRegistry: env.INHERITANCE_REGISTRY_CONTRACT_ADDRESS,
+      riskGuardApprovalStore: env.RISK_GUARD_APPROVAL_STORE_ADDRESS,
+      riskGuardHookModule: env.RISK_GUARD_HOOK_MODULE_ADDRESS,
+      riskGuardAgent: env.RISK_GUARD_AGENT_ADDRESS,
+      riskGuardModularAccountFactory: env.RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS,
+      riskGuardDefaultValidator: env.RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS
     }
   },
   llm: {
@@ -305,6 +315,11 @@ export function validateConfig(
     SOMNIA_RPC_URL: publicChain.rpcUrl,
     SOMNIA_CHAIN_ID: String(publicChain.chainId),
     INHERITANCE_REGISTRY_CONTRACT_ADDRESS: publicChain.contracts.inheritanceRegistry,
+    RISK_GUARD_APPROVAL_STORE_ADDRESS: publicChain.contracts.riskGuardApprovalStore,
+    RISK_GUARD_HOOK_MODULE_ADDRESS: publicChain.contracts.riskGuardHookModule,
+    RISK_GUARD_AGENT_ADDRESS: publicChain.contracts.riskGuardAgent,
+    RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS: publicChain.contracts.riskGuardModularAccountFactory,
+    RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS: publicChain.contracts.riskGuardDefaultValidator,
     PUBLIC_CHAIN_KEY: publicChain.key,
     PUBLIC_CHAIN_NAME: publicChain.name,
     PUBLIC_CHAIN_EXPLORER_URL: publicChain.blockExplorerUrl,

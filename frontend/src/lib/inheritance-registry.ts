@@ -2,7 +2,7 @@ import { BrowserProvider, Contract } from "ethers";
 import { getContract, prepareContractCall, prepareTransaction, sendAndConfirmTransaction } from "thirdweb";
 import { EIP1193, smartWallet, type Account } from "thirdweb/wallets";
 
-import { somniaThirdwebChain, thirdwebAccountAbstraction, thirdwebClient } from "@/lib/thirdweb-client";
+import { createThirdwebAccountAbstraction, somniaThirdwebChain, thirdwebClient } from "@/lib/thirdweb-client";
 
 import type { InheritancePlanStatus } from "@/lib/agent-api";
 
@@ -25,7 +25,10 @@ const inheritanceRegistryAbi = [
   "function updatePlan((address addr,uint256 shareBps)[] beneficiaries,(address token)[] protectedAssets,uint256 heartbeatInterval,uint256 gracePeriod,uint256 timelockPeriod)",
   "function cancelPlan()"
 ];
-const planWriteGasLimit = 6_000_000n;
+
+// `createPlan` / `updatePlan` now schedules Somnia reactivity on-chain, which
+// materially increases execution cost under ERC-4337 simulation.
+const planWriteGasLimit = 5000_000_000n;
 const cancelPlanGasLimit = 1_000_000n;
 
 type RegistryContract = Contract & {
@@ -155,7 +158,7 @@ async function connectUserPaidThirdwebSmartAccount(expectedSmartAccountAddress: 
     client: thirdwebClient
   });
   const accountWallet = smartWallet({
-    ...thirdwebAccountAbstraction,
+    ...createThirdwebAccountAbstraction(),
     sponsorGas: false
   });
   const account = await accountWallet.connect({
