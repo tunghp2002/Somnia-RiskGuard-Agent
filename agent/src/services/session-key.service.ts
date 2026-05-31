@@ -34,6 +34,9 @@ export class SessionKeyService {
       action,
       ...(this.config.publicChain.contracts.inheritanceRegistry
         ? { inheritanceRegistryAddress: this.config.publicChain.contracts.inheritanceRegistry }
+        : {}),
+      ...(this.config.publicChain.contracts.riskGuardApprovalStore
+        ? { riskGuardApprovalStoreAddress: this.config.publicChain.contracts.riskGuardApprovalStore }
         : {})
     });
     const existing = await repository.findForGrant({

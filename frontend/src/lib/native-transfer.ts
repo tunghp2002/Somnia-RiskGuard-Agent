@@ -1,12 +1,17 @@
-import { BrowserProvider, formatUnits, getAddress, isAddress, parseUnits } from "ethers";
+import { BrowserProvider, Interface, formatUnits, getAddress, isAddress, parseUnits } from "ethers";
 import { estimateGasCost, prepareTransaction, sendAndConfirmTransaction } from "thirdweb";
-import type { Account } from "thirdweb/wallets";
 
+import { agentApi } from "@/lib/agent-api";
 import { somniaThirdwebChain, thirdwebClient } from "@/lib/thirdweb-client";
 
 import type { NativeTransferEstimate, NativeTransferInput } from "@/features/dashboard/types";
+import type { Account } from "thirdweb/wallets";
 
 const nativeDecimals = 18;
+const smartTransferGasLimit = 31_000_000n;
+const riskGuardValidatorInterface = new Interface([
+  "error PendingApprovalRequired(address smartAccount, bytes32 txHash, address signer, bytes riskContext)"
+]);
 
 type TransferValidationContext = {
   eoaAddress: string | undefined;
@@ -79,9 +84,31 @@ function buildThirdwebTransferTransaction(recipient: string, amountWei: bigint) 
   return prepareTransaction({
     chain: somniaThirdwebChain,
     client: thirdwebClient,
+    gas: smartTransferGasLimit,
     to: getAddress(recipient),
     value: amountWei
   });
+}
+
+function extractRiskGuardPendingApproval(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const candidates = message.match(/0x[a-fA-F0-9]{8,}/g) ?? [];
+
+  for (const candidate of candidates.sort((left, right) => right.length - left.length)) {
+    try {
+      const parsed = riskGuardValidatorInterface.parseError(candidate);
+      if (parsed?.name === "PendingApprovalRequired") {
+        return {
+          smartAccountAddress: getAddress(parsed.args.smartAccount as string),
+          txHash: parsed.args.txHash as string
+        };
+      }
+    } catch {
+      // Keep scanning: wallet SDKs wrap revert data differently across transports.
+    }
+  }
+
+  return undefined;
 }
 
 export async function estimateNativeTransfer(
@@ -170,10 +197,27 @@ export async function sendNativeTransferFromSmartAccount(input: NativeTransferIn
     input.recipient.trim(),
     parseUnits(input.amount.trim(), nativeDecimals)
   );
-  const receipt = await sendAndConfirmTransaction({
-    account,
-    transaction
-  });
+  let receipt: Awaited<ReturnType<typeof sendAndConfirmTransaction>>;
+
+  try {
+    receipt = await sendAndConfirmTransaction({
+      account,
+      transaction
+    });
+  } catch (error) {
+    const pendingApproval = extractRiskGuardPendingApproval(error);
+    if (pendingApproval) {
+      await agentApi.notifyRiskGuardPendingApproval({
+        smartAccountAddress: pendingApproval.smartAccountAddress,
+        txHash: pendingApproval.txHash,
+        target: getAddress(input.recipient.trim()),
+        valueWei: parseUnits(input.amount.trim(), nativeDecimals).toString(),
+        description: `Native transfer of ${input.amount.trim()} STT to ${getAddress(input.recipient.trim())}`,
+        riskLevel: "high"
+      }).catch(() => undefined);
+    }
+    throw error;
+  }
 
   return receipt.transactionHash;
 }

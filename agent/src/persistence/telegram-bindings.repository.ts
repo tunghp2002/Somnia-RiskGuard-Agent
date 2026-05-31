@@ -63,6 +63,16 @@ export class TelegramBindingsRepository {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   }
 
+  public async latestForSmartAccount(
+    smartAccountAddress: string
+  ): Promise<TelegramBindingRecord | undefined> {
+    const checksumAddress = getAddress(smartAccountAddress);
+    const bindings = await this.store.read();
+    return bindings
+      .filter((binding) => binding.smartAccountAddress === checksumAddress)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  }
+
   public async findByUserAndChat(
     userId: string,
     chatId: string

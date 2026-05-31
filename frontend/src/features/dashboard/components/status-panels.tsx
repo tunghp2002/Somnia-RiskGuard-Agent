@@ -67,6 +67,8 @@ export function RiskPolicyGuard({
   const [modalOpen, setModalOpen] = useState(false);
 
   const largeTransferEnabled = draftConfig.selectedRules.includes("large-transfer");
+  const savingGuard = actionLoading === "risk-policy";
+  const disablingGuard = actionLoading === "risk-policy-disable";
 
   function toggleRule(ruleId: GuardRuleId) {
     setValidationError(null);
@@ -122,6 +124,25 @@ export function RiskPolicyGuard({
     return sanitized;
   }
 
+  async function submitConfig(nextConfig: RiskGuardConfig) {
+    const error = nextConfig.enabled ? validateDraftConfig() : null;
+
+    if (error) {
+      setValidationError(error);
+      return;
+    }
+
+    const configured = await onConfigure(nextConfig);
+    if (configured) {
+      setModalOpen(false);
+    }
+  }
+
+  async function disableGuard() {
+    setValidationError(null);
+    await submitConfig({ ...config, enabled: false });
+  }
+
   return (
     <section className="panel risk-panel">
       <PanelHeading icon={<ShieldAlert size={18} />} title="Risk Policy Guard" action={moduleReady ? "module armed" : "module pending"} />
@@ -131,34 +152,38 @@ export function RiskPolicyGuard({
       {moduleReady ? (
         <>
           <p>Smart account policy checks are active before risky UserOps execute.</p>
-          <div className="next-steps">
-            {rules
-              .filter((rule) => rule.status === "armed")
-              .map((rule) => (
-                <span className={`policy-rule ${rule.status}`} key={rule.id}>
-                  <strong>{rule.label}</strong>
-                  <small>{rule.detail}</small>
-                </span>
-              ))}
-          </div>
         </>
       ) : (
         <p className="guard-empty-state">Custom Validation Module has not been set up yet.</p>
       )}
-      <Button
-        className="guard-configure-button"
-        disabled={actionLoading === "risk-policy"}
-        onClick={() => {
-          setDraftConfig(config);
-          setValidationError(null);
-          setModalOpen(true);
-        }}
-        type="button"
-        variant="secondary"
-      >
-        {actionLoading === "risk-policy" ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />}
-        Configure guard
-      </Button>
+      <div className="guard-action-row">
+        <Button
+          className="guard-configure-button"
+          disabled={savingGuard}
+          onClick={() => {
+            setDraftConfig(config);
+            setValidationError(null);
+            setModalOpen(true);
+          }}
+          type="button"
+          variant="secondary"
+        >
+          {savingGuard ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />}
+          {moduleReady ? "Edit setup" : "Configure guard"}
+        </Button>
+        {moduleReady ? (
+          <Button
+            className="guard-disable-button"
+            disabled={savingGuard || disablingGuard}
+            onClick={disableGuard}
+            type="button"
+            variant="secondary"
+          >
+            {disablingGuard ? <Loader2 className="spin" size={16} /> : <ShieldX size={16} />}
+            Disable
+          </Button>
+        ) : null}
+      </div>
 
       {modalOpen ? (
         <div className="profile-modal-overlay" role="presentation">
@@ -167,21 +192,11 @@ export function RiskPolicyGuard({
             className="profile-modal risk-policy-modal"
             onSubmit={async (event) => {
               event.preventDefault();
-              const error = validateDraftConfig();
-
-              if (error) {
-                setValidationError(error);
-                return;
-              }
-
-              const configured = await onConfigure({ ...draftConfig, enabled: true });
-              if (configured) {
-                setModalOpen(false);
-              }
+              await submitConfig({ ...draftConfig, enabled: true });
             }}
             role="dialog"
           >
-            <h3>Setup RiskGuard Module</h3>
+            <h3>{moduleReady ? "Edit RiskGuard Setup" : "Setup RiskGuard Module"}</h3>
             <p>Choose which risky UserOps require agent validation before execution.</p>
             <div className="risk-policy-checks">
               {rules.map((rule) => (
@@ -247,13 +262,25 @@ export function RiskPolicyGuard({
               <Button onClick={() => setModalOpen(false)} type="button" variant="secondary">
                 Cancel
               </Button>
+              {moduleReady ? (
+                <Button
+                  className="guard-disable-button"
+                  disabled={savingGuard || disablingGuard}
+                  onClick={disableGuard}
+                  type="button"
+                  variant="secondary"
+                >
+                  {disablingGuard ? <Loader2 className="spin" size={16} /> : <ShieldX size={16} />}
+                  Disable guard
+                </Button>
+              ) : null}
               <Button
                 className="confirm-button"
-                disabled={actionLoading === "risk-policy"}
+                disabled={savingGuard || disablingGuard}
                 type="submit"
                 variant="primary"
               >
-                {actionLoading === "risk-policy" ? <Loader2 className="spin" size={16} /> : null}
+                {savingGuard ? <Loader2 className="spin" size={16} /> : null}
                 Confirm
               </Button>
             </div>

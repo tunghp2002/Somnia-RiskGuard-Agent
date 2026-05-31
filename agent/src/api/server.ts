@@ -26,6 +26,7 @@ import {
   TelegramAlertServiceError,
   type TelegramAlertService
 } from "../services/telegram-alert.service.js";
+import { riskGuardPendingApprovalRequestSchema } from "../services/riskguard-approval.service.js";
 import { TelegramConnectService } from "../services/telegram-connect.service.js";
 import type { RiskScoreService } from "../services/risk-score.service.js";
 import {
@@ -653,6 +654,16 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         const body = telegramCallbackRequestSchema.parse(await readJsonBody(request));
         const result = await dependencies.telegramAlerts.processCallback(body);
         sendJson(response, result.ok ? 200 : 400, success(result, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/riskguard/pending-approval") {
+        if (!dependencies.telegramAlerts) {
+          throw new ServerDependencyError("Telegram alert service is not configured");
+        }
+        const body = riskGuardPendingApprovalRequestSchema.parse(await readJsonBody(request));
+        const result = await dependencies.telegramAlerts.sendRiskGuardApprovalRequest(body);
+        sendJson(response, 202, success(result, requestId));
         return;
       }
 

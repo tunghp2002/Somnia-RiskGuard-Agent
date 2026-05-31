@@ -26,6 +26,10 @@ import {
 } from "../policies/execution-policy.js";
 import type { AuditService } from "./audit.service.js";
 import type { RiskScoreService } from "./risk-score.service.js";
+import {
+  riskGuardPendingApprovalRequestSchema,
+  type RiskGuardPendingApprovalRequest
+} from "./riskguard-approval.service.js";
 
 export const telegramBindingRequestSchema = z
   .object({
@@ -134,6 +138,13 @@ export interface TelegramCallbackResult {
   policyDecision?: PolicyDecision;
 }
 
+export interface RiskGuardApprovalSubmitter {
+  submitApproval(input: {
+    smartAccountAddress: string;
+    txHash: string;
+  }): Promise<{ txHash: string; approvalStore: string }>;
+}
+
 function severityForScore(score: number): AlertSeverity {
   if (score >= 90) {
     return "critical";
@@ -154,6 +165,10 @@ function summarizeReason(explanation: string): string {
   return explanation.length > 240 ? `${explanation.slice(0, 237)}...` : explanation;
 }
 
+function formatAddress(value: string): string {
+  return value.length > 14 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
+}
+
 export class TelegramAlertService {
   public constructor(
     private readonly config: AgentConfig,
@@ -164,7 +179,8 @@ export class TelegramAlertService {
     private readonly portfolios: PortfolioSnapshotsRepository,
     private readonly riskScore: RiskScoreService,
     private readonly telegram: TelegramClient,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly riskGuardApprovals?: RiskGuardApprovalSubmitter
   ) {}
 
   public async health() {
@@ -232,6 +248,69 @@ export class TelegramAlertService {
 
   public latestBindingForWallet(walletAddress: string) {
     return this.bindings.latestForWallet(walletAddress);
+  }
+
+  public async sendRiskGuardApprovalRequest(input: RiskGuardPendingApprovalRequest) {
+    const parsed = riskGuardPendingApprovalRequestSchema.parse(input);
+    const binding = parsed.walletAddress
+      ? await this.bindings.latestForWallet(parsed.walletAddress)
+      : await this.bindings.latestForSmartAccount(parsed.smartAccountAddress);
+
+    if (!binding) {
+      await this.audit.record({
+        eventType: "riskguard.approval.skipped",
+        status: "skipped",
+        metadata: {
+          walletAddress: parsed.walletAddress,
+          smartAccountAddress: parsed.smartAccountAddress,
+          txHash: parsed.txHash,
+          reason: "missing_telegram_binding"
+        }
+      });
+      throw new TelegramAlertServiceError(
+        "telegram_binding_not_found",
+        "No Telegram binding is connected for this smart account.",
+        404
+      );
+    }
+
+    const health = await this.telegram.health();
+    if (!health.ok) {
+      throw new TelegramAlertServiceError(
+        "telegram_unhealthy",
+        health.reason ?? "Telegram is not healthy",
+        503
+      );
+    }
+
+    const buttons = await this.buildRiskGuardButtons(
+      binding,
+      parsed.smartAccountAddress,
+      parsed.txHash
+    );
+    const sent = await this.telegram.sendMessage({
+      chatId: binding.chatId,
+      text: this.formatRiskGuardApprovalMessage(parsed),
+      buttons
+    });
+
+    await this.audit.record({
+      eventType: "riskguard.approval.requested",
+      status: "succeeded",
+      metadata: {
+        userId: binding.userId,
+        walletAddress: binding.walletAddress,
+        smartAccountAddress: parsed.smartAccountAddress,
+        txHash: parsed.txHash,
+        telegramMessageId: sent.messageId
+      }
+    });
+
+    return {
+      sent: true,
+      chatId: binding.chatId,
+      telegramMessageId: sent.messageId
+    };
   }
 
   public async unlinkChat(walletAddress: string) {
@@ -419,7 +498,46 @@ export class TelegramAlertService {
       );
     }
 
+    if (callbackRecord.actionType === "approve_riskguard_tx") {
+      return this.approveRiskGuardTx(callbackRecord, binding.chatId);
+    }
+
+    if (callbackRecord.actionType === "decline_riskguard_tx") {
+      return this.declineRiskGuardTx(callbackRecord, binding.chatId);
+    }
+
     return this.approveSafeAction(callbackRecord.safeAction, callbackRecord.userId);
+  }
+
+  private async buildRiskGuardButtons(
+    binding: { userId: string; chatId: string; walletAddress: string },
+    smartAccountAddress: string,
+    txHash: string
+  ) {
+    return [
+      {
+        text: "Approve",
+        callbackData: await this.createCallbackData({
+          actionType: "approve_riskguard_tx",
+          userId: binding.userId,
+          chatId: binding.chatId,
+          walletAddress: binding.walletAddress,
+          smartAccountAddress,
+          txHash
+        })
+      },
+      {
+        text: "Decline",
+        callbackData: await this.createCallbackData({
+          actionType: "decline_riskguard_tx",
+          userId: binding.userId,
+          chatId: binding.chatId,
+          walletAddress: binding.walletAddress,
+          smartAccountAddress,
+          txHash
+        })
+      }
+    ];
   }
 
   private async buildAlertButtons(
@@ -465,6 +583,8 @@ export class TelegramAlertService {
     chatId: string;
     alertId?: string;
     walletAddress?: string;
+    smartAccountAddress?: string;
+    txHash?: string;
     safeAction?: string;
   }): Promise<string> {
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
@@ -475,6 +595,8 @@ export class TelegramAlertService {
       expiresAt,
       ...(input.alertId ? { alertId: input.alertId } : {}),
       ...(input.walletAddress ? { walletAddress: input.walletAddress } : {}),
+      ...(input.smartAccountAddress ? { smartAccountAddress: input.smartAccountAddress } : {}),
+      ...(input.txHash ? { txHash: input.txHash } : {}),
       ...(input.safeAction ? { safeAction: input.safeAction } : {})
     });
 
@@ -490,6 +612,20 @@ export class TelegramAlertService {
       `Reason: ${summarizeReason(riskSnapshot.explanation)}`,
       "This is informational analysis, not financial advice."
     ].join("\n");
+  }
+
+  private formatRiskGuardApprovalMessage(input: RiskGuardPendingApprovalRequest): string {
+    return [
+      "RiskGuard Transaction Review",
+      `Risk: ${input.riskLevel}`,
+      `Smart Account: ${formatAddress(input.smartAccountAddress)}`,
+      `Tx Hash: ${formatAddress(input.txHash)}`,
+      input.target ? `Target: ${formatAddress(input.target)}` : undefined,
+      input.valueWei ? `Value: ${input.valueWei} wei` : undefined,
+      input.selector ? `Selector: ${input.selector}` : undefined,
+      input.description ? `Analysis: ${summarizeReason(input.description)}` : undefined,
+      "Approve will submit an on-chain one-time approval. Decline leaves the transaction blocked."
+    ].filter(Boolean).join("\n");
   }
 
   private async acknowledgeAlert(
@@ -595,6 +731,81 @@ export class TelegramAlertService {
         : "Unsupported action is outside MVP scope.",
       policyDecision: decision
     };
+  }
+
+  private async approveRiskGuardTx(
+    callbackRecord: {
+      userId: string;
+      smartAccountAddress?: string | undefined;
+      txHash?: string | undefined;
+    },
+    chatId: string
+  ): Promise<TelegramCallbackResult> {
+    if (!this.riskGuardApprovals || !callbackRecord.smartAccountAddress || !callbackRecord.txHash) {
+      return this.rejectCallback("riskguard.approval.rejected", {
+        userId: callbackRecord.userId,
+        reason: "approval_service_not_configured"
+      });
+    }
+
+    try {
+      const receipt = await this.riskGuardApprovals.submitApproval({
+        smartAccountAddress: callbackRecord.smartAccountAddress,
+        txHash: callbackRecord.txHash
+      });
+      await this.telegram.sendMessage({
+        chatId,
+        text: [
+          "RiskGuard approval submitted on-chain.",
+          `Approval Tx: ${receipt.txHash}`,
+          "Resubmit the original transaction now."
+        ].join("\n")
+      });
+
+      return { ok: true, message: "RiskGuard approval submitted." };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "approval_failed";
+      await this.audit.record({
+        eventType: "riskguard.approval.failed",
+        status: "failed",
+        metadata: {
+          userId: callbackRecord.userId,
+          smartAccountAddress: callbackRecord.smartAccountAddress,
+          txHash: callbackRecord.txHash,
+          reason
+        }
+      });
+      await this.telegram.sendMessage({
+        chatId,
+        text: `RiskGuard approval failed: ${reason}`
+      });
+      return { ok: false, message: "RiskGuard approval failed." };
+    }
+  }
+
+  private async declineRiskGuardTx(
+    callbackRecord: {
+      userId: string;
+      smartAccountAddress?: string | undefined;
+      txHash?: string | undefined;
+    },
+    chatId: string
+  ): Promise<TelegramCallbackResult> {
+    await this.audit.record({
+      eventType: "riskguard.approval.declined",
+      status: "denied",
+      metadata: {
+        userId: callbackRecord.userId,
+        smartAccountAddress: callbackRecord.smartAccountAddress,
+        txHash: callbackRecord.txHash
+      }
+    });
+    await this.telegram.sendMessage({
+      chatId,
+      text: "RiskGuard transaction declined. No on-chain approval was submitted."
+    });
+
+    return { ok: true, message: "RiskGuard transaction declined." };
   }
 
   private async rejectCallback(

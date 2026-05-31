@@ -78,7 +78,6 @@ export function ProfilePanel({
               placeholder="Your display name"
               defaultValue={userProfile?.displayName ?? ""}
               maxLength={64}
-              required
             />
           </label>
           <label>

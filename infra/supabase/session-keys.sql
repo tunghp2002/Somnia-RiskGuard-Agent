@@ -2,7 +2,7 @@ create table if not exists public.session_keys (
   session_key_id uuid primary key,
   wallet_address text not null,
   smart_account_address text,
-  action text not null check (action in ('checkin', 'send', 'swap')),
+  action text not null check (action in ('checkin', 'send', 'swap', 'riskguard-approval')),
   session_key_address text not null,
   encrypted_private_key text not null,
   encryption_iv text not null,
@@ -12,6 +12,13 @@ create table if not exists public.session_keys (
   updated_at timestamptz not null default now(),
   last_used_at timestamptz
 );
+
+alter table public.session_keys
+  drop constraint if exists session_keys_action_check;
+
+alter table public.session_keys
+  add constraint session_keys_action_check
+  check (action in ('checkin', 'send', 'swap', 'riskguard-approval'));
 
 create index if not exists session_keys_wallet_action_idx
   on public.session_keys (wallet_address, action, updated_at desc);

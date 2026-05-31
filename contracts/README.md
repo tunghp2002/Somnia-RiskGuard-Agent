@@ -45,18 +45,21 @@ RiskGuard hook approval gate deployment on Somnia Testnet:
 
 - `RiskGuardApprovalStore`: `0x134c11CE88272933986c8A7B2C9D3F14158bd427`
 - `RiskGuardHookModule`: `0xAF37941610EE34c6DDd2FADD74403c1b401950Db`
+- `RiskGuardValidator`: `0x18bAA9B475dB370D746955334C8C58452E305f60`
 - deployer: `0x64769A00fB002b7ED192834443C9c819565Ab702`
 - `RiskGuardApprovalStore` transaction: `0xc12fc12e00687e4297a1239e865e13d06c64e4e166df177b7cd36b2b6f60f645`
 - `RiskGuardHookModule` transaction: `0x193e958d60204f27eb5acc9f6dcf5b0a7b5594d7c469e9f487c39fa92d871205`
-- deployed: `2026-05-30`
-- note: this hook decodes ERC-7579 `execute(bytes32,bytes)` calldata as well as the legacy `execute(address,uint256,bytes)` / `executeBatch(address[],uint256[],bytes[])` shapes.
+- `RiskGuardValidator` transaction: `0xc54e5d6734da450601d8c28f204602704156d36fa1bfaa6556d117d92967a085`
+- deployed: hook/store `2026-05-30`, validator `2026-05-31`
+- note: `RiskGuardValidator` is the active guard path for Thirdweb ERC-7579 accounts. It validates owner/admin signatures and gates ERC-7579 `execute(bytes32,bytes)` UserOps during `validateUserOp`, including native transfers. `RiskGuardHookModule` is kept for hook experiments, but Thirdweb's published `ModularAccount` does not run hooks on its primary `execute(...)` path.
+- note: no Thirdweb contract is forked. The account factory and account implementation stay Thirdweb-published; RiskGuard is installed as a separate ERC-7579 validator module.
 
-For a smart account test install, register the approval route after installing the hook:
+For a smart account test install, register the approval route after installing the validator:
 
 ```solidity
 RiskGuardApprovalStore(0x134c11CE88272933986c8A7B2C9D3F14158bd427).registerAgentAndHook(
   agentAddress,
-  0xAF37941610EE34c6DDd2FADD74403c1b401950Db
+  0x18bAA9B475dB370D746955334C8C58452E305f60
 );
 ```
 
@@ -67,9 +70,28 @@ smartWallet(Config.erc7579({
   chain,
   sponsorGas: true,
   factoryAddress,
-  validatorAddress,
+  validatorAddress: riskGuardValidatorModule,
 }));
 ```
+
+RiskGuard Telegram approval flow:
+
+- `RiskGuardValidator.validateUserOp(...)` is the enforcement point. It blocks risky native transfers, contract calls, approvals, and batches by reverting `PendingApprovalRequired(smartAccount, txHash, signer, riskContext)`.
+- EVM revert logs are not persisted, so RiskGuard does not emit an on-chain "pending approval" event before reverting. A contract call to Somnia Agent from inside the same reverting validation would also be rolled back.
+- The agent exposes `POST /api/riskguard/pending-approval` for a RiskGuard-aware frontend, wallet, or bundler/RPC proxy to forward decoded `PendingApprovalRequired` data. The agent sends Telegram Approve/Decline buttons.
+- On Approve, the agent wallet calls `RiskGuardApprovalStore.submitApproval(smartAccount, txHash)` on-chain. The user can then resubmit the original transaction; the validator consumes the one-time approval.
+- On Decline, the agent submits nothing, so the original transaction remains blocked.
+
+Agent environment for Telegram approvals:
+
+- `RISK_GUARD_APPROVAL_STORE_ADDRESS`
+- `SESSION_KEY_ENCRYPTION_KEY`
+- Supabase session-key storage configured for the `session_keys` table
+- Telegram bot settings (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, optional `TELEGRAM_WEBHOOK_SECRET`)
+
+RiskGuard does not use a global `RISK_GUARD_AGENT_ADDRESS`. During guard setup, the agent API creates/reuses a per-smart-account `riskguard-approval` session key, returns its address to the frontend, and the smart account registers that address in `ApprovalStore.registerAgentAndHook(...)`. The encrypted private key stays in backend session-key storage and is used only when the user taps Approve in Telegram.
+
+Important limitation: "any dApp / any wallet" needs the transaction path to use the RiskGuard validator and a RiskGuard-aware sender surface, wallet provider, bundler, or RPC proxy that forwards failed simulation/revert data to `/api/riskguard/pending-approval`. A purely on-chain subscription to a normal reverted UserOp is not possible with standard EVM logs because reverted logs are discarded.
 
 Thirdweb ERC-7579 modular account deployment on Somnia Testnet:
 

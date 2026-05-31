@@ -16,6 +16,12 @@ export const actionNonceSchema = z.object({
     .regex(/^0x[a-fA-F0-9]{40}$/)
     .transform((value) => getAddress(value))
     .optional(),
+  smartAccountAddress: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/)
+    .transform((value) => getAddress(value))
+    .optional(),
+  txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
   safeAction: z.string().min(1).optional(),
   consumedAt: z.string().datetime().optional()
 });
@@ -29,6 +35,8 @@ export interface CreateActionNonceInput {
   expiresAt: string;
   alertId?: string;
   walletAddress?: string;
+  smartAccountAddress?: string;
+  txHash?: string;
   safeAction?: string;
 }
 
@@ -63,6 +71,8 @@ export class ActionNoncesRepository {
       expiresAt: input.expiresAt,
       ...(input.alertId ? { alertId: input.alertId } : {}),
       ...(input.walletAddress ? { walletAddress: input.walletAddress } : {}),
+      ...(input.smartAccountAddress ? { smartAccountAddress: input.smartAccountAddress } : {}),
+      ...(input.txHash ? { txHash: input.txHash } : {}),
       ...(input.safeAction ? { safeAction: input.safeAction } : {})
     });
 

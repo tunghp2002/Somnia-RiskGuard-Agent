@@ -11,7 +11,7 @@ export interface SupabaseJsonStoreOptions<T> {
   tableName?: string;
 }
 
-interface AppRecordRow {
+interface AgentRecordRow {
   collection: string;
   data: unknown;
   created_at?: string;
@@ -27,7 +27,7 @@ export class SupabaseJsonStore<T> implements RepositoryStore<T> {
 
   public constructor(private readonly options: SupabaseJsonStoreOptions<T>) {
     this.collection = options.filename.replace(/\.json$/i, "");
-    this.restUrl = `${options.supabaseUrl.replace(/\/$/, "")}/rest/v1/${options.tableName ?? "app_records"}`;
+    this.restUrl = `${options.supabaseUrl.replace(/\/$/, "")}/rest/v1/${options.tableName ?? "agent_records"}`;
     this.headers = {
       apikey: options.serviceRoleKey,
       Authorization: `Bearer ${options.serviceRoleKey}`,
@@ -41,7 +41,7 @@ export class SupabaseJsonStore<T> implements RepositoryStore<T> {
       collection: `eq.${this.collection}`,
       limit: "1"
     });
-    const rows = await this.request<AppRecordRow[]>(`?${params.toString()}`);
+    const rows = await this.request<AgentRecordRow[]>(`?${params.toString()}`);
     const value = rows[0]?.data ?? this.options.defaultValue;
     return this.options.schema.parse(value);
   }
@@ -52,7 +52,7 @@ export class SupabaseJsonStore<T> implements RepositoryStore<T> {
     const params = new URLSearchParams({
       on_conflict: "collection"
     });
-    await this.request<AppRecordRow[]>(`?${params.toString()}`, {
+    await this.request<AgentRecordRow[]>(`?${params.toString()}`, {
       method: "POST",
       headers: {
         Prefer: "resolution=merge-duplicates,return=minimal"
@@ -90,10 +90,10 @@ export class SupabaseJsonStore<T> implements RepositoryStore<T> {
       const text = await response.text();
       if (response.status === 404 && text.includes("PGRST205")) {
         throw new Error(
-          `Supabase table public.${this.options.tableName ?? "app_records"} is missing or not in the schema cache. Run infra/supabase/setup.sql in Supabase SQL Editor, then restart the agent. Original response: ${text}`
+          `Supabase table public.${this.options.tableName ?? "agent_records"} is missing or not in the schema cache. Run infra/supabase/setup.sql in Supabase SQL Editor, then restart the agent. Original response: ${text}`
         );
       }
-      throw new Error(`Supabase app record request failed (${response.status}): ${text}`);
+      throw new Error(`Supabase agent record request failed (${response.status}): ${text}`);
     }
 
     if (response.status === 204 || response.headers.get("content-length") === "0") {

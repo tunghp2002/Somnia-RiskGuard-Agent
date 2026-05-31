@@ -58,7 +58,7 @@ export interface PublicChainMetadata {
     inheritanceRegistry?: string;
     riskGuardApprovalStore?: string;
     riskGuardHookModule?: string;
-    riskGuardAgent?: string;
+    riskGuardValidatorModule?: string;
     riskGuardModularAccountFactory?: string;
     riskGuardDefaultValidator?: string;
   };
@@ -119,7 +119,7 @@ export interface TelegramBindingStatus {
 }
 
 export interface SessionKeyActionPermission {
-  action: "checkin" | "send" | "swap";
+  action: "checkin" | "send" | "swap" | "riskguard-approval";
   walletAddress: string;
   smartAccountAddress?: string;
   sessionKeyAddress: string;
@@ -231,6 +231,12 @@ export interface DemoScenarioResult {
     createdAt: string;
   }>;
   createdAt: string;
+}
+
+export interface RiskGuardPendingApprovalResult {
+  sent: boolean;
+  chatId: string;
+  telegramMessageId?: string;
 }
 
 function getAgentApiBaseUrl() {
@@ -357,6 +363,20 @@ export const agentApi = {
     }),
   getTelegramConnectStatus: (walletAddress: string) =>
     request<TelegramConnectSession>(`/api/telegram/connect/status${walletQuery(walletAddress)}`),
+  notifyRiskGuardPendingApproval: (body: {
+    walletAddress?: string;
+    smartAccountAddress: string;
+    txHash: string;
+    target?: string;
+    valueWei?: string;
+    selector?: string;
+    description?: string;
+    riskLevel?: "low" | "medium" | "high" | "critical";
+  }) =>
+    request<RiskGuardPendingApprovalResult>("/api/riskguard/pending-approval", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
   confirmTelegramConnect: (body: { code: string; chatId: string; telegramUserId?: string }) =>
     request<TelegramConnectSession>("/api/telegram/connect/confirm", {
       method: "POST",

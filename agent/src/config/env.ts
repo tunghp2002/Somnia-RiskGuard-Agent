@@ -142,7 +142,7 @@ const rawEnvSchema = z
   INHERITANCE_REGISTRY_CONTRACT_ADDRESS: optionalEthereumAddressSchema,
   RISK_GUARD_APPROVAL_STORE_ADDRESS: optionalEthereumAddressSchema,
   RISK_GUARD_HOOK_MODULE_ADDRESS: optionalEthereumAddressSchema,
-  RISK_GUARD_AGENT_ADDRESS: optionalEthereumAddressSchema,
+  RISK_GUARD_VALIDATOR_MODULE_ADDRESS: optionalEthereumAddressSchema,
   RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS: optionalEthereumAddressSchema,
   RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS: optionalEthereumAddressSchema,
   AUTO_CLAIM_ENABLED: booleanFromString,
@@ -234,7 +234,7 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
       inheritanceRegistry: env.INHERITANCE_REGISTRY_CONTRACT_ADDRESS,
       riskGuardApprovalStore: env.RISK_GUARD_APPROVAL_STORE_ADDRESS,
       riskGuardHookModule: env.RISK_GUARD_HOOK_MODULE_ADDRESS,
-      riskGuardAgent: env.RISK_GUARD_AGENT_ADDRESS,
+      riskGuardValidatorModule: env.RISK_GUARD_VALIDATOR_MODULE_ADDRESS,
       riskGuardModularAccountFactory: env.RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS,
       riskGuardDefaultValidator: env.RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS
     }
@@ -317,7 +317,7 @@ export function validateConfig(
     INHERITANCE_REGISTRY_CONTRACT_ADDRESS: publicChain.contracts.inheritanceRegistry,
     RISK_GUARD_APPROVAL_STORE_ADDRESS: publicChain.contracts.riskGuardApprovalStore,
     RISK_GUARD_HOOK_MODULE_ADDRESS: publicChain.contracts.riskGuardHookModule,
-    RISK_GUARD_AGENT_ADDRESS: publicChain.contracts.riskGuardAgent,
+    RISK_GUARD_VALIDATOR_MODULE_ADDRESS: publicChain.contracts.riskGuardValidatorModule,
     RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS: publicChain.contracts.riskGuardModularAccountFactory,
     RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS: publicChain.contracts.riskGuardDefaultValidator,
     PUBLIC_CHAIN_KEY: publicChain.key,

@@ -19,7 +19,7 @@ import { ActionNoncesRepository, actionNonceSchema } from "./persistence/action-
 import { PortfolioSnapshotsRepository, portfolioSnapshotsSchema } from "./persistence/portfolio-snapshots.repository.js";
 import { RiskSnapshotsRepository, riskSnapshotSchema } from "./persistence/risk-snapshots.repository.js";
 import { TelegramBindingsRepository, telegramBindingsSchema } from "./persistence/telegram-bindings.repository.js";
-import { UsersRepository, usersSchema } from "./persistence/users.repository.js";
+import { SupabaseUsersRepository } from "./persistence/users.repository.js";
 import { HeartbeatsRepository, heartbeatsSchema } from "./persistence/heartbeats.repository.js";
 import { RewardClaimsRepository, rewardClaimsDataSchema } from "./persistence/reward-claims.repository.js";
 import { SupabaseSessionKeysRepository } from "./persistence/session-keys.repository.js";
@@ -45,6 +45,7 @@ import { DemoScenarioService } from "./services/demo-scenario.service.js";
 import { HeartbeatService } from "./services/heartbeat.service.js";
 import { RewardClaimService } from "./services/reward-claim.service.js";
 import { TelegramAlertService } from "./services/telegram-alert.service.js";
+import { RiskGuardApprovalService } from "./services/riskguard-approval.service.js";
 import { TelegramCheckInService } from "./services/telegram-check-in.service.js";
 import { TelegramConnectService } from "./services/telegram-connect.service.js";
 import { SessionKeyService } from "./services/session-key.service.js";
@@ -88,7 +89,10 @@ export async function startAgentRuntime(
   options: StartAgentRuntimeOptions = {},
 ): Promise<AgentRuntime> {
   const logger = createLogger(config);
-  const users = new UsersRepository(undefined, createSupabaseStore(config, "users.json", usersSchema, []));
+  const users = new SupabaseUsersRepository(
+    config.supabase.url,
+    config.supabase.serviceRoleKey,
+  );
   const auditEvents = new AuditEventsRepository(undefined, createSupabaseStore(config, "audit-events.json", auditEventsSchema, []));
   const audit = new AuditService(auditEvents, logger);
   const portfolioSnapshots = new PortfolioSnapshotsRepository(undefined, createSupabaseStore(config, "portfolio-snapshots.json", portfolioSnapshotsSchema, []));
@@ -113,6 +117,7 @@ export async function startAgentRuntime(
     primary: new GroqClient(config),
     fallback: new DeepSeekClient(config),
   });
+  const riskGuardApprovals = new RiskGuardApprovalService(config, audit, sessionKeys);
   const telegramAlerts = new TelegramAlertService(
     config,
     users,
@@ -123,6 +128,7 @@ export async function startAgentRuntime(
     riskScore,
     telegramClient,
     audit,
+    riskGuardApprovals,
   );
   const telegramConnect = new TelegramConnectService(
     telegramAlerts,

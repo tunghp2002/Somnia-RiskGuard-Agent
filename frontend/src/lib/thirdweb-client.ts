@@ -1,11 +1,12 @@
 "use client";
 
 import { createThirdwebClient, defineChain } from "thirdweb";
-import { Config } from "thirdweb/wallets/smart";
 import { createWallet, type Wallet } from "thirdweb/wallets";
-import type { SmartWalletOptions } from "thirdweb/wallets";
+import { Config } from "thirdweb/wallets/smart";
 
 import publicChains from "../../../config/public-chains.json";
+
+import type { SmartWalletOptions } from "thirdweb/wallets";
 
 const publicChain = publicChains.chains[publicChains.defaultChain as keyof typeof publicChains.chains];
 
@@ -37,7 +38,11 @@ export const thirdwebWallets = [
 ] as unknown as Wallet[];
 
 function requireModularAccountContracts() {
-  const { riskGuardModularAccountFactory, riskGuardDefaultValidator } = publicChain.contracts;
+  const {
+    riskGuardDefaultValidator,
+    riskGuardModularAccountFactory,
+    riskGuardValidatorModule
+  } = publicChain.contracts;
 
   if (!riskGuardModularAccountFactory || !riskGuardDefaultValidator) {
     throw new Error(
@@ -45,23 +50,32 @@ function requireModularAccountContracts() {
     );
   }
 
-  return { riskGuardModularAccountFactory, riskGuardDefaultValidator };
+  return { riskGuardDefaultValidator, riskGuardModularAccountFactory, riskGuardValidatorModule };
 }
 
 export function createThirdwebAccountAbstraction(
   options: {
+    validator?: "default" | "riskguard";
     sponsorGas?: boolean;
     overrides?: SmartWalletOptions["overrides"];
     sessionKey?: SmartWalletOptions["sessionKey"];
   } = {}
 ): SmartWalletOptions {
-  const { riskGuardModularAccountFactory, riskGuardDefaultValidator } = requireModularAccountContracts();
+  const {
+    riskGuardDefaultValidator,
+    riskGuardModularAccountFactory,
+    riskGuardValidatorModule
+  } = requireModularAccountContracts();
+  const validatorAddress =
+    options.validator === "default"
+      ? riskGuardDefaultValidator
+      : riskGuardValidatorModule || riskGuardDefaultValidator;
 
   return Config.erc7579({
     chain: somniaThirdwebChain,
     factoryAddress: riskGuardModularAccountFactory,
     sponsorGas: options.sponsorGas ?? true,
-    validatorAddress: riskGuardDefaultValidator,
+    validatorAddress,
     ...(options.sessionKey ? { sessionKey: options.sessionKey } : {}),
     ...(options.overrides ? { overrides: options.overrides } : {})
   });

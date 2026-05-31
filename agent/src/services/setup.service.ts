@@ -59,7 +59,16 @@ export const userProfileUpdateRequestSchema = z
       .string()
       .regex(/^0x[a-fA-F0-9]{40}$/)
       .transform((value) => getAddress(value)),
-    displayName: z.string().trim().min(1).max(64)
+    displayName: z.preprocess(
+      (value) => {
+        if (typeof value !== "string") {
+          return undefined;
+        }
+        const trimmed = value.trim();
+        return trimmed ? trimmed : undefined;
+      },
+      z.string().max(64).optional()
+    )
   })
   .strict();
 

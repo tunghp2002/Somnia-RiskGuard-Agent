@@ -29,15 +29,17 @@ import {
   saveInheritancePlanWithThirdweb,
 } from "@/lib/inheritance-registry";
 import {
-  configureRiskGuardPolicyWithThirdweb,
-  connectRiskGuardSmartAccount,
-} from "@/lib/riskguard-module";
-import {
   estimateNativeTransfer,
   getNativeTransferValidationError,
   sendNativeTransferFromEoa,
   sendNativeTransferFromSmartAccount,
 } from "@/lib/native-transfer";
+import {
+  configureRiskGuardPolicyWithThirdweb,
+  connectRiskGuardBootstrapSmartAccount,
+  connectRiskGuardSmartAccount,
+  connectUserPaidThirdwebSmartAccount,
+} from "@/lib/riskguard-module";
 import {
   connectBrowserWallet,
   disconnectBrowserWallet,
@@ -842,18 +844,18 @@ export function useRiskGuardDashboard() {
 
   async function handleConfigureRiskPolicy(nextConfig: RiskGuardConfig) {
     const approvalStoreAddress = publicChain?.contracts.riskGuardApprovalStore;
-    const hookModuleAddress = publicChain?.contracts.riskGuardHookModule;
-    const agentAddress = publicChain?.contracts.riskGuardAgent;
+    const guardModuleAddress =
+      publicChain?.contracts.riskGuardValidatorModule ?? publicChain?.contracts.riskGuardHookModule;
 
-    if (!approvalStoreAddress || !hookModuleAddress || !agentAddress) {
+    if (!approvalStoreAddress || !guardModuleAddress) {
       setNotice({
         tone: "warn",
-        message: "RiskGuard contracts are not configured for this chain yet.",
+        message: "RiskGuard validator contracts are not configured for this chain yet.",
       });
       return false;
     }
 
-    setActionLoading("risk-policy");
+    setActionLoading(nextConfig.enabled ? "risk-policy" : "risk-policy-disable");
     try {
       const connectedWallet = wallet ?? await connectBrowserWallet();
       if (!wallet) {
@@ -861,18 +863,25 @@ export function useRiskGuardDashboard() {
         setAccountStatus("connected");
       }
 
-      const riskGuardSmartAccount = thirdwebSmartAccount ?? await connectRiskGuardSmartAccount();
+      const riskGuardSmartAccount = await connectRiskGuardBootstrapSmartAccount();
       setSelectedSmartAccountAddress(riskGuardSmartAccount.address);
+      const approvalSession = nextConfig.enabled
+        ? await agentApi.ensureSessionKeyAction({
+            walletAddress: connectedWallet.address,
+            smartAccountAddress: riskGuardSmartAccount.address,
+            action: "riskguard-approval",
+          })
+        : undefined;
 
       const result = await configureRiskGuardPolicyWithThirdweb({
         account: riskGuardSmartAccount,
-        agentAddress,
+        ...(approvalSession ? { agentAddress: approvalSession.sessionKeyAddress } : {}),
         approvalStoreAddress,
         config: nextConfig,
-        hookModuleAddress,
+        guardModuleAddress,
       });
 
-      openTransaction(publicChain, result.registerTxHash);
+      openTransaction(publicChain, result.registerTxHash || result.configTxHash);
       setRiskGuardConfig(nextConfig);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(
@@ -883,7 +892,9 @@ export function useRiskGuardDashboard() {
       const txAction = transactionNoticeAction(publicChain, result.registerTxHash);
       setNotice({
         tone: "ok",
-        message: "RiskGuard hook installed and approval route registered on-chain.",
+        message: nextConfig.enabled
+          ? "RiskGuard setup saved and approval route registered on-chain."
+          : "RiskGuard policy disabled on-chain.",
         ...(txAction ? { action: txAction } : {}),
       });
       await loadData();
@@ -949,7 +960,17 @@ export function useRiskGuardDashboard() {
     setActionLoading("transfer");
     try {
       const txHash = input.source === "smart"
-        ? await sendNativeTransferFromSmartAccount(input, smartAccount!)
+        ? await sendNativeTransferFromSmartAccount(input, smartAccount!).catch(async (error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+
+            if (!/aa36|paymaster|useroperation|bundler/i.test(message)) {
+              throw error;
+            }
+
+            const userPaidAccount = await connectUserPaidThirdwebSmartAccount(smartAccount!.address);
+
+            return sendNativeTransferFromSmartAccount(input, userPaidAccount);
+          })
         : await sendNativeTransferFromEoa(input);
       const txAction = transactionNoticeAction(publicChain, txHash);
 
@@ -987,16 +1008,11 @@ export function useRiskGuardDashboard() {
     const form = new FormData(event.currentTarget);
     const displayName = String(form.get("displayName") ?? "").trim();
 
-    if (!displayName) {
-      setNotice({ tone: "warn", message: "Display name is required." });
-      return;
-    }
-
     setActionLoading("profile");
     try {
       const profile = await agentApi.updateUserProfile({
         walletAddress: wallet.address,
-        displayName,
+        displayName: displayName || formatAddress(wallet.address),
       });
       setUserProfile(profile);
       setNotice({ tone: "ok", message: "Profile saved." });

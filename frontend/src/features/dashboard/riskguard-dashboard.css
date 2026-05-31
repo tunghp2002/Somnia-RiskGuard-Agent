@@ -863,6 +863,28 @@ input[type="number"] {
     0 0 32px rgb(192 38 211 / 22%);
 }
 
+.guard-action-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.guard-disable-button {
+  min-height: 46px;
+  border: 1px solid rgb(248 113 113 / 38%);
+  border-radius: 8px;
+  background: #171319;
+  color: #fecaca;
+  font-weight: 800;
+}
+
+.guard-disable-button:hover:not(:disabled) {
+  border-color: rgb(248 113 113 / 62%);
+  background: #1d1418;
+}
+
 .next-steps,
 .signal-list,
 .form-stack,

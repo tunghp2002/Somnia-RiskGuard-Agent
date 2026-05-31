@@ -5,7 +5,9 @@ import { z } from "zod";
 export const telegramActionTypeSchema = z.enum([
   "acknowledge_alert",
   "refresh_analysis",
-  "approve_safe_action"
+  "approve_safe_action",
+  "approve_riskguard_tx",
+  "decline_riskguard_tx"
 ]);
 
 export const telegramCallbackPayloadSchema = z.object({

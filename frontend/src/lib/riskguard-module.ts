@@ -1,7 +1,8 @@
-import { AbiCoder, parseUnits } from "ethers";
+import { parseUnits } from "ethers";
 import {
   getContract,
   prepareContractCall,
+  readContract,
   sendAndConfirmTransaction,
 } from "thirdweb";
 import { EIP1193, smartWallet, type Account } from "thirdweb/wallets";
@@ -14,9 +15,10 @@ import {
 
 import type { RiskGuardConfig } from "@/features/dashboard/types";
 
-const moduleTypeHook = 4n;
+const moduleTypeValidator = 1n;
 const zeroAddress = "0x0000000000000000000000000000000000000000";
-const installHookGasLimit = 2_500_000n;
+const installValidatorGasLimit = 2_500_000n;
+const setValidatorConfigGasLimit = 500_000n;
 const registerApprovalRouteGasLimit = 500_000n;
 type HexAddress = `0x${string}`;
 
@@ -53,24 +55,15 @@ function thresholdConfig(config: RiskGuardConfig) {
   };
 }
 
-function encodeHookInitData(config: RiskGuardConfig, agentAddress: string) {
-  const threshold = thresholdConfig(config);
-
-  return AbiCoder.defaultAbiCoder().encode(
-    ["address", "uint8", "uint256", "address"],
-    [agentAddress, threshold.mode, threshold.value, zeroAddress],
-  ) as `0x${string}`;
-}
-
 function isPaymasterOrBundlerError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
 
-  return /paymaster|bundler|useroperation|aa95|out of gas|internal server error|status:?\s*500/i.test(
+  return /paymaster|bundler|useroperation|aa36|aa95|out of gas|internal server error|status:?\s*500/i.test(
     message,
   );
 }
 
-async function connectUserPaidThirdwebSmartAccount(expectedSmartAccountAddress: string) {
+export async function connectUserPaidThirdwebSmartAccount(expectedSmartAccountAddress: string) {
   if (!thirdwebClient) {
     throw new Error("Set NEXT_PUBLIC_THIRDWEB_CLIENT_ID before configuring RiskGuard.");
   }
@@ -120,6 +113,27 @@ export async function connectRiskGuardSmartAccount() {
   });
 }
 
+export async function connectRiskGuardBootstrapSmartAccount() {
+  if (!thirdwebClient) {
+    throw new Error("Set NEXT_PUBLIC_THIRDWEB_CLIENT_ID before configuring RiskGuard.");
+  }
+
+  const personalWallet = EIP1193.fromProvider({
+    provider: getEthereumProvider() as Parameters<typeof EIP1193.fromProvider>[0]["provider"],
+    walletId: "app.subwallet",
+  });
+  const personalAccount = await personalWallet.connect({
+    chain: somniaThirdwebChain,
+    client: thirdwebClient,
+  });
+  const accountWallet = smartWallet(createThirdwebAccountAbstraction({ validator: "default" }));
+
+  return accountWallet.connect({
+    client: thirdwebClient,
+    personalAccount,
+  });
+}
+
 async function sendWithUserPaidFallback<T>(
   account: Account,
   send: (sender: Account) => Promise<T>,
@@ -137,13 +151,14 @@ async function sendWithUserPaidFallback<T>(
 
 export interface ConfigureRiskGuardPolicyInput {
   approvalStoreAddress: string;
-  hookModuleAddress: string;
-  agentAddress: string;
+  guardModuleAddress: string;
+  agentAddress?: string;
   config: RiskGuardConfig;
   account: Account;
 }
 
 export interface ConfigureRiskGuardPolicyResult {
+  configTxHash: string;
   installTxHash: string;
   registerTxHash: string;
 }
@@ -153,7 +168,7 @@ export async function configureRiskGuardPolicyWithThirdweb({
   agentAddress,
   approvalStoreAddress,
   config,
-  hookModuleAddress,
+  guardModuleAddress,
 }: ConfigureRiskGuardPolicyInput): Promise<ConfigureRiskGuardPolicyResult> {
   if (!thirdwebClient) {
     throw new Error("Set NEXT_PUBLIC_THIRDWEB_CLIENT_ID before configuring RiskGuard.");
@@ -169,35 +184,69 @@ export async function configureRiskGuardPolicyWithThirdweb({
     chain: somniaThirdwebChain,
     client: thirdwebClient,
   });
-  const hookInitData = encodeHookInitData(config, agentAddress);
-  const installHookTransaction = prepareContractCall({
+  const guardModuleContract = getContract({
+    address: guardModuleAddress as HexAddress,
+    chain: somniaThirdwebChain,
+    client: thirdwebClient,
+  });
+  const threshold = thresholdConfig(config);
+  const isValidatorInstalled = await readContract({
+    contract: smartAccountContract,
+    method: "function isModuleInstalled(uint256 moduleTypeId,address module,bytes additionalContext) view returns (bool)",
+    params: [moduleTypeValidator, guardModuleAddress as HexAddress, "0x"],
+  }).catch(() => false);
+  const installValidatorTransaction = prepareContractCall({
     contract: smartAccountContract,
     method: "function installModule(uint256 moduleTypeId,address module,bytes initData)",
-    gas: installHookGasLimit,
-    params: [moduleTypeHook, hookModuleAddress as HexAddress, hookInitData],
+    gas: installValidatorGasLimit,
+    params: [moduleTypeValidator, guardModuleAddress as HexAddress, "0x"],
   });
-  const registerRouteTransaction = prepareContractCall({
-    contract: approvalStoreContract,
-    method: "function registerAgentAndHook(address agent,address hook)",
-    gas: registerApprovalRouteGasLimit,
-    params: [agentAddress as HexAddress, hookModuleAddress as HexAddress],
+  const setConfigTransaction = prepareContractCall({
+    contract: guardModuleContract,
+    method: "function setConfig(bool enabled,uint8 mode,uint256 thresholdValue,address balanceToken)",
+    gas: setValidatorConfigGasLimit,
+    params: [config.enabled, threshold.mode, threshold.value, zeroAddress],
   });
 
-  const installReceipt = await sendWithUserPaidFallback(account, (sender) =>
+  const installReceipt = !config.enabled || isValidatorInstalled
+    ? { transactionHash: "" }
+    : await sendWithUserPaidFallback(account, (sender) =>
+        sendAndConfirmTransaction({
+          account: sender,
+          transaction: installValidatorTransaction,
+        }),
+      );
+  const configReceipt = await sendWithUserPaidFallback(account, (sender) =>
     sendAndConfirmTransaction({
       account: sender,
-      transaction: installHookTransaction,
+      transaction: setConfigTransaction,
     }),
   );
-  const registerReceipt = await sendWithUserPaidFallback(account, (sender) =>
-    sendAndConfirmTransaction({
-      account: sender,
-      transaction: registerRouteTransaction,
-    }),
-  );
+  let registerTxHash = "";
+
+  if (config.enabled) {
+    if (!agentAddress) {
+      throw new Error("RiskGuard approval session key is required before enabling the guard.");
+    }
+
+    const registerRouteTransaction = prepareContractCall({
+      contract: approvalStoreContract,
+      method: "function registerAgentAndHook(address agent,address hook)",
+      gas: registerApprovalRouteGasLimit,
+      params: [agentAddress as HexAddress, guardModuleAddress as HexAddress],
+    });
+    const registerReceipt = await sendWithUserPaidFallback(account, (sender) =>
+      sendAndConfirmTransaction({
+        account: sender,
+        transaction: registerRouteTransaction,
+      }),
+    );
+    registerTxHash = registerReceipt.transactionHash;
+  }
 
   return {
+    configTxHash: configReceipt.transactionHash,
     installTxHash: installReceipt.transactionHash,
-    registerTxHash: registerReceipt.transactionHash,
+    registerTxHash,
   };
 }
