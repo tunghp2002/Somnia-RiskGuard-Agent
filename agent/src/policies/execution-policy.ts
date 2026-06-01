@@ -1,11 +1,13 @@
 import { z } from "zod";
 
+import { isoDateTimeSchema } from "../utils/datetime.js";
+
 export const policyDecisionSchema = z.object({
   allowed: z.boolean(),
   reason: z.string().min(1),
   policyId: z.string().min(1),
-  createdAt: z.string().datetime(),
-  expiresAt: z.string().datetime().optional(),
+  createdAt: isoDateTimeSchema,
+  expiresAt: isoDateTimeSchema.optional(),
   toolName: z.string().min(1),
   signerAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   chainId: z.number().int().positive(),

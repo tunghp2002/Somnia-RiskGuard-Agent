@@ -4,6 +4,7 @@ import { getAddress } from "ethers";
 import { z } from "zod";
 
 import { policyDecisionSchema } from "../policies/execution-policy.js";
+import { isoDateTimeSchema } from "../utils/datetime.js";
 import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 const addressSchema = z
@@ -23,8 +24,8 @@ export const rewardSettingsSchema = z.object({
   autoClaimEnabled: z.boolean(),
   minRewardValueUsd: moneyStringSchema,
   maxClaimGasUsd: moneyStringSchema,
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime()
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema
 });
 
 export const rewardFixtureSchema = z.object({
@@ -38,8 +39,8 @@ export const rewardFixtureSchema = z.object({
   calldata: hexDataSchema.optional(),
   calldataSummary: z.string().min(1),
   claimable: z.boolean(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime()
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema
 });
 
 export const rewardClaimSchema = z.object({
@@ -54,8 +55,8 @@ export const rewardClaimSchema = z.object({
   gasUsd: moneyStringSchema,
   txHash: z.string().regex(/^0x[a-fA-F0-9]+$/).optional(),
   policyDecision: policyDecisionSchema.optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime()
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema
 });
 
 export const rewardClaimsDataSchema = z.object({

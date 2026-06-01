@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 import { z } from "zod";
 
+import { isoDateTimeSchema } from "../utils/datetime.js";
 import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const alertStatusSchema = z.enum(["sent", "failed", "acknowledged"]);
@@ -24,9 +25,9 @@ export const alertRecordSchema = z.object({
   message: z.string(),
   telegramMessageId: z.string().optional(),
   failureReason: z.string().optional(),
-  acknowledgedAt: z.string().datetime().optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime()
+  acknowledgedAt: isoDateTimeSchema.optional(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema
 });
 
 export const alertsSchema = z.array(alertRecordSchema);

@@ -36,30 +36,31 @@ The previous standalone locked vault contract has been removed from the active c
 
 Current Somnia Testnet deployment:
 
-- `RiskGuardInheritanceRegistry`: `0x84dc6ef1639F198fBD0C4BAEd9A5fc90C59dFEF0`
+- `RiskGuardInheritanceRegistry`: `0xb9Fd28DEdE1dA4F1D3e657fdA61F290e8578Ae77`
 - deployer: `0x64769A00fB002b7ED192834443C9c819565Ab702`
-- transaction: `0x0337a6a51d765f16e67e48df96865fd0daedd74cba976cd7d1c25e1fbc5facc2`
+- transaction: `0xf4ed2bcf67583feb908f50dbfec2a345691f6e331bdaf7f2823411c80f113a1d`
+- deployed: `2026-06-01`
 - Reactivity funding transaction: `0x48849791032e4b4a782585daa67738560feb250d6f6e521236883c1e863f4297` (`32 STT`)
 
 RiskGuard hook approval gate deployment on Somnia Testnet:
 
-- `RiskGuardApprovalStore`: `0x134c11CE88272933986c8A7B2C9D3F14158bd427`
-- `RiskGuardHookModule`: `0xAF37941610EE34c6DDd2FADD74403c1b401950Db`
-- `RiskGuardValidator`: `0x18bAA9B475dB370D746955334C8C58452E305f60`
+- `RiskGuardApprovalStore`: `0xaCdBb69cb283Cb0feDA1a0D1a3a657D74c35e1e3`
+- `RiskGuardHookModule`: `0x296Dc049b35447Aaf9Ea8996667eFB289F257289`
+- `RiskGuardValidator`: `0xA258165d82ba1827BF95CFd379e7Da1c8E8A9FA2`
 - deployer: `0x64769A00fB002b7ED192834443C9c819565Ab702`
-- `RiskGuardApprovalStore` transaction: `0xc12fc12e00687e4297a1239e865e13d06c64e4e166df177b7cd36b2b6f60f645`
-- `RiskGuardHookModule` transaction: `0x193e958d60204f27eb5acc9f6dcf5b0a7b5594d7c469e9f487c39fa92d871205`
-- `RiskGuardValidator` transaction: `0xc54e5d6734da450601d8c28f204602704156d36fa1bfaa6556d117d92967a085`
-- deployed: hook/store `2026-05-30`, validator `2026-05-31`
+- `RiskGuardApprovalStore` transaction: `0xbbfd38bbbea451e59769df617d235a24e2d57ef4ec37bebe8b50c07c02c64f0d`
+- `RiskGuardHookModule` transaction: `0x1c98522de5cf3741d05330df2be6f721cac3577de95bbdeca91950e9cd2255d2`
+- `RiskGuardValidator` transaction: `0x06230ada2daaeb5fba87a3f45e2eb537c538666f0e72c24d2cc6d98f489f4065`
+- deployed: `2026-06-01`
 - note: `RiskGuardValidator` is the active guard path for Thirdweb ERC-7579 accounts. It validates owner/admin signatures and gates ERC-7579 `execute(bytes32,bytes)` UserOps during `validateUserOp`, including native transfers. `RiskGuardHookModule` is kept for hook experiments, but Thirdweb's published `ModularAccount` does not run hooks on its primary `execute(...)` path.
 - note: no Thirdweb contract is forked. The account factory and account implementation stay Thirdweb-published; RiskGuard is installed as a separate ERC-7579 validator module.
 
 For a smart account test install, register the approval route after installing the validator:
 
 ```solidity
-RiskGuardApprovalStore(0x134c11CE88272933986c8A7B2C9D3F14158bd427).registerAgentAndHook(
+RiskGuardApprovalStore(0xaCdBb69cb283Cb0feDA1a0D1a3a657D74c35e1e3).registerAgentAndHook(
   agentAddress,
-  0x18bAA9B475dB370D746955334C8C58452E305f60
+  0xA258165d82ba1827BF95CFd379e7Da1c8E8A9FA2
 );
 ```
 
@@ -74,13 +75,17 @@ smartWallet(Config.erc7579({
 }));
 ```
 
-RiskGuard Telegram approval flow:
+RiskGuard hybrid approval flow:
 
 - `RiskGuardValidator.validateUserOp(...)` is the enforcement point. It blocks risky native transfers, contract calls, approvals, and batches by reverting `PendingApprovalRequired(smartAccount, txHash, signer, riskContext)`.
-- EVM revert logs are not persisted, so RiskGuard does not emit an on-chain "pending approval" event before reverting. A contract call to Somnia Agent from inside the same reverting validation would also be rolled back.
-- The agent exposes `POST /api/riskguard/pending-approval` for a RiskGuard-aware frontend, wallet, or bundler/RPC proxy to forward decoded `PendingApprovalRequired` data. The agent sends Telegram Approve/Decline buttons.
-- On Approve, the agent wallet calls `RiskGuardApprovalStore.submitApproval(smartAccount, txHash)` on-chain. The user can then resubmit the original transaction; the validator consumes the one-time approval.
+- For agent-native review, the owner/admin calls `RiskGuardValidator.requestAgentReview(smartAccount, callData)`. The validator pays the Somnia Agent request from `agentBudgetOf[smartAccount]`, calls `IAgentRequester.createRequest(...)`, and records the pending request.
+- The configured Risk Assessment Agent receives `assessRisk(smartAccount, txHash, signer, targets, values, data)` payload data and should return `abi.encode(bool approved, string reason)`.
+- Somnia's agent platform calls `handleRiskAssessmentResponse(...)`. If approved, the validator stores a one-time `agentApprovals[smartAccount][txHash]` entry. The user can then resubmit the original transaction; the validator consumes the agent approval.
+- If an agent request is pending for the same transaction, `validateUserOp(...)` reverts `AgentReviewPending(smartAccount, txHash, requestId)`.
+- For high-risk or manual-review paths, the existing off-chain Telegram flow remains available: a RiskGuard-aware frontend, wallet, bundler, or RPC proxy forwards decoded `PendingApprovalRequired` data to `POST /api/riskguard/pending-approval`; on Approve, the agent wallet calls `RiskGuardApprovalStore.submitApproval(smartAccount, txHash)`.
 - On Decline, the agent submits nothing, so the original transaction remains blocked.
+
+The validator intentionally does not call `createRequest` from inside the reverting validation path, because state changes and external calls in a reverted UserOp validation would be rolled back. `requestAgentReview(...)` is the explicit on-chain agent invocation step for the agent-first demo flow.
 
 Agent environment for Telegram approvals:
 
@@ -146,9 +151,11 @@ The registry itself does not move funds until each user's smart account has auth
 2. The registry rejects normal EOAs because they cannot execute `executeBatch(...)` later.
 3. The smart account keeps holding and using native tokens/ERC-20s normally.
 4. The user refreshes liveness through `checkIn()` or a successful agent heartbeat callback before grace ends.
-5. After `lastHeartbeatAt + heartbeatInterval + gracePeriod + timelockPeriod`, Somnia Agents, Reactivity, a keeper, or any caller can trigger distribution.
-6. The registry snapshots each protected asset balance once and asks the smart account to execute transfers by beneficiary share.
-7. Failed transfers are skipped in agent/reactive mode, leaving that share in the smart account for retries. The manual `executeInheritance` path fails closed on transfer failure.
+5. After `lastHeartbeatAt + heartbeatInterval + gracePeriod + timelockPeriod`, the Reactivity schedule calls `onEvent(...)`.
+6. `onEvent(...)` does not move funds directly. It creates a Somnia distribution-agent request through `IAgentRequester.createRequest(...)`, using the smart account's funded agent budget.
+7. On successful agent callback, `handleDistributionResponse(...)` snapshots each protected asset balance once and asks the smart account to execute transfers by beneficiary share.
+8. `triggerDistributionAgent(...)` remains a manual fallback for keepers or demos, but the normal automatic path is Reactivity -> Somnia Agent -> callback -> transfer.
+9. Failed transfers are skipped in agent mode, leaving that share in the smart account for retries. The manual `executeInheritance` path fails closed on transfer failure.
 
 ## Contract Tests
 

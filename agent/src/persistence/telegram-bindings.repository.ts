@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 import { z } from "zod";
 
+import { isoDateTimeSchema } from "../utils/datetime.js";
 import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const telegramBindingSchema = z.object({
@@ -21,8 +22,8 @@ export const telegramBindingSchema = z.object({
     .regex(/^0x[a-fA-F0-9]{40}$/)
     .transform((value) => getAddress(value))
     .optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime()
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema
 });
 
 export const telegramBindingsSchema = z.array(telegramBindingSchema);

@@ -2,6 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { z } from "zod";
 
+import { isoDateTimeSchema } from "../../utils/datetime.js";
+
 export const telegramActionTypeSchema = z.enum([
   "acknowledge_alert",
   "refresh_analysis",
@@ -16,7 +18,7 @@ export const telegramCallbackPayloadSchema = z.object({
   userId: z.string().uuid(),
   chatId: z.string().regex(/^-?\d+$/),
   nonce: z.string().uuid(),
-  expiresAt: z.string().datetime(),
+  expiresAt: isoDateTimeSchema,
   alertId: z.string().uuid().optional(),
   walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
   safeAction: z.string().min(1).optional(),

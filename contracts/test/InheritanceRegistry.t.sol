@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.35;
 
-import {
-    AgentRequest,
-    ConsensusType,
-    Response,
-    ResponseStatus,
-    RiskGuardInheritanceRegistry
-} from "../src/InheritanceRegistry.sol";
+import { RiskGuardInheritanceRegistry } from "../src/InheritanceRegistry.sol";
+import { ConsensusType, Request, Response, ResponseStatus } from "../src/SomniaAgentInterfaces.sol";
 
 interface VmRegistry {
     function deal(address account, uint256 balance) external;
@@ -88,7 +83,7 @@ contract MockAgentPlatform {
             requestId,
             _responses(status),
             status,
-            AgentRequest({
+            Request({
                 id: 0,
                 requester: address(0),
                 callbackAddress: address(0),
@@ -117,7 +112,7 @@ contract MockAgentPlatform {
             requestId,
             _responses(status),
             status,
-            AgentRequest({
+            Request({
                 id: 0,
                 requester: address(0),
                 callbackAddress: address(0),
@@ -323,6 +318,8 @@ contract InheritanceRegistryTest {
 
         vm.prank(address(smartAccount));
         registry.createPlan(_singleBeneficiary(), _nativeAsset(), 1 days, 0, 0);
+        registry.configureAgent(address(platform), 7, 8);
+        registry.fundAgentBudget{ value: 1 ether }(address(smartAccount));
 
         uint256 timestampMs = registry.timelockEndsAt(address(smartAccount)) * 1000;
         assert(registry.currentDistributionScheduleMs(address(smartAccount)) == timestampMs);
@@ -333,6 +330,14 @@ contract InheritanceRegistryTest {
                 registry, registry.somniaReactivityPrecompile(), _scheduleTopics(timestampMs), ""
             );
 
+        uint256 requestId = platform.lastRequestId();
+        assert(registry.pendingDistributionSmartAccount(requestId) == address(smartAccount));
+        assert(registry.pendingDistributionRequestId(address(smartAccount)) == requestId);
+        assert(BENEFICIARY_A.balance == 0);
+        assert(!registry.distributionComplete(address(smartAccount)));
+
+        platform.respondDistribution(registry, requestId, ResponseStatus.Success);
+
         assert(BENEFICIARY_A.balance == 10 ether);
         assert(registry.distributionComplete(address(smartAccount)));
     }
@@ -342,6 +347,8 @@ contract InheritanceRegistryTest {
 
         vm.prank(address(smartAccount));
         registry.createPlan(_singleBeneficiary(), _nativeAsset(), 1 days, 0, 0);
+        registry.configureAgent(address(platform), 7, 8);
+        registry.fundAgentBudget{ value: 1 ether }(address(smartAccount));
         uint256 staleTimestampMs = registry.currentDistributionScheduleMs(address(smartAccount));
 
         vm.warp(1_000 days + 12 hours);
@@ -371,6 +378,12 @@ contract InheritanceRegistryTest {
                 _scheduleTopics(currentTimestampMs),
                 ""
             );
+
+        uint256 requestId = platform.lastRequestId();
+        assert(registry.pendingDistributionSmartAccount(requestId) == address(smartAccount));
+        assert(BENEFICIARY_A.balance == 0);
+
+        platform.respondDistribution(registry, requestId, ResponseStatus.Success);
 
         assert(BENEFICIARY_A.balance == 10 ether);
         assert(registry.distributionComplete(address(smartAccount)));

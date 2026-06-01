@@ -8,13 +8,16 @@ Sources checked on 2026-05-21:
 - https://docs.somnia.network/concepts/somnia-blockchain/on-chain-reactivity
 - https://docs.somnia.network/developer/reactivity
 - https://somnia.network/agents
+- https://docs.somnia.network/agents/base-agents/json-api-request
+- https://docs.somnia.network/agents/base-agents/llm-inference
+- https://docs.somnia.network/agents/invoking-agents/from-solidity
 
 Current contract path:
 
 - `contracts/src/InheritanceRegistry.sol` (`RiskGuardInheritanceRegistry`)
 - public testnet metadata: `config/public-chains.json` -> `chains.somnia-testnet.contracts.inheritanceRegistry`
 - local secret/env override: `INHERITANCE_REGISTRY_CONTRACT_ADDRESS`
-- current Somnia Testnet deployment: `0x84dc6ef1639F198fBD0C4BAEd9A5fc90C59dFEF0`
+- current Somnia Testnet deployment: `0xb9Fd28DEdE1dA4F1D3e657fdA61F290e8578Ae77`
 
 Additional sources checked on 2026-05-23:
 
@@ -97,7 +100,7 @@ For this project, Somnia docs support these implementation choices:
 
 - Portfolio/risk monitoring can keep a simulation or polling fallback, but Somnia-native logic should be written as a reactive event-consumer boundary.
 - Contract heartbeat, inheritance, and alert flows should separate user wallet authority from the agent wallet.
-- Inheritance distribution should use a Somnia `Schedule` on-chain subscription for the current `timelockEndsAt()` so validator-invoked handler execution can push funds without beneficiary action at distribution time.
+- Inheritance distribution should use a Somnia `Schedule` on-chain subscription for the current `timelockEndsAt()`. The Reactivity handler should create the Somnia distribution-agent request automatically; the agent callback performs the actual smart-account distribution.
 - `RiskGuardInheritanceRegistry` is the active contract. It stores inheritance policy and delegates actual spending to an authorized smart account through `executeBatch(...)`.
 - Normal EOAs must not create inheritance plans. The registry rejects plan creation/update when `msg.sender.code.length == 0`, because EOAs cannot satisfy the later `executeBatch(...)` distribution call.
 - The registry must never be described as a custody vault: users should not transfer funds into the registry. Funds live in the user's smart account.
@@ -109,3 +112,15 @@ For this project, Somnia docs support these implementation choices:
 - Do not keep the standalone vault as a user-facing path. It is incompatible with the product goal that users can keep using their money day to day.
 - Agent actions should produce auditable receipts with signer, chain ID, request/callback identifiers when available, and advisory risk explanations.
 - Testnet behavior should use Somnia Testnet metadata from `config/public-chains.json`.
+
+## Solidity Agent Invocation Notes
+
+Source: pasted copy of `https://docs.somnia.network/agents/invoking-agents/from-solidity` provided on 2026-06-01.
+
+- AgentRequester addresses: Somnia Mainnet chain ID `5031` uses `0x5E5205CF39E766118C01636bED000A54D93163E6`; Somnia Testnet chain ID `50312` uses `0x037Bb9C718F3f7fe5eCBDB0b600D607b52706776`.
+- Contracts invoke agents by ABI-encoding the target agent method selector and arguments, then calling `IAgentRequester.createRequest{value: deposit}(agentId, callbackAddress, callbackSelector, payload)`.
+- `callbackSelector` must identify a function with signature `handleResponse(uint256,Response[],ResponseStatus,Request)`. The callback may be named differently, but parameter types must match exactly.
+- The platform interface includes `createRequest`, `createAdvancedRequest`, `getRequest`, `hasRequest`, `getRequestDeposit`, and `getAdvancedRequestDeposit`.
+- `getRequestDeposit()` is only the platform reserve floor. Production requests should add a per-agent reward pot: `deposit = getRequestDeposit() + (perAgentExecutionCost * subcommitteeSize)`.
+- The platform may rebate unused funds to the requester contract, so requester contracts should implement `receive() external payable`.
+- Callback security requirements: verify `msg.sender == address(platform)`, track pending request IDs, handle `Success`, `Failed`, and `TimedOut`, check `responses.length`, and decode only successful response payloads.

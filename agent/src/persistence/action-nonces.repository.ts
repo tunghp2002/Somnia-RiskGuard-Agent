@@ -2,6 +2,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 
+import { isoDateTimeSchema } from "../utils/datetime.js";
 import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const actionNonceSchema = z.object({
@@ -9,7 +10,7 @@ export const actionNonceSchema = z.object({
   userId: z.string().uuid(),
   actionType: z.string().min(1),
   chatId: z.string().regex(/^-?\d+$/),
-  expiresAt: z.string().datetime(),
+  expiresAt: isoDateTimeSchema,
   alertId: z.string().uuid().optional(),
   walletAddress: z
     .string()
@@ -23,7 +24,7 @@ export const actionNonceSchema = z.object({
     .optional(),
   txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
   safeAction: z.string().min(1).optional(),
-  consumedAt: z.string().datetime().optional()
+  consumedAt: isoDateTimeSchema.optional()
 });
 
 export type ActionNonceRecord = z.infer<typeof actionNonceSchema>;

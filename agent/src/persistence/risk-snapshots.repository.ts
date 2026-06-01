@@ -2,6 +2,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 
+import { isoDateTimeSchema } from "../utils/datetime.js";
 import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const riskSnapshotSchema = z.object({
@@ -19,7 +20,7 @@ export const riskSnapshotSchema = z.object({
     exceeded: z.boolean()
   }),
   safeNextSteps: z.array(z.string()),
-  createdAt: z.string().datetime()
+  createdAt: isoDateTimeSchema
 });
 
 export type RiskSnapshotRecord = z.infer<typeof riskSnapshotSchema>;

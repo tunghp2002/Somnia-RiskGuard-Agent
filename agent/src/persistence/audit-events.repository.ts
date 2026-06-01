@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { z } from "zod";
 
+import { isoDateTimeSchema } from "../utils/datetime.js";
 import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const auditEventStatusSchema = z.enum([
@@ -14,7 +15,7 @@ export const auditEventStatusSchema = z.enum([
 
 export const auditEventSchema = z.object({
   auditEventId: z.string().uuid(),
-  createdAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
   eventType: z.string().min(1),
   status: auditEventStatusSchema,
   metadata: z.record(z.string(), z.unknown())

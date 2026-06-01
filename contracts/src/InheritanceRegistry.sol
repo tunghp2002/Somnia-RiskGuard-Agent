@@ -2,56 +2,7 @@
 pragma solidity ^0.8.35;
 
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-
-enum ConsensusType {
-    Majority,
-    Threshold
-}
-enum ResponseStatus {
-    None,
-    Pending,
-    Success,
-    Failed,
-    TimedOut
-}
-
-struct Response {
-    address validator;
-    bytes result;
-    ResponseStatus status;
-    uint256 receipt;
-    uint256 timestamp;
-    uint256 executionCost;
-}
-
-struct AgentRequest {
-    uint256 id;
-    address requester;
-    address callbackAddress;
-    bytes4 callbackSelector;
-    address[] subcommittee;
-    Response[] responses;
-    uint256 responseCount;
-    uint256 failureCount;
-    uint256 threshold;
-    uint256 createdAt;
-    uint256 deadline;
-    ResponseStatus status;
-    ConsensusType consensusType;
-    uint256 remainingBudget;
-    uint256 perAgentBudget;
-}
-
-interface IAgentRequester {
-    function createRequest(
-        uint256 agentId,
-        address callbackAddress,
-        bytes4 callbackSelector,
-        bytes calldata payload
-    ) external payable returns (uint256 requestId);
-
-    function getRequestDeposit() external view returns (uint256);
-}
+import { IAgentRequester, Request, Response, ResponseStatus } from "./SomniaAgentInterfaces.sol";
 
 interface IERC20Balance {
     function balanceOf(address account) external view returns (uint256);
@@ -243,6 +194,9 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     );
     event DistributionScheduleFailed(address indexed smartAccount, uint256 indexed timestampMs);
     event ReactiveDistributionSkipped(address indexed smartAccount, string reason);
+    event ReactiveDistributionAgentRequested(
+        address indexed smartAccount, uint256 indexed requestId
+    );
     event ReactiveDistributionSucceeded(address indexed smartAccount, uint256 settledCount);
 
     modifier onlySmartAccount(address smartAccount) {
@@ -497,7 +451,7 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         uint256 requestId,
         Response[] memory responses,
         ResponseStatus status,
-        AgentRequest memory
+        Request memory
     ) external {
         if (msg.sender != address(agentPlatform)) {
             revert OnlyAgentPlatform();
@@ -532,28 +486,19 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
 
         uint256 deposit = _agentDeposit();
         if (agentBudgetOf[smartAccount] < deposit) revert AgentBudgetInsufficient();
-        agentBudgetOf[smartAccount] -= deposit;
 
-        uint256 requestId = agentPlatform.createRequest{ value: deposit }(
-            distributionAgentId,
-            address(this),
-            this.handleDistributionResponse.selector,
-            abi.encode(smartAccount, distributionRetryCount[smartAccount])
-        );
-        pendingDistributionSmartAccount[requestId] = smartAccount;
-        pendingDistributionRequestId[smartAccount] = requestId;
-        emit DistributionAgentRequested(
-            requestId, smartAccount, msg.sender, distributionRetryCount[smartAccount]
-        );
+        _createDistributionAgentRequest(smartAccount, msg.sender, deposit);
     }
 
     function handleDistributionResponse(
         uint256 requestId,
         Response[] memory responses,
         ResponseStatus status,
-        AgentRequest memory
+        Request memory
     ) external nonReentrant {
-        if (msg.sender != address(agentPlatform)) revert OnlyAgentPlatform();
+        if (msg.sender != address(agentPlatform)) {
+            revert OnlyAgentPlatform();
+        }
         address smartAccount = pendingDistributionSmartAccount[requestId];
         if (smartAccount == address(0)) revert UnknownAgentRequest();
         delete pendingDistributionSmartAccount[requestId];
@@ -603,8 +548,11 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
                 continue;
             }
 
-            uint256 settled = _executeDistribution(smartAccount, true);
-            emit ReactiveDistributionSucceeded(smartAccount, settled);
+            (bool requested, uint256 requestId) =
+                _requestDistributionAgentFromReactivity(smartAccount);
+            if (requested) {
+                emit ReactiveDistributionAgentRequested(smartAccount, requestId);
+            }
         }
     }
 
@@ -736,6 +684,60 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
             plan.updatedAt = block.timestamp;
             emit DistributionComplete(smartAccount);
         }
+    }
+
+    function _requestDistributionAgentFromReactivity(address smartAccount)
+        private
+        returns (bool requested, uint256 requestId)
+    {
+        if (distributionComplete[smartAccount]) {
+            emit ReactiveDistributionSkipped(smartAccount, "already executed");
+            return (false, 0);
+        }
+
+        if (address(agentPlatform) == address(0)) {
+            emit ReactiveDistributionSkipped(smartAccount, "agent not configured");
+            return (false, 0);
+        }
+
+        if (distributionRetryCount[smartAccount] >= MAX_DISTRIBUTION_RETRIES) {
+            emit ReactiveDistributionSkipped(smartAccount, "max retries reached");
+            return (false, 0);
+        }
+
+        if (pendingDistributionRequestId[smartAccount] != 0) {
+            emit ReactiveDistributionSkipped(smartAccount, "agent request pending");
+            return (false, 0);
+        }
+
+        uint256 deposit = _agentDeposit();
+        if (agentBudgetOf[smartAccount] < deposit) {
+            emit ReactiveDistributionSkipped(smartAccount, "agent budget insufficient");
+            return (false, 0);
+        }
+
+        requestId = _createDistributionAgentRequest(smartAccount, address(this), deposit);
+        return (true, requestId);
+    }
+
+    function _createDistributionAgentRequest(
+        address smartAccount,
+        address triggeredBy,
+        uint256 deposit
+    ) private returns (uint256 requestId) {
+        agentBudgetOf[smartAccount] -= deposit;
+
+        requestId = agentPlatform.createRequest{ value: deposit }(
+            distributionAgentId,
+            address(this),
+            this.handleDistributionResponse.selector,
+            abi.encode(smartAccount, distributionRetryCount[smartAccount])
+        );
+        pendingDistributionSmartAccount[requestId] = smartAccount;
+        pendingDistributionRequestId[smartAccount] = requestId;
+        emit DistributionAgentRequested(
+            requestId, smartAccount, triggeredBy, distributionRetryCount[smartAccount]
+        );
     }
 
     function _executeSingleTransfer(

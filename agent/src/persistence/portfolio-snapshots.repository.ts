@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 import { z } from "zod";
 
+import { isoDateTimeSchema } from "../utils/datetime.js";
 import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const portfolioAssetSchema = z.object({
@@ -40,7 +41,7 @@ export const portfolioSnapshotSchema = z.object({
       shouldAnalyzeRisk: z.boolean()
     })
     .optional(),
-  createdAt: z.string().datetime()
+  createdAt: isoDateTimeSchema
 });
 
 export const portfolioSnapshotsSchema = z.array(portfolioSnapshotSchema);

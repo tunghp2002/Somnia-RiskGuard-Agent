@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 import { z } from "zod";
 
+import { isoDateTimeSchema } from "../utils/datetime.js";
 import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 export const userSchema = z.object({
@@ -12,8 +13,8 @@ export const userSchema = z.object({
     .regex(/^0x[a-fA-F0-9]{40}$/)
     .transform((value) => getAddress(value)),
   displayName: z.string().trim().min(1).max(64).optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
   telegramChatId: z.string().optional()
 });
 

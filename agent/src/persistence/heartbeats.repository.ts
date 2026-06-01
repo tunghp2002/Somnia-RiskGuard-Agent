@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getAddress } from "ethers";
 import { z } from "zod";
 
+import { isoDateTimeSchema } from "../utils/datetime.js";
 import { JsonStore, type RepositoryStore } from "./json-store.js";
 
 const addressSchema = z
@@ -17,7 +18,7 @@ export const heartbeatContractStateSchema = z.object({
   isExpired: z.boolean(),
   timelockReady: z.boolean(),
   executed: z.boolean(),
-  checkedAt: z.string().datetime()
+  checkedAt: isoDateTimeSchema
 });
 
 export const heartbeatRecordSchema = z.object({
@@ -29,15 +30,15 @@ export const heartbeatRecordSchema = z.object({
   timelockSeconds: positiveIntegerSchema,
   reminderLeadSeconds: positiveIntegerSchema,
   reminderCooldownSeconds: positiveIntegerSchema,
-  lastHeartbeatAt: z.string().datetime(),
-  nextDeadlineAt: z.string().datetime(),
-  graceEndsAt: z.string().datetime(),
-  timelockEndsAt: z.string().datetime(),
-  lastReminderAt: z.string().datetime().optional(),
-  missedAt: z.string().datetime().optional(),
+  lastHeartbeatAt: isoDateTimeSchema,
+  nextDeadlineAt: isoDateTimeSchema,
+  graceEndsAt: isoDateTimeSchema,
+  timelockEndsAt: isoDateTimeSchema,
+  lastReminderAt: isoDateTimeSchema.optional(),
+  missedAt: isoDateTimeSchema.optional(),
   contractState: heartbeatContractStateSchema.optional(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime()
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema
 });
 
 export const heartbeatsSchema = z.array(heartbeatRecordSchema);
