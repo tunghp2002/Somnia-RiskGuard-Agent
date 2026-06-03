@@ -370,10 +370,21 @@ export const agentApi = {
     target?: string;
     valueWei?: string;
     selector?: string;
+    reason?: string;
     description?: string;
     riskLevel?: "low" | "medium" | "high" | "critical";
   }) =>
     request<RiskGuardPendingApprovalResult>("/api/riskguard/pending-approval", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  notifyRiskGuardAgentReviewRequested: (body: {
+    walletAddress: string;
+    smartAccountAddress: string;
+    guardedTxHash: string;
+    requestTxHash: string;
+  }) =>
+    request<{ sent: boolean }>("/api/riskguard/agent-review/requested", {
       method: "POST",
       body: JSON.stringify(body)
     }),

@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import type { Notice } from "../types";
 
-const dashboardNoticeToastId = "dashboard-notice";
+const dashboardNoticeToastIdPrefix = "dashboard-notice";
 
 const noticeMeta = {
   bad: {
@@ -23,6 +23,9 @@ const noticeMeta = {
 } satisfies Record<Notice["tone"], { method: typeof toast.success; title: string }>;
 
 export function DashboardNoticeToast({ notice }: { notice: Notice | null }) {
+  const activeToastIdRef = useRef<string | number | null>(null);
+  const toastSequenceRef = useRef(0);
+
   useEffect(() => {
     if (!notice) {
       return;
@@ -43,16 +46,20 @@ export function DashboardNoticeToast({ notice }: { notice: Notice | null }) {
       </span>
     ) : notice.message;
 
+    if (activeToastIdRef.current) {
+      toast.dismiss(activeToastIdRef.current);
+    }
+
+    const toastId = `${dashboardNoticeToastIdPrefix}-${toastSequenceRef.current + 1}`;
+    toastSequenceRef.current += 1;
+    activeToastIdRef.current = toastId;
+
     meta.method(meta.title, {
       description,
       closeButton: true,
       duration: notice.tone === "bad" ? 20_000 : 10_000,
-      id: dashboardNoticeToastId
+      id: toastId
     });
-
-    return () => {
-      toast.dismiss(dashboardNoticeToastId);
-    };
   }, [notice]);
 
   return null;

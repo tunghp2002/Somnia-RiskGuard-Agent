@@ -2,6 +2,7 @@
 pragma solidity ^0.8.35;
 
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { IAgentRequester, Request, Response, ResponseStatus } from "./SomniaAgentInterfaces.sol";
 
 interface IERC20Balance {
@@ -22,6 +23,15 @@ interface ISmartAccountExecutor {
 
 interface ISomniaEventHandler {
     function onEvent(address emitter, bytes32[] calldata eventTopics, bytes calldata data) external;
+}
+
+interface ILLMInferenceAgent {
+    function inferString(
+        string calldata prompt,
+        string calldata system,
+        bool chainOfThought,
+        string[] calldata allowedValues
+    ) external returns (string memory response);
 }
 
 /**
@@ -436,11 +446,27 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         if (agentBudgetOf[smartAccount] < deposit) revert AgentBudgetInsufficient();
         agentBudgetOf[smartAccount] -= deposit;
 
+        string[] memory allowedValues = new string[](0);
+        bytes memory payload = abi.encodeWithSelector(
+            ILLMInferenceAgent.inferString.selector,
+            string.concat(
+                "Confirm whether this active smart-account inheritance plan should receive a heartbeat refresh. ",
+                "Smart account: ",
+                Strings.toHexString(smartAccount),
+                ". Current block timestamp: ",
+                Strings.toString(block.timestamp),
+                ". Return OK with a concise reason if the plan is still active."
+            ),
+            "You are Somnia RiskGuard Inheritance. Return one concise line for an on-chain callback.",
+            false,
+            allowedValues
+        );
+
         uint256 requestId = agentPlatform.createRequest{ value: deposit }(
             heartbeatAgentId,
             address(this),
             this.handleHeartbeatResponse.selector,
-            abi.encode(smartAccount, block.timestamp)
+            payload
         );
         pendingHeartbeatSmartAccount[requestId] = smartAccount;
         pendingHeartbeatRequestId[smartAccount] = requestId;
@@ -727,11 +753,26 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     ) private returns (uint256 requestId) {
         agentBudgetOf[smartAccount] -= deposit;
 
+        string[] memory allowedValues = new string[](0);
+        bytes memory payload = abi.encodeWithSelector(
+            ILLMInferenceAgent.inferString.selector,
+            string.concat(
+                "Review inheritance distribution readiness for smart account ",
+                Strings.toHexString(smartAccount),
+                ". Retry count: ",
+                Strings.toString(distributionRetryCount[smartAccount]),
+                ". If the plan is expired and distribution should proceed, return OK with a concise reason."
+            ),
+            "You are Somnia RiskGuard Inheritance. Return one concise line for an on-chain callback.",
+            false,
+            allowedValues
+        );
+
         requestId = agentPlatform.createRequest{ value: deposit }(
             distributionAgentId,
             address(this),
             this.handleDistributionResponse.selector,
-            abi.encode(smartAccount, distributionRetryCount[smartAccount])
+            payload
         );
         pendingDistributionSmartAccount[requestId] = smartAccount;
         pendingDistributionRequestId[smartAccount] = requestId;

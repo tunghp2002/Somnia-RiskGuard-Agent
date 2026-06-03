@@ -2,7 +2,12 @@ import { BrowserProvider, Contract } from "ethers";
 import { getContract, prepareContractCall, prepareTransaction, sendAndConfirmTransaction } from "thirdweb";
 import { EIP1193, smartWallet, type Account } from "thirdweb/wallets";
 
-import { createThirdwebAccountAbstraction, somniaThirdwebChain, thirdwebClient } from "@/lib/thirdweb-client";
+import {
+  createThirdwebAccountAbstraction,
+  riskGuardAccountSalt,
+  somniaThirdwebChain,
+  thirdwebClient
+} from "@/lib/thirdweb-client";
 
 import type { InheritancePlanStatus } from "@/lib/agent-api";
 
@@ -158,7 +163,9 @@ async function connectUserPaidThirdwebSmartAccount(expectedSmartAccountAddress: 
     client: thirdwebClient
   });
   const accountWallet = smartWallet({
-    ...createThirdwebAccountAbstraction(),
+    ...createThirdwebAccountAbstraction({
+      overrides: { accountSalt: riskGuardAccountSalt }
+    }),
     sponsorGas: false
   });
   const account = await accountWallet.connect({

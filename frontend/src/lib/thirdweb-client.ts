@@ -11,6 +11,7 @@ import type { SmartWalletOptions } from "thirdweb/wallets";
 const publicChain = publicChains.chains[publicChains.defaultChain as keyof typeof publicChains.chains];
 
 export const thirdwebClientId = process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID ?? "";
+export const riskGuardAccountSalt = "riskguard-v2-2026-06-01";
 
 export const thirdwebClient = thirdwebClientId
   ? createThirdwebClient({ clientId: thirdwebClientId })

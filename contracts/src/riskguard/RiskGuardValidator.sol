@@ -3,6 +3,7 @@ pragma solidity ^0.8.35;
 
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { MessageHashUtils } from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { IAgentRequester, Request, Response, ResponseStatus } from "../SomniaAgentInterfaces.sol";
 
 interface IRiskGuardApprovalStoreForValidator {
@@ -15,15 +16,13 @@ interface IThirdwebModularAccount {
     function hasAnyRole(address user, uint256 roles) external view returns (bool);
 }
 
-interface IRiskAssessmentAgent {
-    function assessRisk(
-        address smartAccount,
-        bytes32 txHash,
-        address signer,
-        address[] calldata targets,
-        uint256[] calldata values,
-        bytes[] calldata data
-    ) external returns (bool approved, string memory reason);
+interface ILLMInferenceAgent {
+    function inferString(
+        string calldata prompt,
+        string calldata system,
+        bool chainOfThought,
+        string[] calldata allowedValues
+    ) external returns (string memory response);
 }
 
 struct PackedUserOperation {
@@ -273,14 +272,13 @@ contract RiskGuardValidator {
         if (agentBudgetOf[smartAccount] < deposit) revert AgentBudgetInsufficient();
         agentBudgetOf[smartAccount] -= deposit;
 
+        string[] memory allowedValues = new string[](0);
         bytes memory payload = abi.encodeWithSelector(
-            IRiskAssessmentAgent.assessRisk.selector,
-            smartAccount,
-            txHash,
-            msg.sender,
-            targets,
-            values,
-            data
+            ILLMInferenceAgent.inferString.selector,
+            _riskReviewPrompt(smartAccount, txHash, msg.sender, targets, values, data),
+            _riskReviewSystemPrompt(),
+            false,
+            allowedValues
         );
 
         requestId = agentPlatform.createRequest{ value: deposit }(
@@ -583,16 +581,18 @@ contract RiskGuardValidator {
         pure
         returns (bool approved, string memory reason)
     {
-        if (result.length == 32) {
-            approved = abi.decode(result, (bool));
-            return (approved, "");
+        string memory output = abi.decode(result, (string));
+        bytes memory raw = bytes(output);
+
+        if (_startsWith(raw, bytes("APPROVE:")) || _startsWith(raw, bytes("APPROVE"))) {
+            return (true, output);
         }
 
-        if (result.length >= 96) {
-            return abi.decode(result, (bool, string));
+        if (_startsWith(raw, bytes("REJECT:")) || _startsWith(raw, bytes("REJECT"))) {
+            return (false, output);
         }
 
-        return (false, "malformed agent result");
+        return (false, string.concat("Agent response did not approve: ", output));
     }
 
     function _firstSuccessfulRiskDecision(Response[] memory responses)
@@ -616,6 +616,78 @@ contract RiskGuardValidator {
         }
 
         return (false, "no successful agent response", bytes32(0));
+    }
+
+    function _riskReviewSystemPrompt() internal pure returns (string memory) {
+        return string.concat(
+            "You are Somnia RiskGuard. Review smart-account transactions for user safety. ",
+            "Return exactly one concise line. Start with APPROVE: if the transaction is acceptable, ",
+            "or REJECT: if it should remain blocked. Include a short concrete reason after the prefix."
+        );
+    }
+
+    function _riskReviewPrompt(
+        address smartAccount,
+        bytes32 txHash,
+        address signer,
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory data
+    ) internal pure returns (string memory prompt) {
+        prompt = string.concat(
+            "Review this Somnia smart-account transaction.\nSmart account: ",
+            Strings.toHexString(smartAccount),
+            "\nSigner: ",
+            Strings.toHexString(signer),
+            "\nTx hash: ",
+            Strings.toHexString(uint256(txHash), 32),
+            "\nRules: reject scams, suspicious contract calls, unexpected approvals, batches, ",
+            "and transfers that look unsafe. Approve ordinary user-intended native transfers when reasonable.\n"
+        );
+
+        for (uint256 i; i < targets.length; ++i) {
+            prompt = string.concat(
+                prompt,
+                "Call ",
+                Strings.toString(i + 1),
+                ": target=",
+                Strings.toHexString(targets[i]),
+                ", valueWei=",
+                Strings.toString(values[i]),
+                ", calldataBytes=",
+                Strings.toString(data[i].length),
+                ", selector=",
+                _selectorString(data[i]),
+                "\n"
+            );
+        }
+    }
+
+    function _selectorString(bytes memory data) internal pure returns (string memory) {
+        if (data.length < 4) {
+            return "0x";
+        }
+
+        bytes4 selector;
+        assembly {
+            selector := mload(add(data, 32))
+        }
+
+        return Strings.toHexString(uint32(selector), 4);
+    }
+
+    function _startsWith(bytes memory value, bytes memory prefix) internal pure returns (bool) {
+        if (value.length < prefix.length) {
+            return false;
+        }
+
+        for (uint256 i; i < prefix.length; ++i) {
+            if (value[i] != prefix[i]) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
 

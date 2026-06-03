@@ -17,7 +17,7 @@ Current contract path:
 - `contracts/src/InheritanceRegistry.sol` (`RiskGuardInheritanceRegistry`)
 - public testnet metadata: `config/public-chains.json` -> `chains.somnia-testnet.contracts.inheritanceRegistry`
 - local secret/env override: `INHERITANCE_REGISTRY_CONTRACT_ADDRESS`
-- current Somnia Testnet deployment: `0xb9Fd28DEdE1dA4F1D3e657fdA61F290e8578Ae77`
+- current Somnia Testnet deployment: `0xBaa6f77B9ea4E1ecaeEE7c64526bbb51d59E0e14`
 
 Additional sources checked on 2026-05-23:
 

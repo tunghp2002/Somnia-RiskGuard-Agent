@@ -53,6 +53,7 @@ import { PortfolioService } from "./services/portfolio.service.js";
 import { PortfolioMonitorJob } from "./jobs/portfolio-monitor.job.js";
 import { HeartbeatJob } from "./jobs/heartbeat.job.js";
 import { RewardClaimJob } from "./jobs/reward-claim.job.js";
+import { RiskGuardAgentReviewJob } from "./jobs/riskguard-agent-review.job.js";
 
 export interface MainOptions extends LoadConfigOptions {
   startRuntime?: (config: AgentConfig) => Promise<void> | void;
@@ -181,6 +182,13 @@ export async function startAgentRuntime(
   );
   const heartbeatJob = new HeartbeatJob(heartbeats);
   const rewardClaimJob = new RewardClaimJob(rewards);
+  const riskGuardAgentReviewJob = new RiskGuardAgentReviewJob(
+    config,
+    telegramBindings,
+    telegramClient,
+    audit,
+    telegramAlerts,
+  );
   const demoScenarios = new DemoScenarioService(
     users,
     portfolioSnapshots,
@@ -287,6 +295,7 @@ export async function startAgentRuntime(
           portfolioMonitorJob,
           heartbeatJob,
           rewardClaimJob,
+          riskGuardAgentReviewJob,
         });
 
   return {
@@ -323,11 +332,13 @@ function startRuntimeJobs({
   portfolioMonitorJob,
   heartbeatJob,
   rewardClaimJob,
+  riskGuardAgentReviewJob,
 }: {
   logger: ReturnType<typeof createLogger>;
   portfolioMonitorJob: PortfolioMonitorJob;
   heartbeatJob: HeartbeatJob;
   rewardClaimJob: RewardClaimJob;
+  riskGuardAgentReviewJob: RiskGuardAgentReviewJob;
 }) {
   const timers: NodeJS.Timeout[] = [];
 
@@ -371,6 +382,7 @@ function startRuntimeJobs({
   schedule("portfolio-monitor", 30_000, () => portfolioMonitorJob.runOnce());
   schedule("heartbeat-reminders", 60_000, () => heartbeatJob.runOnce());
   schedule("reward-claims", 60_000, () => rewardClaimJob.runOnce());
+  schedule("riskguard-agent-review", 15_000, () => riskGuardAgentReviewJob.runOnce());
 
   return timers;
 }

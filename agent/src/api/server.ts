@@ -20,6 +20,7 @@ import {
   type DemoScenarioService
 } from "../services/demo-scenario.service.js";
 import {
+  riskGuardAgentReviewRequestedSchema,
   telegramCallbackRequestSchema,
   telegramSignedBindingRequestSchema,
   telegramUnlinkRequestSchema,
@@ -663,6 +664,16 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         }
         const body = riskGuardPendingApprovalRequestSchema.parse(await readJsonBody(request));
         const result = await dependencies.telegramAlerts.sendRiskGuardApprovalRequest(body);
+        sendJson(response, 202, success(result, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/riskguard/agent-review/requested") {
+        if (!dependencies.telegramAlerts) {
+          throw new ServerDependencyError("Telegram alert service is not configured");
+        }
+        const body = riskGuardAgentReviewRequestedSchema.parse(await readJsonBody(request));
+        const result = await dependencies.telegramAlerts.sendRiskGuardAgentReviewRequested(body);
         sendJson(response, 202, success(result, requestId));
         return;
       }

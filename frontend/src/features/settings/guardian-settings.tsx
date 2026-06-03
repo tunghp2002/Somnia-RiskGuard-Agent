@@ -28,6 +28,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { agentApi, type InheritancePlanStatus, type SessionKeyActionPermission } from "@/lib/agent-api";
 import {
     createThirdwebAccountAbstraction,
+    riskGuardAccountSalt,
     somniaThirdwebChain,
     thirdwebClient
 } from "@/lib/thirdweb-client";
@@ -47,7 +48,7 @@ import {
 import { useInheritanceSettingsForm } from "./use-inheritance-settings-form";
 
 import type { Notice } from "@/features/dashboard/types";
-const smartAccountCacheKey = "riskguard.smartAccounts";
+const smartAccountCacheKey = "riskguard.smartAccounts.v2";
 
 function readCachedSmartAccount(ownerAddress?: string) {
     if (typeof window === "undefined" || !ownerAddress) {
@@ -256,6 +257,7 @@ export function InheritanceSettings({
                 });
                 const accountWallet = smartWallet(checkInPermission
                     ? createThirdwebAccountAbstraction({
+                        overrides: { accountSalt: riskGuardAccountSalt },
                         sessionKey: {
                             address: checkInPermission.sessionKeyAddress,
                             permissions: {
@@ -266,7 +268,9 @@ export function InheritanceSettings({
                             }
                         }
                     })
-                    : createThirdwebAccountAbstraction());
+                    : createThirdwebAccountAbstraction({
+                        overrides: { accountSalt: riskGuardAccountSalt }
+                    }));
 
                 await accountWallet.connect({
                     client,

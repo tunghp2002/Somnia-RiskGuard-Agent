@@ -74,6 +74,40 @@ export class TelegramBindingsRepository {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   }
 
+  public async attachSmartAccount(
+    walletAddress: string,
+    smartAccountAddress: string
+  ): Promise<TelegramBindingRecord | undefined> {
+    const checksumWallet = getAddress(walletAddress);
+    const checksumSmartAccount = getAddress(smartAccountAddress);
+    const latest = await this.latestForWallet(checksumWallet);
+
+    if (!latest) {
+      return undefined;
+    }
+
+    const now = new Date().toISOString();
+    let saved: TelegramBindingRecord | undefined;
+
+    await this.store.update((bindings) =>
+      bindings.map((binding) => {
+        if (binding.telegramBindingId !== latest.telegramBindingId) {
+          return binding;
+        }
+
+        saved = telegramBindingSchema.parse({
+          ...binding,
+          smartAccountAddress: checksumSmartAccount,
+          updatedAt: now
+        });
+
+        return saved;
+      })
+    );
+
+    return saved;
+  }
+
   public async findByUserAndChat(
     userId: string,
     chatId: string

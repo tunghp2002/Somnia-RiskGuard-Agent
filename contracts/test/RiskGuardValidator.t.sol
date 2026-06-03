@@ -67,10 +67,13 @@ contract MockRiskAgentPlatform {
         bool approved,
         string calldata reason
     ) external {
+        string memory response = approved
+            ? string.concat("APPROVE: ", reason)
+            : string.concat("REJECT: ", reason);
         Response[] memory responses = new Response[](1);
         responses[0] = Response({
             validator: address(this),
-            result: abi.encode(approved, reason),
+            result: abi.encode(response),
             status: ResponseStatus.Success,
             receipt: 0,
             timestamp: block.timestamp,
@@ -159,7 +162,7 @@ contract RiskGuardValidatorTest {
         (bool exists,, bytes32 decisionHash) =
             validator.agentApprovals(address(smartAccount), txHash);
         assert(exists);
-        assert(decisionHash == keccak256(abi.encode(true, "approved by risk agent")));
+        assert(decisionHash == keccak256(abi.encode("APPROVE: approved by risk agent")));
 
         vm.prank(address(smartAccount));
         uint256 validationData = validator.validateUserOp(userOp, userOpHash);

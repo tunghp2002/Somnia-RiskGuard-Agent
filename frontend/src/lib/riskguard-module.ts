@@ -1,14 +1,17 @@
-import { parseUnits } from "ethers";
+import { Interface, getAddress, parseUnits } from "ethers";
 import {
   getContract,
   prepareContractCall,
   readContract,
+  sendBatchTransaction,
   sendAndConfirmTransaction,
+  waitForReceipt,
 } from "thirdweb";
 import { EIP1193, smartWallet, type Account } from "thirdweb/wallets";
 
 import {
   createThirdwebAccountAbstraction,
+  riskGuardAccountSalt,
   somniaThirdwebChain,
   thirdwebClient,
 } from "@/lib/thirdweb-client";
@@ -21,6 +24,10 @@ const installValidatorGasLimit = 2_500_000n;
 const setValidatorConfigGasLimit = 500_000n;
 const registerApprovalRouteGasLimit = 500_000n;
 type HexAddress = `0x${string}`;
+type SmartAccountValidator = "default" | "riskguard";
+const riskGuardValidatorInterface = new Interface([
+  "error PendingApprovalRequired(address smartAccount, bytes32 txHash, address signer, bytes riskContext)",
+]);
 
 function getEthereumProvider() {
   if (typeof window === "undefined" || !window.ethereum) {
@@ -31,6 +38,10 @@ function getEthereumProvider() {
 }
 
 function thresholdConfig(config: RiskGuardConfig) {
+  if (!config.enabled) {
+    return { mode: 0, value: 0n };
+  }
+
   const largeTransferEnabled = config.selectedRules.includes("large-transfer");
 
   if (!largeTransferEnabled) {
@@ -63,7 +74,23 @@ function isPaymasterOrBundlerError(error: unknown) {
   );
 }
 
-export async function connectUserPaidThirdwebSmartAccount(expectedSmartAccountAddress: string) {
+function isPendingApprovalError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const candidates = message.match(/0x[a-fA-F0-9]{8,}/g) ?? [];
+
+  return candidates.some((candidate) => {
+    try {
+      return riskGuardValidatorInterface.parseError(candidate)?.name === "PendingApprovalRequired";
+    } catch {
+      return false;
+    }
+  });
+}
+
+export async function connectUserPaidThirdwebSmartAccount(
+  expectedSmartAccountAddress: string,
+  validator: SmartAccountValidator = "riskguard",
+) {
   if (!thirdwebClient) {
     throw new Error("Set NEXT_PUBLIC_THIRDWEB_CLIENT_ID before configuring RiskGuard.");
   }
@@ -77,7 +104,10 @@ export async function connectUserPaidThirdwebSmartAccount(expectedSmartAccountAd
     client: thirdwebClient,
   });
   const accountWallet = smartWallet({
-    ...createThirdwebAccountAbstraction(),
+    ...createThirdwebAccountAbstraction({
+      validator,
+      overrides: { accountSalt: riskGuardAccountSalt },
+    }),
     sponsorGas: false,
   });
   const account = await accountWallet.connect({
@@ -105,7 +135,9 @@ export async function connectRiskGuardSmartAccount() {
     chain: somniaThirdwebChain,
     client: thirdwebClient,
   });
-  const accountWallet = smartWallet(createThirdwebAccountAbstraction());
+  const accountWallet = smartWallet(createThirdwebAccountAbstraction({
+    overrides: { accountSalt: riskGuardAccountSalt },
+  }));
 
   return accountWallet.connect({
     client: thirdwebClient,
@@ -126,7 +158,10 @@ export async function connectRiskGuardBootstrapSmartAccount() {
     chain: somniaThirdwebChain,
     client: thirdwebClient,
   });
-  const accountWallet = smartWallet(createThirdwebAccountAbstraction({ validator: "default" }));
+  const accountWallet = smartWallet(createThirdwebAccountAbstraction({
+    validator: "default",
+    overrides: { accountSalt: riskGuardAccountSalt },
+  }));
 
   return accountWallet.connect({
     client: thirdwebClient,
@@ -137,16 +172,26 @@ export async function connectRiskGuardBootstrapSmartAccount() {
 async function sendWithUserPaidFallback<T>(
   account: Account,
   send: (sender: Account) => Promise<T>,
+  validator: SmartAccountValidator = "riskguard",
 ) {
   return send(account).catch(async (error: unknown) => {
     if (!isPaymasterOrBundlerError(error)) {
       throw error;
     }
 
-    const userPaidAccount = await connectUserPaidThirdwebSmartAccount(account.address);
+    const userPaidAccount = await connectUserPaidThirdwebSmartAccount(account.address, validator);
 
     return send(userPaidAccount);
   });
+}
+
+async function sendBatchAndConfirm(account: Account, transactions: Parameters<typeof sendBatchTransaction>[0]["transactions"]) {
+  const waitOptions = await sendBatchTransaction({
+    account,
+    transactions,
+  });
+
+  return waitForReceipt(waitOptions);
 }
 
 export interface ConfigureRiskGuardPolicyInput {
@@ -195,6 +240,41 @@ export async function configureRiskGuardPolicyWithThirdweb({
     method: "function isModuleInstalled(uint256 moduleTypeId,address module,bytes additionalContext) view returns (bool)",
     params: [moduleTypeValidator, guardModuleAddress as HexAddress, "0x"],
   }).catch(() => false);
+  const isValidatorInitialized = await readContract({
+    contract: guardModuleContract,
+    method: "function isInitialized(address smartAccount) view returns (bool)",
+    params: [account.address as HexAddress],
+  }).catch(() => false);
+  const isGuardEnabled = isValidatorInitialized
+    ? await readContract({
+        contract: guardModuleContract,
+        method: "function configs(address smartAccount) view returns (bool initialized,bool enabled,uint8 mode,uint256 thresholdValue,address balanceToken)",
+        params: [account.address as HexAddress],
+      }).then((configResult) => Boolean(configResult[1])).catch(() => false)
+    : false;
+
+  if (!config.enabled && !isValidatorInitialized) {
+    return {
+      configTxHash: "",
+      installTxHash: "",
+      registerTxHash: "",
+    };
+  }
+
+  if (config.enabled && isGuardEnabled) {
+    const registeredAgent = await readContract({
+      contract: approvalStoreContract,
+      method: "function registeredAgent(address smartAccount) view returns (address)",
+      params: [account.address as HexAddress],
+    }).catch(() => zeroAddress);
+
+    if (getAddress(registeredAgent) === getAddress(zeroAddress)) {
+      throw new Error(
+        "This smart account already has RiskGuard enabled, but no approval agent is registered. Disable or recover it with a default-validator account before configuring again.",
+      );
+    }
+  }
+
   const installValidatorTransaction = prepareContractCall({
     contract: smartAccountContract,
     method: "function installModule(uint256 moduleTypeId,address module,bytes initData)",
@@ -215,14 +295,10 @@ export async function configureRiskGuardPolicyWithThirdweb({
           account: sender,
           transaction: installValidatorTransaction,
         }),
+        "default",
       );
-  const configReceipt = await sendWithUserPaidFallback(account, (sender) =>
-    sendAndConfirmTransaction({
-      account: sender,
-      transaction: setConfigTransaction,
-    }),
-  );
   let registerTxHash = "";
+  let configTxHash = "";
 
   if (config.enabled) {
     if (!agentAddress) {
@@ -235,17 +311,39 @@ export async function configureRiskGuardPolicyWithThirdweb({
       gas: registerApprovalRouteGasLimit,
       params: [agentAddress as HexAddress, guardModuleAddress as HexAddress],
     });
-    const registerReceipt = await sendWithUserPaidFallback(account, (sender) =>
+    const setupReceipt = await sendWithUserPaidFallback(account, (sender) =>
+      sendBatchAndConfirm(sender, [registerRouteTransaction, setConfigTransaction]),
+      "default",
+    ).catch((error: unknown) => {
+      if (isPendingApprovalError(error)) {
+        throw new Error(
+          "RiskGuard blocked its own setup transaction. The approval route must be registered before enabling the policy, or the account must be recovered from an older partial setup.",
+        );
+      }
+      throw error;
+    });
+    registerTxHash = setupReceipt.transactionHash;
+    configTxHash = setupReceipt.transactionHash;
+  } else {
+    const configReceipt = await sendWithUserPaidFallback(account, (sender) =>
       sendAndConfirmTransaction({
         account: sender,
-        transaction: registerRouteTransaction,
+        transaction: setConfigTransaction,
       }),
-    );
-    registerTxHash = registerReceipt.transactionHash;
+      "default",
+    ).catch((error: unknown) => {
+      if (isPendingApprovalError(error)) {
+        throw new Error(
+          "RiskGuard blocked its own setup transaction. The approval route must be registered before enabling the policy, or the account must be recovered from an older partial setup.",
+        );
+      }
+      throw error;
+    });
+    configTxHash = configReceipt.transactionHash;
   }
 
   return {
-    configTxHash: configReceipt.transactionHash,
+    configTxHash,
     installTxHash: installReceipt.transactionHash,
     registerTxHash,
   };

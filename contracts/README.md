@@ -13,6 +13,7 @@
 pnpm --dir contracts build
 pnpm --dir contracts test
 pnpm --dir contracts format
+pnpm --dir contracts configure:agents
 ```
 
 `forge` must be installed locally for contract commands. The package scripts use a Node wrapper that works on Ubuntu, WSL, and Windows PowerShell by checking the normal Foundry install path and PATH.
@@ -36,22 +37,30 @@ The previous standalone locked vault contract has been removed from the active c
 
 Current Somnia Testnet deployment:
 
-- `RiskGuardInheritanceRegistry`: `0xb9Fd28DEdE1dA4F1D3e657fdA61F290e8578Ae77`
+- `RiskGuardInheritanceRegistry`: `0xBaa6f77B9ea4E1ecaeEE7c64526bbb51d59E0e14`
 - deployer: `0x64769A00fB002b7ED192834443C9c819565Ab702`
-- transaction: `0xf4ed2bcf67583feb908f50dbfec2a345691f6e331bdaf7f2823411c80f113a1d`
-- deployed: `2026-06-01`
+- transaction: `0x1849eeebcc88c2315d9573b8e251c76b44661a20e2fedf7c017556dd11fb097a`
+- deployed: `2026-06-02`
+- Somnia LLM Inference agent configured: `12847293847561029384`
+- Somnia agent configuration transaction: `0x0566d5fa292e53407cdacd7c3d8c002db6c72b7516e0c0427870d5b409dcb2b8`
+- Somnia agent reward per call: `0.1 STT`
+- Somnia agent reward configuration transaction: `0xb0fa37e34589e583e7f32a23f694721b6da0f341f02eca236f5238fd457fcc98`
 - Reactivity funding transaction: `0x48849791032e4b4a782585daa67738560feb250d6f6e521236883c1e863f4297` (`32 STT`)
 
 RiskGuard hook approval gate deployment on Somnia Testnet:
 
 - `RiskGuardApprovalStore`: `0xaCdBb69cb283Cb0feDA1a0D1a3a657D74c35e1e3`
 - `RiskGuardHookModule`: `0x296Dc049b35447Aaf9Ea8996667eFB289F257289`
-- `RiskGuardValidator`: `0xA258165d82ba1827BF95CFd379e7Da1c8E8A9FA2`
+- `RiskGuardValidator`: `0x99eAD10e154693c137B61cEFEB5487db136A342F`
 - deployer: `0x64769A00fB002b7ED192834443C9c819565Ab702`
 - `RiskGuardApprovalStore` transaction: `0xbbfd38bbbea451e59769df617d235a24e2d57ef4ec37bebe8b50c07c02c64f0d`
 - `RiskGuardHookModule` transaction: `0x1c98522de5cf3741d05330df2be6f721cac3577de95bbdeca91950e9cd2255d2`
-- `RiskGuardValidator` transaction: `0x06230ada2daaeb5fba87a3f45e2eb537c538666f0e72c24d2cc6d98f489f4065`
-- deployed: `2026-06-01`
+- `RiskGuardValidator` transaction: `0x7239be53bb71cfe2eef72a2b8bf96c9bb955dbecacd48371123deed9dc36c566`
+- deployed: `2026-06-02`
+- Somnia LLM Inference agent configured: `12847293847561029384`
+- Somnia agent configuration transaction: `0xa16b06471a3e3232d7dc752bcd58a226e34d0da3cb8efb089d540c55bd3f45dc`
+- Somnia agent reward per call: `0.1 STT`
+- Somnia agent reward configuration transaction: `0xa73254fff006f30449782671ad80629f07685b35f493c952f574c46e521ce48f`
 - note: `RiskGuardValidator` is the active guard path for Thirdweb ERC-7579 accounts. It validates owner/admin signatures and gates ERC-7579 `execute(bytes32,bytes)` UserOps during `validateUserOp`, including native transfers. `RiskGuardHookModule` is kept for hook experiments, but Thirdweb's published `ModularAccount` does not run hooks on its primary `execute(...)` path.
 - note: no Thirdweb contract is forked. The account factory and account implementation stay Thirdweb-published; RiskGuard is installed as a separate ERC-7579 validator module.
 
@@ -60,7 +69,7 @@ For a smart account test install, register the approval route after installing t
 ```solidity
 RiskGuardApprovalStore(0xaCdBb69cb283Cb0feDA1a0D1a3a657D74c35e1e3).registerAgentAndHook(
   agentAddress,
-  0xA258165d82ba1827BF95CFd379e7Da1c8E8A9FA2
+  0x99eAD10e154693c137B61cEFEB5487db136A342F
 );
 ```
 
@@ -79,8 +88,8 @@ RiskGuard hybrid approval flow:
 
 - `RiskGuardValidator.validateUserOp(...)` is the enforcement point. It blocks risky native transfers, contract calls, approvals, and batches by reverting `PendingApprovalRequired(smartAccount, txHash, signer, riskContext)`.
 - For agent-native review, the owner/admin calls `RiskGuardValidator.requestAgentReview(smartAccount, callData)`. The validator pays the Somnia Agent request from `agentBudgetOf[smartAccount]`, calls `IAgentRequester.createRequest(...)`, and records the pending request.
-- The configured Risk Assessment Agent receives `assessRisk(smartAccount, txHash, signer, targets, values, data)` payload data and should return `abi.encode(bool approved, string reason)`.
-- Somnia's agent platform calls `handleRiskAssessmentResponse(...)`. If approved, the validator stores a one-time `agentApprovals[smartAccount][txHash]` entry. The user can then resubmit the original transaction; the validator consumes the agent approval.
+- The configured Risk Assessment Agent is Somnia's LLM Inference base agent. It receives an `inferString(prompt, system, false, [])` payload with decoded transaction context and should return a concise line beginning with `APPROVE:` or `REJECT:` followed by a reason.
+- Somnia's agent platform calls `handleRiskAssessmentResponse(...)`. If the LLM response begins with `APPROVE:`, the validator stores a one-time `agentApprovals[smartAccount][txHash]` entry. The user can then resubmit the original transaction; the validator consumes the agent approval. `REJECT:`, failed requests, or malformed responses leave the transaction blocked and emit the reason for Telegram/status reporting. The agent runtime sends a manual Telegram Approve/Decline fallback when the Somnia agent does not approve.
 - If an agent request is pending for the same transaction, `validateUserOp(...)` reverts `AgentReviewPending(smartAccount, txHash, requestId)`.
 - For high-risk or manual-review paths, the existing off-chain Telegram flow remains available: a RiskGuard-aware frontend, wallet, bundler, or RPC proxy forwards decoded `PendingApprovalRequired` data to `POST /api/riskguard/pending-approval`; on Approve, the agent wallet calls `RiskGuardApprovalStore.submitApproval(smartAccount, txHash)`.
 - On Decline, the agent submits nothing, so the original transaction remains blocked.
@@ -128,6 +137,22 @@ After deployment, set:
 - `config/public-chains.json` under `chains.somnia-testnet.contracts.riskGuardDefaultValidator`
 - optionally `.env` as `RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS`
 - optionally `.env` as `RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS`
+
+Configure Somnia Agent IDs after deploying or redeploying the RiskGuard/Inheritance contracts:
+
+```bash
+pnpm --dir contracts configure:agents
+```
+
+Required environment variables:
+
+- `WALLET_DEPLOYER_PRIVATE_KEY`
+- `RISK_GUARD_RISK_ASSESSMENT_AGENT_ID`
+- `INHERITANCE_HEARTBEAT_AGENT_ID`
+- `INHERITANCE_DISTRIBUTION_AGENT_ID`
+- optional `SOMNIA_AGENT_REQUESTER_ADDRESS`; defaults to the known Somnia AgentRequester for chain `5031` or `50312`
+
+`agentId` values and the AgentRequester address are public on-chain configuration. Do not commit a real `WALLET_DEPLOYER_PRIVATE_KEY`.
 
 Deploy the registry with Foundry:
 

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { getAddress, verifyMessage } from "ethers";
+import { formatUnits, getAddress, verifyMessage } from "ethers";
 import { z } from "zod";
 
 import type { AgentConfig } from "../config/env.js";
@@ -74,6 +74,21 @@ export const telegramSignedBindingRequestSchema = telegramBindingRequestSchema
 
 export const telegramUnlinkRequestSchema = signedWalletMutationSchema;
 
+export const riskGuardAgentReviewRequestedSchema = z
+  .object({
+    walletAddress: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/)
+      .transform((value) => getAddress(value)),
+    smartAccountAddress: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/)
+      .transform((value) => getAddress(value)),
+    guardedTxHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+    requestTxHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/)
+  })
+  .strict();
+
 export const telegramCallbackRequestSchema = z
   .object({
     chatId: z.string().regex(/^-?\d+$/),
@@ -85,6 +100,7 @@ export const telegramCallbackRequestSchema = z
 export type TelegramBindingRequest = z.infer<typeof telegramBindingRequestSchema>;
 export type TelegramSignedBindingRequest = z.infer<typeof telegramSignedBindingRequestSchema>;
 export type TelegramUnlinkRequest = z.infer<typeof telegramUnlinkRequestSchema>;
+export type RiskGuardAgentReviewRequested = z.infer<typeof riskGuardAgentReviewRequestedSchema>;
 export type TelegramCallbackRequest = z.infer<typeof telegramCallbackRequestSchema>;
 
 function validateSignedWalletMutation(
@@ -169,6 +185,18 @@ function formatAddress(value: string): string {
   return value.length > 14 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
 }
 
+function formatNativeValue(valueWei: string): string {
+  try {
+    const formatted = formatUnits(valueWei, 18);
+    const [whole, fraction = ""] = formatted.split(".");
+    const trimmedFraction = fraction.slice(0, 6).replace(/0+$/, "");
+
+    return `${whole}${trimmedFraction ? `.${trimmedFraction}` : ""} STT`;
+  } catch {
+    return `${valueWei} wei`;
+  }
+}
+
 export class TelegramAlertService {
   public constructor(
     private readonly config: AgentConfig,
@@ -248,6 +276,46 @@ export class TelegramAlertService {
 
   public latestBindingForWallet(walletAddress: string) {
     return this.bindings.latestForWallet(walletAddress);
+  }
+
+  public async sendRiskGuardAgentReviewRequested(input: RiskGuardAgentReviewRequested) {
+    const parsed = riskGuardAgentReviewRequestedSchema.parse(input);
+    const binding = await this.bindings.attachSmartAccount(
+      parsed.walletAddress,
+      parsed.smartAccountAddress
+    );
+
+    if (!binding) {
+      throw new TelegramAlertServiceError(
+        "telegram_binding_not_found",
+        "No Telegram binding is connected for this wallet.",
+        404
+      );
+    }
+
+    await this.telegram.sendMessage({
+      chatId: binding.chatId,
+      text: [
+        "Somnia Agent review requested.",
+        `Smart Account: ${formatAddress(parsed.smartAccountAddress)}`,
+        `Guarded Tx: ${formatAddress(parsed.guardedTxHash)}`,
+        `Request Tx: ${formatAddress(parsed.requestTxHash)}`,
+        "RiskGuard will send the agent decision here after the Somnia callback finalizes."
+      ].join("\n")
+    });
+
+    await this.audit.record({
+      eventType: "riskguard.agent-review.requested.telegram.sent",
+      status: "succeeded",
+      metadata: {
+        walletAddress: parsed.walletAddress,
+        smartAccountAddress: parsed.smartAccountAddress,
+        guardedTxHash: parsed.guardedTxHash,
+        requestTxHash: parsed.requestTxHash
+      }
+    });
+
+    return { sent: true };
   }
 
   public async sendRiskGuardApprovalRequest(input: RiskGuardPendingApprovalRequest) {
@@ -617,14 +685,13 @@ export class TelegramAlertService {
   private formatRiskGuardApprovalMessage(input: RiskGuardPendingApprovalRequest): string {
     return [
       "RiskGuard Transaction Review",
-      `Risk: ${input.riskLevel}`,
       `Smart Account: ${formatAddress(input.smartAccountAddress)}`,
       `Tx Hash: ${formatAddress(input.txHash)}`,
       input.target ? `Target: ${formatAddress(input.target)}` : undefined,
-      input.valueWei ? `Value: ${input.valueWei} wei` : undefined,
+      input.valueWei ? `Value: ${formatNativeValue(input.valueWei)}` : undefined,
       input.selector ? `Selector: ${input.selector}` : undefined,
-      input.description ? `Analysis: ${summarizeReason(input.description)}` : undefined,
-      "Approve will submit an on-chain one-time approval. Decline leaves the transaction blocked."
+      input.description ? `Transaction: ${summarizeReason(input.description)}` : undefined,
+      "Manual fallback: Approve submits an on-chain one-time approval. Decline leaves the transaction blocked."
     ].filter(Boolean).join("\n");
   }
 

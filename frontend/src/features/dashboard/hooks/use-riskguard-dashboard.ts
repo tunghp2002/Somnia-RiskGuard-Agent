@@ -198,7 +198,7 @@ export function useRiskGuardDashboard() {
   const [selectedAssetAccountScope, setSelectedAssetAccountScope] =
     useState<BlockscoutAccountScope>("all");
   const [riskGuardConfig, setRiskGuardConfig] = useState<RiskGuardConfig>(
-    loadStoredRiskGuardConfig,
+    defaultRiskGuardConfig,
   );
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [telegramSession, setTelegramSession] =
@@ -262,6 +262,20 @@ export function useRiskGuardDashboard() {
       );
     });
   }, [activeInheritanceSmartAccount, activeWalletAddress]);
+
+  const getActiveRiskGuardSmartAccount = useCallback(async () => {
+    if (
+      thirdwebSmartAccount &&
+      (!selectedSmartAccountAddress ||
+        thirdwebSmartAccount.address.toLowerCase() === selectedSmartAccountAddress.toLowerCase())
+    ) {
+      return thirdwebSmartAccount;
+    }
+
+    const account = await connectRiskGuardSmartAccount();
+    setSelectedSmartAccountAddress(account.address);
+    return account;
+  }, [selectedSmartAccountAddress, thirdwebSmartAccount]);
 
   const receipts = useMemo(() => {
     const fromAudit = events.map((event) => ({
@@ -444,6 +458,10 @@ export function useRiskGuardDashboard() {
   }, [activeInheritanceSmartAccount, activeWalletAddress, wallet]);
 
   useEffect(() => {
+    setRiskGuardConfig(loadStoredRiskGuardConfig());
+  }, []);
+
+  useEffect(() => {
     void loadData();
   }, [loadData]);
 
@@ -475,7 +493,7 @@ export function useRiskGuardDashboard() {
   useEffect(() => {
     const walletAddress = wallet?.address;
 
-    if (!walletAddress || thirdwebSmartAccount?.address) {
+    if (!walletAddress || selectedSmartAccountAddress) {
       return;
     }
 
@@ -506,7 +524,7 @@ export function useRiskGuardDashboard() {
     return () => {
       stopped = true;
     };
-  }, [thirdwebSmartAccount?.address, wallet?.address]);
+  }, [selectedSmartAccountAddress, wallet?.address]);
 
   useEffect(
     () =>
@@ -881,7 +899,10 @@ export function useRiskGuardDashboard() {
         guardModuleAddress,
       });
 
-      openTransaction(publicChain, result.registerTxHash || result.configTxHash);
+      const txHash = result.registerTxHash || result.configTxHash || result.installTxHash;
+      if (txHash) {
+        openTransaction(publicChain, txHash);
+      }
       setRiskGuardConfig(nextConfig);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(
@@ -889,12 +910,14 @@ export function useRiskGuardDashboard() {
           JSON.stringify(nextConfig),
         );
       }
-      const txAction = transactionNoticeAction(publicChain, result.registerTxHash);
+      const txAction = txHash ? transactionNoticeAction(publicChain, txHash) : undefined;
       setNotice({
         tone: "ok",
         message: nextConfig.enabled
           ? "RiskGuard setup saved and approval route registered on-chain."
-          : "RiskGuard policy disabled on-chain.",
+          : txHash
+            ? "RiskGuard policy disabled on-chain."
+            : "RiskGuard policy was already disabled on-chain; local setup state was cleared.",
         ...(txAction ? { action: txAction } : {}),
       });
       await loadData();
@@ -916,7 +939,7 @@ export function useRiskGuardDashboard() {
 
     const smartAccount =
       input.source === "smart"
-        ? thirdwebSmartAccount ?? await connectRiskGuardSmartAccount()
+        ? await getActiveRiskGuardSmartAccount()
         : undefined;
 
     if (smartAccount) {
@@ -929,7 +952,7 @@ export function useRiskGuardDashboard() {
       smartAccountAddress: smartAccount?.address ?? activeInheritanceSmartAccount,
       symbol: publicChain?.nativeCurrency.symbol ?? "STT",
     });
-  }, [activeInheritanceSmartAccount, publicChain?.nativeCurrency.symbol, thirdwebSmartAccount, wallet]);
+  }, [activeInheritanceSmartAccount, getActiveRiskGuardSmartAccount, publicChain?.nativeCurrency.symbol, wallet]);
 
   async function handleTransferSubmit(input: NativeTransferInput) {
     const connectedWallet = wallet ?? await connectBrowserWallet();
@@ -940,7 +963,7 @@ export function useRiskGuardDashboard() {
 
     const smartAccount =
       input.source === "smart"
-        ? thirdwebSmartAccount ?? await connectRiskGuardSmartAccount()
+        ? await getActiveRiskGuardSmartAccount()
         : undefined;
 
     if (smartAccount) {
@@ -959,8 +982,18 @@ export function useRiskGuardDashboard() {
 
     setActionLoading("transfer");
     try {
+      const riskGuardTransferOptions = publicChain?.contracts.riskGuardValidatorModule
+        ? {
+            riskGuardValidatorAddress: publicChain.contracts.riskGuardValidatorModule,
+            walletAddress: connectedWallet.address,
+          }
+        : {};
       const txHash = input.source === "smart"
-        ? await sendNativeTransferFromSmartAccount(input, smartAccount!).catch(async (error: unknown) => {
+        ? await sendNativeTransferFromSmartAccount(
+            input,
+            smartAccount!,
+            riskGuardTransferOptions,
+          ).catch(async (error: unknown) => {
             const message = error instanceof Error ? error.message : String(error);
 
             if (!/aa36|paymaster|useroperation|bundler/i.test(message)) {
@@ -969,7 +1002,11 @@ export function useRiskGuardDashboard() {
 
             const userPaidAccount = await connectUserPaidThirdwebSmartAccount(smartAccount!.address);
 
-            return sendNativeTransferFromSmartAccount(input, userPaidAccount);
+            return sendNativeTransferFromSmartAccount(
+              input,
+              userPaidAccount,
+              riskGuardTransferOptions,
+            );
           })
         : await sendNativeTransferFromEoa(input);
       const txAction = transactionNoticeAction(publicChain, txHash);

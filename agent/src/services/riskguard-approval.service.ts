@@ -29,8 +29,9 @@ export const riskGuardPendingApprovalRequestSchema = z
       .optional(),
     valueWei: z.string().regex(/^\d+$/).optional(),
     selector: z.string().regex(/^0x[a-fA-F0-9]{8}$/).optional(),
+    reason: z.string().trim().min(1).max(500).optional(),
     description: z.string().trim().min(1).max(800).optional(),
-    riskLevel: z.enum(["low", "medium", "high", "critical"]).default("high")
+    riskLevel: z.enum(["low", "medium", "high", "critical"]).default("medium")
   })
   .strict();
 
