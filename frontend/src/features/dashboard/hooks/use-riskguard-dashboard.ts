@@ -33,6 +33,7 @@ import {
   getNativeTransferValidationError,
   sendNativeTransferFromEoa,
   sendNativeTransferFromSmartAccount,
+  SomniaAgentReviewRequestedError,
 } from "@/lib/native-transfer";
 import {
   configureRiskGuardPolicyWithThirdweb,
@@ -59,6 +60,7 @@ import {
 
 import type {
   AccountStatus,
+  AgentReviewRequestModal,
   DashboardSection,
   GuardRuleId,
   Notice,
@@ -175,6 +177,15 @@ function transactionNoticeAction(
     : undefined;
 }
 
+function telegramReviewUrl(session: TelegramConnectSession | null) {
+  if (session?.botDeepLink) {
+    return session.botDeepLink;
+  }
+
+  const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
+  return botUsername ? `https://t.me/${botUsername.replace(/^@/, "")}` : "https://t.me/";
+}
+
 export function useRiskGuardDashboard() {
   const thirdwebSmartAccount = useActiveAccount();
   const [activeSection, setActiveSection] =
@@ -205,6 +216,8 @@ export function useRiskGuardDashboard() {
     useState<TelegramConnectSession | null>(null);
   const [userProfile, setUserProfile] = useState<UserRecord | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [agentReviewModal, setAgentReviewModal] =
+    useState<AgentReviewRequestModal | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const loadRequestRef = useRef(0);
@@ -923,6 +936,16 @@ export function useRiskGuardDashboard() {
       await loadData();
       return true;
     } catch (error) {
+      if (error instanceof SomniaAgentReviewRequestedError) {
+        const requestTxUrl = transactionUrl(publicChain, error.requestTxHash);
+        setAgentReviewModal({
+          requestTxHash: error.requestTxHash,
+          ...(requestTxUrl ? { requestTxUrl } : {}),
+          telegramUrl: telegramReviewUrl(telegramSession),
+        });
+        return false;
+      }
+
       setNotice({ tone: "bad", message: errorMessage(error) });
       return false;
     } finally {
@@ -1022,6 +1045,16 @@ export function useRiskGuardDashboard() {
       await loadData();
       return true;
     } catch (error) {
+      if (error instanceof SomniaAgentReviewRequestedError) {
+        const requestTxUrl = transactionUrl(publicChain, error.requestTxHash);
+        setAgentReviewModal({
+          requestTxHash: error.requestTxHash,
+          ...(requestTxUrl ? { requestTxUrl } : {}),
+          telegramUrl: telegramReviewUrl(telegramSession),
+        });
+        return false;
+      }
+
       setNotice({ tone: "bad", message: errorMessage(error) });
       return false;
     } finally {
@@ -1127,6 +1160,7 @@ export function useRiskGuardDashboard() {
       mobileMoreOpen,
       mode,
       notice,
+      agentReviewModal,
       portfolio,
       publicChain,
       readiness,
@@ -1157,6 +1191,7 @@ export function useRiskGuardDashboard() {
       handleProfileSubmit,
       loadData,
       showNotice,
+      setAgentReviewModal,
       setActiveSection,
       setSelectedAssetAccountScope,
       setMobileMoreOpen,

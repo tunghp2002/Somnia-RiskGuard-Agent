@@ -1,6 +1,7 @@
 import { Interface, getAddress, parseUnits } from "ethers";
 import {
   getContract,
+  prepareTransaction,
   prepareContractCall,
   readContract,
   sendBatchTransaction,
@@ -23,6 +24,7 @@ const zeroAddress = "0x0000000000000000000000000000000000000000";
 const installValidatorGasLimit = 2_500_000n;
 const setValidatorConfigGasLimit = 500_000n;
 const registerApprovalRouteGasLimit = 500_000n;
+const approvalSessionKeyFundingWei = parseUnits("0.03", 18);
 type HexAddress = `0x${string}`;
 type SmartAccountValidator = "default" | "riskguard";
 const riskGuardValidatorInterface = new Interface([
@@ -288,17 +290,9 @@ export async function configureRiskGuardPolicyWithThirdweb({
     params: [config.enabled, threshold.mode, threshold.value, zeroAddress],
   });
 
-  const installReceipt = !config.enabled || isValidatorInstalled
-    ? { transactionHash: "" }
-    : await sendWithUserPaidFallback(account, (sender) =>
-        sendAndConfirmTransaction({
-          account: sender,
-          transaction: installValidatorTransaction,
-        }),
-        "default",
-      );
   let registerTxHash = "";
   let configTxHash = "";
+  let installTxHash = "";
 
   if (config.enabled) {
     if (!agentAddress) {
@@ -311,8 +305,20 @@ export async function configureRiskGuardPolicyWithThirdweb({
       gas: registerApprovalRouteGasLimit,
       params: [agentAddress as HexAddress, guardModuleAddress as HexAddress],
     });
+    const fundApprovalSessionTransaction = prepareTransaction({
+      chain: somniaThirdwebChain,
+      client: thirdwebClient,
+      to: agentAddress as HexAddress,
+      value: approvalSessionKeyFundingWei,
+    });
+    const setupTransactions = [
+      ...(isValidatorInstalled ? [] : [installValidatorTransaction]),
+      registerRouteTransaction,
+      fundApprovalSessionTransaction,
+      setConfigTransaction,
+    ];
     const setupReceipt = await sendWithUserPaidFallback(account, (sender) =>
-      sendBatchAndConfirm(sender, [registerRouteTransaction, setConfigTransaction]),
+      sendBatchAndConfirm(sender, setupTransactions),
       "default",
     ).catch((error: unknown) => {
       if (isPendingApprovalError(error)) {
@@ -324,6 +330,7 @@ export async function configureRiskGuardPolicyWithThirdweb({
     });
     registerTxHash = setupReceipt.transactionHash;
     configTxHash = setupReceipt.transactionHash;
+    installTxHash = isValidatorInstalled ? "" : setupReceipt.transactionHash;
   } else {
     const configReceipt = await sendWithUserPaidFallback(account, (sender) =>
       sendAndConfirmTransaction({
@@ -344,7 +351,7 @@ export async function configureRiskGuardPolicyWithThirdweb({
 
   return {
     configTxHash,
-    installTxHash: installReceipt.transactionHash,
+    installTxHash,
     registerTxHash,
   };
 }

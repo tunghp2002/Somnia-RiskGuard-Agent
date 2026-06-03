@@ -42,6 +42,13 @@ type TransferValidationContext = {
   smartAccountAddress: string | undefined;
 };
 
+export class SomniaAgentReviewRequestedError extends Error {
+  public constructor(public readonly requestTxHash: string) {
+    super("Somnia Agent review requested on-chain.");
+    this.name = "SomniaAgentReviewRequestedError";
+  }
+}
+
 export function getNativeTransferValidationError(
   input: NativeTransferInput,
   context: TransferValidationContext
@@ -349,9 +356,7 @@ export async function sendNativeTransferFromSmartAccount(
         }).catch(() => undefined);
       }
 
-      throw new Error(
-        `Somnia Agent review requested on-chain (${reviewTxHash}). Wait for the agent callback, then send the same transaction again.`
-      );
+      throw new SomniaAgentReviewRequestedError(reviewTxHash);
     }
     throw error;
   }

@@ -92,6 +92,7 @@ export const riskGuardAgentReviewRequestedSchema = z
 export const telegramCallbackRequestSchema = z
   .object({
     chatId: z.string().regex(/^-?\d+$/),
+    messageId: z.string().regex(/^\d+$/).optional(),
     telegramUserId: z.string().regex(/^\d+$/).optional(),
     data: z.string().min(1)
   })
@@ -185,6 +186,14 @@ function formatAddress(value: string): string {
   return value.length > 14 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function formatNativeValue(valueWei: string): string {
   try {
     const formatted = formatUnits(valueWei, 18);
@@ -195,6 +204,25 @@ function formatNativeValue(valueWei: string): string {
   } catch {
     return `${valueWei} wei`;
   }
+}
+
+function stripAgentRecommendationPrefix(reason: string): string {
+  return reason
+    .replace(/^\s*APPROVE\s*:?\s*/i, "")
+    .replace(/^\s*REJECT\s*:?\s*/i, "")
+    .trim();
+}
+
+function summarizeRiskGuardApprovalFailure(reason: string): string {
+  if (/account does not exist|insufficient funds|no STT for gas/i.test(reason)) {
+    return "RiskGuard approval signer does not have enough STT for gas. Reconfigure Risk Policy Guard so the user smart account funds the approval signer, then request review again.";
+  }
+
+  if (/not registered/i.test(reason)) {
+    return "RiskGuard approval signer is not registered for this smart account. Reconfigure Risk Policy Guard, then request review again.";
+  }
+
+  return reason.length > 240 ? `${reason.slice(0, 237)}...` : reason;
 }
 
 export class TelegramAlertService {
@@ -293,15 +321,17 @@ export class TelegramAlertService {
       );
     }
 
-    await this.telegram.sendMessage({
+    const sent = await this.telegram.sendMessage({
       chatId: binding.chatId,
       text: [
-        "Somnia Agent review requested.",
-        `Smart Account: ${formatAddress(parsed.smartAccountAddress)}`,
-        `Guarded Tx: ${formatAddress(parsed.guardedTxHash)}`,
-        `Request Tx: ${formatAddress(parsed.requestTxHash)}`,
-        "RiskGuard will send the agent decision here after the Somnia callback finalizes."
-      ].join("\n")
+        "<b>Somnia Agent review requested</b>",
+        "Status: 🟡 Reviewing",
+        `Smart Account: <code>${escapeHtml(parsed.smartAccountAddress)}</code>`,
+        `Guarded Tx: ${this.txLink(parsed.guardedTxHash)}`,
+        `Request Tx: ${this.txLink(parsed.requestTxHash)}`,
+        "This status message will disappear after the Somnia callback finalizes."
+      ].join("\n"),
+      parseMode: "HTML"
     });
 
     await this.audit.record({
@@ -311,7 +341,76 @@ export class TelegramAlertService {
         walletAddress: parsed.walletAddress,
         smartAccountAddress: parsed.smartAccountAddress,
         guardedTxHash: parsed.guardedTxHash,
-        requestTxHash: parsed.requestTxHash
+        requestTxHash: parsed.requestTxHash,
+        telegramMessageId: sent.messageId,
+        chatId: binding.chatId
+      }
+    });
+
+    return { sent: true };
+  }
+
+  public async sendRiskGuardAgentReviewDecision(input: {
+    walletAddress: string;
+    smartAccountAddress: string;
+    txHash: string;
+    approved: boolean;
+    reason: string;
+  }) {
+    const smartAccountAddress = getAddress(input.smartAccountAddress);
+    const walletAddress = getAddress(input.walletAddress);
+    const pending = await this.findPendingAgentReviewRequest(smartAccountAddress, input.txHash);
+
+    if (pending?.chatId && pending.telegramMessageId && this.telegram.deleteMessage) {
+      await this.telegram.deleteMessage({
+        chatId: pending.chatId,
+        messageId: pending.telegramMessageId
+      }).catch(() => undefined);
+    }
+
+    const binding = await this.bindings.latestForSmartAccount(smartAccountAddress)
+      ?? await this.bindings.latestForWallet(walletAddress);
+
+    if (!binding) {
+      throw new TelegramAlertServiceError(
+        "telegram_binding_not_found",
+        "No Telegram binding is connected for this smart account.",
+        404
+      );
+    }
+
+    const analysis = stripAgentRecommendationPrefix(input.reason)
+      || "Somnia Agent did not return a detailed analysis.";
+    const riskScore = input.approved ? "Low" : "High";
+    const buttons = await this.buildRiskGuardButtons(binding, smartAccountAddress, input.txHash);
+
+    const sent = await this.telegram.sendMessage({
+      chatId: binding.chatId,
+      text: [
+        "<b>Somnia Agent RiskGuard Review</b>",
+        `Status: ${input.approved ? "🟢 Agent recommends approval" : "🔴 Agent recommends rejection"}`,
+        `Agent Recommendation: ${input.approved ? "Approve" : "Decline"}`,
+        `Smart Account: <code>${escapeHtml(smartAccountAddress)}</code>`,
+        `Guarded Tx: ${this.txLink(input.txHash)}`,
+        pending?.requestTxHash ? `Request Tx: ${this.txLink(pending.requestTxHash)}` : undefined,
+        `Risk Score: ${riskScore}`,
+        `Analysis: ${escapeHtml(analysis)}`,
+        "Advice: Choose Approve to submit a one-time approval and continue without another agent review. Choose Decline to reject execution."
+      ].filter(Boolean).join("\n"),
+      buttons,
+      parseMode: "HTML"
+    });
+
+    await this.audit.record({
+      eventType: "riskguard.agent-review.decision.telegram.sent",
+      status: "succeeded",
+      metadata: {
+        walletAddress,
+        smartAccountAddress,
+        guardedTxHash: input.txHash,
+        requestTxHash: pending?.requestTxHash,
+        approved: input.approved,
+        telegramMessageId: sent.messageId
       }
     });
 
@@ -567,10 +666,12 @@ export class TelegramAlertService {
     }
 
     if (callbackRecord.actionType === "approve_riskguard_tx") {
-      return this.approveRiskGuardTx(callbackRecord, binding.chatId);
+      await this.clearCallbackButtons(parsed.chatId, parsed.messageId);
+      return this.approveRiskGuardTx(callbackRecord, binding);
     }
 
     if (callbackRecord.actionType === "decline_riskguard_tx") {
+      await this.clearCallbackButtons(parsed.chatId, parsed.messageId);
       return this.declineRiskGuardTx(callbackRecord, binding.chatId);
     }
 
@@ -606,6 +707,36 @@ export class TelegramAlertService {
         })
       }
     ];
+  }
+
+  private txLink(txHash: string): string {
+    const explorer = this.config.publicChain.blockExplorerUrl.replace(/\/+$/, "");
+    return `<a href="${escapeHtml(`${explorer}/tx/${txHash}`)}">${escapeHtml(formatAddress(txHash))}</a>`;
+  }
+
+  private async findPendingAgentReviewRequest(smartAccountAddress: string, txHash: string) {
+    const events = await this.audit.list();
+    const event = events
+      .filter((item) => item.eventType === "riskguard.agent-review.requested.telegram.sent")
+      .reverse()
+      .find((item) =>
+        String(item.metadata.smartAccountAddress).toLowerCase() === smartAccountAddress.toLowerCase()
+        && String(item.metadata.guardedTxHash).toLowerCase() === txHash.toLowerCase()
+      );
+
+    if (!event) {
+      return undefined;
+    }
+
+    return {
+      chatId: typeof event.metadata.chatId === "string" ? event.metadata.chatId : undefined,
+      telegramMessageId: typeof event.metadata.telegramMessageId === "string"
+        ? event.metadata.telegramMessageId
+        : undefined,
+      requestTxHash: typeof event.metadata.requestTxHash === "string"
+        ? event.metadata.requestTxHash
+        : undefined
+    };
   }
 
   private async buildAlertButtons(
@@ -806,7 +937,7 @@ export class TelegramAlertService {
       smartAccountAddress?: string | undefined;
       txHash?: string | undefined;
     },
-    chatId: string
+    binding: { userId: string; chatId: string; walletAddress: string }
   ): Promise<TelegramCallbackResult> {
     if (!this.riskGuardApprovals || !callbackRecord.smartAccountAddress || !callbackRecord.txHash) {
       return this.rejectCallback("riskguard.approval.rejected", {
@@ -821,11 +952,11 @@ export class TelegramAlertService {
         txHash: callbackRecord.txHash
       });
       await this.telegram.sendMessage({
-        chatId,
+        chatId: binding.chatId,
         text: [
-          "RiskGuard approval submitted on-chain.",
+          "🟢 RiskGuard approval succeeded.",
           `Approval Tx: ${receipt.txHash}`,
-          "Resubmit the original transaction now."
+          "The transaction now has a one-time approval and can continue without another Somnia Agent review."
         ].join("\n")
       });
 
@@ -843,8 +974,8 @@ export class TelegramAlertService {
         }
       });
       await this.telegram.sendMessage({
-        chatId,
-        text: `RiskGuard approval failed: ${reason}`
+        chatId: binding.chatId,
+        text: `⚠️ RiskGuard approval failed: ${summarizeRiskGuardApprovalFailure(reason)}`
       });
       return { ok: false, message: "RiskGuard approval failed." };
     }
@@ -869,10 +1000,22 @@ export class TelegramAlertService {
     });
     await this.telegram.sendMessage({
       chatId,
-      text: "RiskGuard transaction declined. No on-chain approval was submitted."
+      text: "🔴 RiskGuard transaction rejected. No on-chain approval was submitted."
     });
 
     return { ok: true, message: "RiskGuard transaction declined." };
+  }
+
+  private async clearCallbackButtons(chatId: string, messageId: string | undefined) {
+    if (!messageId || !this.telegram.editMessageReplyMarkup) {
+      return;
+    }
+
+    await this.telegram.editMessageReplyMarkup({
+      chatId,
+      messageId,
+      buttons: []
+    }).catch(() => undefined);
   }
 
   private async rejectCallback(

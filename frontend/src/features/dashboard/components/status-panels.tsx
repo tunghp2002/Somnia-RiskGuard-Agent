@@ -262,18 +262,6 @@ export function RiskPolicyGuard({
               <Button onClick={() => setModalOpen(false)} type="button" variant="secondary">
                 Cancel
               </Button>
-              {moduleReady ? (
-                <Button
-                  className="guard-disable-button"
-                  disabled={savingGuard || disablingGuard}
-                  onClick={disableGuard}
-                  type="button"
-                  variant="secondary"
-                >
-                  {disablingGuard ? <Loader2 className="spin" size={16} /> : <ShieldX size={16} />}
-                  Disable guard
-                </Button>
-              ) : null}
               <Button
                 className="confirm-button"
                 disabled={savingGuard || disablingGuard}

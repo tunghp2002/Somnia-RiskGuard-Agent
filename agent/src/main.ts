@@ -240,6 +240,9 @@ export async function startAgentRuntime(
     handleCallback: async (update) =>
       telegramAlerts.processCallback({
         chatId: update.chatId,
+        ...(update.messageId
+          ? { messageId: update.messageId }
+          : {}),
         ...(update.telegramUserId
           ? { telegramUserId: update.telegramUserId }
           : {}),

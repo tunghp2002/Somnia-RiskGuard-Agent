@@ -72,28 +72,25 @@ export class RiskGuardAgentReviewJob {
 
       const approved = Boolean(parsed.args.approved);
       const reason = String(parsed.args.reason || "No reason returned by Somnia agent.");
-      await this.telegram.sendMessage({
-        chatId: binding.chatId,
-        text: [
-          "Somnia Agent RiskGuard Review",
-          `Decision: ${approved ? "approved" : "rejected"}`,
-          `Smart Account: ${formatAddress(smartAccount)}`,
-          `Tx Hash: ${formatAddress(txHash)}`,
-          `Reason: ${reason}`,
-          approved
-            ? "You can resubmit the original transaction now."
-            : "The transaction remains blocked. Use the fallback buttons if you still want to approve it manually."
-        ].join("\n")
-      });
-
-      if (!approved && this.telegramAlerts) {
-        await this.telegramAlerts.sendRiskGuardApprovalRequest({
+      if (this.telegramAlerts) {
+        await this.telegramAlerts.sendRiskGuardAgentReviewDecision({
           walletAddress: binding.walletAddress,
           smartAccountAddress: smartAccount,
           txHash,
-          reason,
-          description: `Somnia Agent review did not approve this transaction: ${reason}`,
-          riskLevel: "high"
+          approved,
+          reason
+        });
+      } else {
+        await this.telegram.sendMessage({
+          chatId: binding.chatId,
+          text: [
+            "Somnia Agent RiskGuard Review",
+            `Agent Recommendation: ${approved ? "Approve" : "Decline"}`,
+            `Smart Account: ${formatAddress(smartAccount)}`,
+            `Tx Hash: ${formatAddress(txHash)}`,
+            `Analysis: ${reason}`,
+            "Choose Approve to submit a one-time approval, or Decline to reject execution."
+          ].join("\n")
         });
       }
       notified += 1;

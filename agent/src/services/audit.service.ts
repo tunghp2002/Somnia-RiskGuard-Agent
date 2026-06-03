@@ -17,4 +17,8 @@ export class AuditService {
     this.logger?.info({ auditEvent: event }, "audit event recorded");
     return event;
   }
+
+  public list(): Promise<AuditEvent[]> {
+    return this.auditEvents.list();
+  }
 }

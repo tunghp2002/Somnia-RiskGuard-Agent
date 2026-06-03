@@ -3,6 +3,7 @@
 import { InheritanceSettings } from "@/features/settings/guardian-settings";
 
 import { AccountAssetsPanel } from "./components/account-assets-panel";
+import { AgentReviewRequestModal } from "./components/agent-review-modal";
 import {
   DashboardHeader,
   DashboardSidebar,
@@ -40,6 +41,10 @@ export function RiskGuardDashboard() {
         />
 
         <DashboardNoticeToast notice={state.notice} />
+        <AgentReviewRequestModal
+          onClose={() => actions.setAgentReviewModal(null)}
+          review={state.agentReviewModal}
+        />
 
         {state.activeSection === "overview" ? (
           <section className="rg-overview">

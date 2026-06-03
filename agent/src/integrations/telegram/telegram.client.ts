@@ -14,6 +14,7 @@ export interface TelegramSendMessageInput {
   chatId: string;
   text: string;
   buttons?: TelegramInlineButton[];
+  parseMode?: "HTML" | "MarkdownV2";
 }
 
 export interface TelegramSendMessageResult {
@@ -25,10 +26,17 @@ export interface TelegramDeleteMessageInput {
   messageId: string;
 }
 
+export interface TelegramEditMessageReplyMarkupInput {
+  chatId: string;
+  messageId: string;
+  buttons?: TelegramInlineButton[];
+}
+
 export interface TelegramCallbackUpdate {
   updateId: number;
   callbackQueryId: string;
   chatId: string;
+  messageId?: string;
   telegramUserId?: string;
   data: string;
 }
@@ -58,6 +66,7 @@ export interface TelegramClient {
   health(): Promise<{ ok: boolean; enabled: boolean; reason?: string }> | { ok: boolean; enabled: boolean; reason?: string };
   sendMessage(input: TelegramSendMessageInput): Promise<TelegramSendMessageResult>;
   deleteMessage?(input: TelegramDeleteMessageInput): Promise<void>;
+  editMessageReplyMarkup?(input: TelegramEditMessageReplyMarkupInput): Promise<void>;
   startPolling?(options: StartTelegramPollingOptions): TelegramPollingHandle;
 }
 
@@ -75,6 +84,10 @@ export class DisabledTelegramClient implements TelegramClient {
   }
 
   public async deleteMessage(): Promise<void> {
+    throw new Error("Telegram is not configured");
+  }
+
+  public async editMessageReplyMarkup(): Promise<void> {
     throw new Error("Telegram is not configured");
   }
 }
@@ -105,6 +118,7 @@ export class TelegramBotApiClient implements TelegramClient {
         body: JSON.stringify({
           chat_id: input.chatId,
           text: input.text,
+          parse_mode: input.parseMode,
           reply_markup: input.buttons?.length
             ? {
                 inline_keyboard: input.buttons.map((button) => [
@@ -143,6 +157,31 @@ export class TelegramBotApiClient implements TelegramClient {
         body: JSON.stringify({
           chat_id: input.chatId,
           message_id: input.messageId
+        })
+      }
+    );
+  }
+
+  public async editMessageReplyMarkup(input: TelegramEditMessageReplyMarkupInput): Promise<void> {
+    if (!this.config.enabled || !this.config.botToken) {
+      throw new Error("Telegram is not configured");
+    }
+
+    await fetch(
+      `https://api.telegram.org/bot${this.config.botToken}/editMessageReplyMarkup`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chat_id: input.chatId,
+          message_id: input.messageId,
+          reply_markup: {
+            inline_keyboard: input.buttons?.length
+              ? input.buttons.map((button) => [
+                  { text: button.text, callback_data: button.callbackData }
+                ])
+              : []
+          }
         })
       }
     );
@@ -340,6 +379,7 @@ export class TelegramBotApiClient implements TelegramClient {
       updateId: update.update_id,
       callbackQueryId: callback.id,
       chatId: chatId.toString(),
+      ...(callback.message?.message_id === undefined ? {} : { messageId: callback.message.message_id.toString() }),
       ...(telegramUserId === undefined ? {} : { telegramUserId: telegramUserId.toString() }),
       data: callback.data
     };
@@ -377,7 +417,7 @@ interface TelegramRawUpdate {
   callback_query?: {
     id?: string;
     from?: { id?: number };
-    message?: { chat?: { id?: number } };
+    message?: { chat?: { id?: number }; message_id?: number };
     data?: string;
   };
 }

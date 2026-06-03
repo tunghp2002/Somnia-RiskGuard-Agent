@@ -685,6 +685,83 @@ input[type="number"] {
   color: #061014;
 }
 
+.agent-review-modal {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  width: min(520px, 100%);
+  padding-top: 30px;
+}
+
+.agent-review-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgb(148 163 255 / 16%);
+  border-radius: 8px;
+  background: rgb(3 7 18 / 48%);
+  color: var(--muted);
+}
+
+.agent-review-close:hover {
+  border-color: rgb(34 211 238 / 44%);
+  color: var(--cyan);
+}
+
+.agent-review-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgb(34 211 238 / 26%);
+  border-radius: 8px;
+  background: rgb(34 211 238 / 10%);
+  color: var(--cyan);
+  box-shadow: 0 0 28px rgb(34 211 238 / 12%);
+}
+
+.agent-review-detail {
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgb(148 163 255 / 16%);
+  border-radius: 8px;
+  background: rgb(3 7 18 / 48%);
+  padding: 12px;
+}
+
+.agent-review-detail small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.agent-review-detail a,
+.agent-review-detail strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  max-width: 100%;
+  color: var(--cyan);
+  font-family:
+    "JetBrains Mono", "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.agent-review-detail a:hover {
+  text-decoration: underline;
+}
+
 .panel-heading div {
   display: flex;
   align-items: center;

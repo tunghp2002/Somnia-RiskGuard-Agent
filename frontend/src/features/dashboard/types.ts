@@ -60,3 +60,9 @@ export type NativeTransferEstimate = {
   totalWei: string;
   totalLabel: string;
 };
+
+export type AgentReviewRequestModal = {
+  requestTxHash: string;
+  requestTxUrl?: string;
+  telegramUrl?: string;
+};
