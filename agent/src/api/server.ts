@@ -28,6 +28,10 @@ import {
   type TelegramAlertService
 } from "../services/telegram-alert.service.js";
 import { riskGuardPendingApprovalRequestSchema } from "../services/riskguard-approval.service.js";
+import {
+  riskGuardPendingUserOpRequestSchema,
+  type RiskGuardPendingUserOpService
+} from "../services/riskguard-pending-userop.service.js";
 import { TelegramConnectService } from "../services/telegram-connect.service.js";
 import {
   deadmanPolicyRequestSchema,
@@ -178,6 +182,7 @@ export interface AgentApiDependencies {
   telegramConnect?: TelegramConnectService;
   heartbeats?: HeartbeatService;
   rewards?: RewardClaimService;
+  riskGuardPendingUserOps?: RiskGuardPendingUserOpService;
   publicChain?: PublicChainMetadata;
   health?: () => Promise<unknown> | unknown;
 }
@@ -648,6 +653,16 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         }
         const body = riskGuardAgentReviewRequestedSchema.parse(await readJsonBody(request));
         const result = await dependencies.telegramAlerts.sendRiskGuardAgentReviewRequested(body);
+        sendJson(response, 202, success(result, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/riskguard/pending-userop") {
+        if (!dependencies.riskGuardPendingUserOps) {
+          throw new ServerDependencyError("RiskGuard pending UserOp service is not configured");
+        }
+        const body = riskGuardPendingUserOpRequestSchema.parse(await readJsonBody(request));
+        const result = await dependencies.riskGuardPendingUserOps.store(body);
         sendJson(response, 202, success(result, requestId));
         return;
       }

@@ -109,6 +109,24 @@ export function useInheritanceSettingsForm({
   }, [selectedSmartAccountAddress]);
 
   useEffect(() => {
+    if (!selectedSmartAccountAddress || !walletAddressPattern.test(selectedSmartAccountAddress)) {
+      return;
+    }
+
+    // Keep the shell-selected account visible even when Thirdweb has not exposed it as an active wallet yet.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSmartAccountCandidates((current) => {
+      if (current.some((candidate) => candidate.address.toLowerCase() === selectedSmartAccountAddress.toLowerCase())) {
+        return current;
+      }
+
+      return [{ address: selectedSmartAccountAddress, kind: "contract" }, ...current];
+    });
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSmartAccountDiscoveryChecked(true);
+  }, [selectedSmartAccountAddress]);
+
+  useEffect(() => {
     // Reset wallet-scoped discovery results when the connected wallet changes.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSmartAccountCandidates([]);
@@ -222,9 +240,13 @@ export function useInheritanceSettingsForm({
     setSmartAccountDiscoveryError("");
 
     try {
-      const candidates = thirdwebSmartAccountAddress && walletAddressPattern.test(thirdwebSmartAccountAddress)
-        ? [{ address: thirdwebSmartAccountAddress, kind: "contract" as const }]
-        : [];
+      const candidateAddresses = [
+        selectedSmartAccountAddress,
+        thirdwebSmartAccountAddress
+      ].filter((address): address is string => Boolean(address && walletAddressPattern.test(address)));
+      const candidates = candidateAddresses
+        .filter((address, index, list) => list.findIndex((item) => item.toLowerCase() === address.toLowerCase()) === index)
+        .map((address) => ({ address, kind: "contract" as const }));
       setSmartAccountCandidates(candidates);
       setSmartAccountDiscoveryChecked(true);
 

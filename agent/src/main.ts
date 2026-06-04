@@ -22,6 +22,10 @@ import { TelegramBindingsRepository, telegramBindingsSchema } from "./persistenc
 import { SupabaseUsersRepository } from "./persistence/users.repository.js";
 import { HeartbeatsRepository, heartbeatsSchema } from "./persistence/heartbeats.repository.js";
 import { RewardClaimsRepository, rewardClaimsDataSchema } from "./persistence/reward-claims.repository.js";
+import {
+  RiskGuardPendingUserOpsRepository,
+  riskGuardPendingUserOpsSchema
+} from "./persistence/riskguard-pending-userops.repository.js";
 import { SupabaseSessionKeysRepository } from "./persistence/session-keys.repository.js";
 import { SupabaseJsonStore } from "./persistence/supabase-json-store.js";
 import type { RepositoryStore } from "./persistence/json-store.js";
@@ -43,6 +47,7 @@ import { HeartbeatService } from "./services/heartbeat.service.js";
 import { RewardClaimService } from "./services/reward-claim.service.js";
 import { TelegramAlertService } from "./services/telegram-alert.service.js";
 import { RiskGuardApprovalService } from "./services/riskguard-approval.service.js";
+import { RiskGuardPendingUserOpService } from "./services/riskguard-pending-userop.service.js";
 import { TelegramCheckInService } from "./services/telegram-check-in.service.js";
 import { TelegramConnectService } from "./services/telegram-connect.service.js";
 import { SessionKeyService } from "./services/session-key.service.js";
@@ -104,6 +109,10 @@ export async function startAgentRuntime(
   }));
   const alerts = new AlertsRepository(undefined, createSupabaseStore(config, "alerts.json", alertsSchema, []));
   const actionNonces = new ActionNoncesRepository(undefined, createSupabaseStore(config, "action-nonces.json", z.array(actionNonceSchema), []));
+  const riskGuardPendingUserOpsRepository = new RiskGuardPendingUserOpsRepository(
+    undefined,
+    createSupabaseStore(config, "riskguard-pending-userops.json", riskGuardPendingUserOpsSchema, [])
+  );
   const sessionKeysRepository = new SupabaseSessionKeysRepository(
     config.supabase.url,
     config.supabase.serviceRoleKey,
@@ -111,6 +120,11 @@ export async function startAgentRuntime(
   const sessionKeys = new SessionKeyService(config, sessionKeysRepository);
   const telegramClient = options.telegramClient ?? createTelegramClient(config);
   const somnia = options.somniaClient ?? createSomniaAgentKitClient(config);
+  const riskGuardPendingUserOps = new RiskGuardPendingUserOpService(
+    config,
+    riskGuardPendingUserOpsRepository,
+    audit,
+  );
   const riskGuardApprovals = new RiskGuardApprovalService(config, audit, sessionKeys);
   const telegramAlerts = new TelegramAlertService(
     config,
@@ -122,6 +136,7 @@ export async function startAgentRuntime(
     telegramClient,
     audit,
     riskGuardApprovals,
+    riskGuardPendingUserOps,
   );
   const telegramConnect = new TelegramConnectService(
     telegramAlerts,
@@ -196,6 +211,7 @@ export async function startAgentRuntime(
     telegramConnect,
     heartbeats,
     rewards,
+    riskGuardPendingUserOps,
     publicChain: config.publicChain,
     health: async () => ({
       ok: true,

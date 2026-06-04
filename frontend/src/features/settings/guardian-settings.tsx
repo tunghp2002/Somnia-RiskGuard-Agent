@@ -101,14 +101,11 @@ export function InheritanceSettings({
     const thirdwebSmartAccount = useActiveAccount();
     const { connect: connectThirdwebWallet, isConnecting: creatingSmartAccount } = useConnect();
     const [copiedSmartAccount, setCopiedSmartAccount] = useState(false);
-    const [connectingForCancel, setConnectingForCancel] = useState(false);
-    const [connectingForSubmit, setConnectingForSubmit] = useState(false);
     const [autoConnectingSmartAccount, setAutoConnectingSmartAccount] = useState(false);
     const [checkInAuthorization, setCheckInAuthorization] = useState<SessionKeyActionPermission | null>(null);
     const checkInAuthorizationResolverRef = useRef<((approved: boolean) => void) | null>(null);
     const autoConnectAttemptRef = useRef<string | null>(null);
     const connectSmartAccountRef = useRef<((options?: { grantCheckIn?: boolean; silent?: boolean }) => Promise<string | undefined>) | null>(null);
-    const pendingSubmitFormRef = useRef<HTMLFormElement | null>(null);
     const thirdwebSmartAccountAddress = thirdwebSmartAccount?.address;
     const thirdwebConnectedSmartAccountAddresses = useConnectedWallets()
         .map((wallet) => wallet.getAccount()?.address)
@@ -174,6 +171,8 @@ export function InheritanceSettings({
         walletAddress
     });
     const hasActivePlan = Boolean(inheritancePlan?.active);
+    const connectingForCancel = false;
+    const connectingForSubmit = false;
     const planActionBusy = actionLoading === "inheritance-plan" || actionLoading === "inheritance-cancel";
     const canSaveInheritancePlan = Boolean(registryAddress) && !planActionBusy && !connectingForSubmit;
 
@@ -409,66 +408,10 @@ export function InheritanceSettings({
     }
 
     async function handleCancelPlan() {
-        if (
-            inheritancePlan?.active &&
-            thirdwebSmartAccountAddress?.toLowerCase() !== inheritancePlan.smartAccount.toLowerCase()
-        ) {
-            setConnectingForCancel(true);
-            try {
-                const connectedSmartAccount = await connectSmartAccount({
-                    grantCheckIn: false,
-                    silent: true
-                });
-
-                if (connectedSmartAccount?.toLowerCase() === inheritancePlan.smartAccount.toLowerCase()) {
-                    onInheritanceCancel();
-                    return;
-                }
-
-                onNotice?.({
-                    tone: "warn",
-                    message: "Connect the smart account shown in the active plan before cancelling it."
-                });
-            } finally {
-                setConnectingForCancel(false);
-            }
-            return;
-        }
-
         onInheritanceCancel();
     }
 
     async function handlePlanSubmit(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
-        const targetSmartAccount = smartAccountAddress || inheritancePlan?.smartAccount;
-
-        if (
-            targetSmartAccount &&
-            thirdwebSmartAccountAddress?.toLowerCase() !== targetSmartAccount.toLowerCase()
-        ) {
-            event.preventDefault();
-            pendingSubmitFormRef.current = event.currentTarget;
-            setConnectingForSubmit(true);
-            try {
-                const connectedSmartAccount = await connectSmartAccount({
-                    grantCheckIn: true,
-                    silent: true
-                });
-
-                if (connectedSmartAccount?.toLowerCase() === targetSmartAccount.toLowerCase()) {
-                    pendingSubmitFormRef.current.requestSubmit();
-                    return;
-                }
-
-                onNotice?.({
-                    tone: "warn",
-                    message: "Connect the selected smart account before saving this inheritance plan."
-                });
-            } finally {
-                setConnectingForSubmit(false);
-            }
-            return;
-        }
-
         onInheritanceSubmit(event);
     }
 

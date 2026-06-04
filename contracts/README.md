@@ -105,6 +105,8 @@ Agent environment for Telegram approvals:
 
 RiskGuard does not use a global `RISK_GUARD_AGENT_ADDRESS`. During guard setup, the agent API creates/reuses a per-smart-account `riskguard-approval` session key, returns its address to the frontend, and the smart account registers that address in `ApprovalStore.registerAgentAndHook(...)`. The encrypted private key stays in backend session-key storage and is used only when the user taps Approve in Telegram. Because this key submits the approval as an EOA transaction, it needs a small STT gas balance; the frontend funds it from the user's smart account during RiskGuard setup.
 
+For smart-account transactions sent through the RiskGuard smart-account helper, the frontend also stores a signed pending UserOperation with the agent API when RiskGuard requests Somnia Agent review. Telegram Approve only submits the one-time `ApprovalStore` approval; after that succeeds, the backend relays the already-signed UserOperation to the bundler. The agent does not create a new transfer or gain generic execution authority.
+
 Important limitation: "any dApp / any wallet" needs the transaction path to use the RiskGuard validator and a RiskGuard-aware sender surface, wallet provider, bundler, or RPC proxy that forwards failed simulation/revert data to `/api/riskguard/pending-approval`. A purely on-chain subscription to a normal reverted UserOp is not possible with standard EVM logs because reverted logs are discarded.
 
 Thirdweb ERC-7579 modular account deployment on Somnia Testnet:

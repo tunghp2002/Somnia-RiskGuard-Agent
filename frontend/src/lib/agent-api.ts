@@ -388,6 +388,17 @@ export const agentApi = {
       method: "POST",
       body: JSON.stringify(body)
     }),
+  storeRiskGuardPendingUserOp: (body: {
+    walletAddress: string;
+    smartAccountAddress: string;
+    guardedTxHash: string;
+    entrypointAddress?: string;
+    userOp: Record<string, unknown>;
+  }) =>
+    request<{ pendingUserOpId: string; stored: boolean }>("/api/riskguard/pending-userop", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
   confirmTelegramConnect: (body: { code: string; chatId: string; telegramUserId?: string }) =>
     request<TelegramConnectSession>("/api/telegram/connect/confirm", {
       method: "POST",

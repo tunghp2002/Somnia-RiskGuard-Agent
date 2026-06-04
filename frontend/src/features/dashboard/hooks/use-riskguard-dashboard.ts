@@ -33,8 +33,8 @@ import {
   getNativeTransferValidationError,
   sendNativeTransferFromEoa,
   sendNativeTransferFromSmartAccount,
-  SomniaAgentReviewRequestedError,
 } from "@/lib/native-transfer";
+import { SomniaAgentReviewRequestedError } from "@/lib/riskguard-smart-account";
 import {
   configureRiskGuardPolicyWithThirdweb,
   connectRiskGuardBootstrapSmartAccount,
@@ -289,6 +289,20 @@ export function useRiskGuardDashboard() {
     setSelectedSmartAccountAddress(account.address);
     return account;
   }, [selectedSmartAccountAddress, thirdwebSmartAccount]);
+
+  const getSelectedRiskGuardSmartAccount = useCallback(async (smartAccountAddress: string) => {
+    if (thirdwebSmartAccount?.address.toLowerCase() === smartAccountAddress.toLowerCase()) {
+      return thirdwebSmartAccount;
+    }
+
+    try {
+      const account = await connectUserPaidThirdwebSmartAccount(smartAccountAddress);
+      setSelectedSmartAccountAddress(account.address);
+      return account;
+    } catch {
+      return null;
+    }
+  }, [thirdwebSmartAccount]);
 
   const receipts = useMemo(() => {
     const fromAudit = events.map((event) => ({
@@ -767,14 +781,21 @@ export function useRiskGuardDashboard() {
         gracePeriodSeconds: graceSeconds,
         timelockPeriodSeconds: timelockSeconds,
       };
+      const riskGuardOptions = {
+        ...(publicChain?.contracts.riskGuardValidatorModule
+          ? { riskGuardValidatorAddress: publicChain.contracts.riskGuardValidatorModule }
+          : {}),
+        walletAddress: wallet.address,
+      };
+      const selectedRiskGuardAccount = await getSelectedRiskGuardSmartAccount(smartAccountAddress);
       const txHash =
-        thirdwebSmartAccount?.address.toLowerCase() ===
-        smartAccountAddress.toLowerCase()
+        selectedRiskGuardAccount
           ? await saveInheritancePlanWithThirdweb(
               registryAddress,
               planInput,
-              thirdwebSmartAccount,
+              selectedRiskGuardAccount,
               inheritancePlan,
+              riskGuardOptions,
             )
           : await saveInheritancePlan(
               registryAddress,
@@ -797,6 +818,16 @@ export function useRiskGuardDashboard() {
       });
       await loadData();
     } catch (error) {
+      if (error instanceof SomniaAgentReviewRequestedError) {
+        const requestTxUrl = transactionUrl(publicChain, error.requestTxHash);
+        setAgentReviewModal({
+          requestTxHash: error.requestTxHash,
+          ...(requestTxUrl ? { requestTxUrl } : {}),
+          telegramUrl: telegramReviewUrl(telegramSession),
+        });
+        return;
+      }
+
       setNotice({ tone: "bad", message: errorMessage(error) });
     } finally {
       setActionLoading(null);
@@ -1122,12 +1153,19 @@ export function useRiskGuardDashboard() {
 
     setActionLoading("inheritance-cancel");
     try {
+      const riskGuardOptions = {
+        ...(publicChain?.contracts.riskGuardValidatorModule
+          ? { riskGuardValidatorAddress: publicChain.contracts.riskGuardValidatorModule }
+          : {}),
+        walletAddress: wallet.address,
+      };
+      const selectedRiskGuardAccount = await getSelectedRiskGuardSmartAccount(inheritancePlan.smartAccount);
       const txHash =
-        thirdwebSmartAccount?.address.toLowerCase() ===
-        inheritancePlan.smartAccount.toLowerCase()
+        selectedRiskGuardAccount
           ? await cancelInheritancePlanWithThirdweb(
               registryAddress,
-              thirdwebSmartAccount,
+              selectedRiskGuardAccount,
+              riskGuardOptions,
             )
           : await cancelInheritancePlan(
               registryAddress,
@@ -1142,6 +1180,16 @@ export function useRiskGuardDashboard() {
       });
       await loadData();
     } catch (error) {
+      if (error instanceof SomniaAgentReviewRequestedError) {
+        const requestTxUrl = transactionUrl(publicChain, error.requestTxHash);
+        setAgentReviewModal({
+          requestTxHash: error.requestTxHash,
+          ...(requestTxUrl ? { requestTxUrl } : {}),
+          telegramUrl: telegramReviewUrl(telegramSession),
+        });
+        return;
+      }
+
       setNotice({ tone: "bad", message: errorMessage(error) });
     } finally {
       setActionLoading(null);

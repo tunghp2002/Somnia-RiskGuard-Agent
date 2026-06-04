@@ -22,6 +22,7 @@ import {
   riskGuardPendingApprovalRequestSchema,
   type RiskGuardPendingApprovalRequest
 } from "./riskguard-approval.service.js";
+import type { RiskGuardPendingUserOpService } from "./riskguard-pending-userop.service.js";
 
 export const telegramBindingRequestSchema = z
   .object({
@@ -211,7 +212,8 @@ export class TelegramAlertService {
     private readonly portfolios: PortfolioSnapshotsRepository,
     private readonly telegram: TelegramClient,
     private readonly audit: AuditService,
-    private readonly riskGuardApprovals?: RiskGuardApprovalSubmitter
+    private readonly riskGuardApprovals?: RiskGuardApprovalSubmitter,
+    private readonly riskGuardPendingUserOps?: RiskGuardPendingUserOpService
   ) {}
 
   public async health() {
@@ -723,12 +725,20 @@ export class TelegramAlertService {
         smartAccountAddress: callbackRecord.smartAccountAddress,
         txHash: callbackRecord.txHash
       });
+      const replay = this.riskGuardPendingUserOps
+        ? await this.riskGuardPendingUserOps.replayApproved({
+            smartAccountAddress: callbackRecord.smartAccountAddress,
+            guardedTxHash: callbackRecord.txHash
+          })
+        : { replayed: false as const, reason: "pending_userop_service_not_configured" };
       await this.telegram.sendMessage({
         chatId: binding.chatId,
         text: [
           "🟢 RiskGuard approval succeeded.",
           `Approval Tx: ${receipt.txHash}`,
-          "The transaction now has a one-time approval and can continue without another Somnia Agent review."
+          replay.replayed
+            ? `Original transaction submitted automatically. UserOp: ${replay.userOpHash}`
+            : "No stored signed UserOp was found, so the app must submit the original transaction again."
         ].join("\n")
       });
 

@@ -1,10 +1,9 @@
 import { BrowserProvider, Contract } from "ethers";
-import { getContract, prepareContractCall, prepareTransaction, sendAndConfirmTransaction } from "thirdweb";
-import { EIP1193, smartWallet, type Account } from "thirdweb/wallets";
+import { getContract, prepareContractCall } from "thirdweb";
+import type { Account } from "thirdweb/wallets";
 
+import { sendRiskGuardedSmartTransaction } from "@/lib/riskguard-smart-account";
 import {
-  createThirdwebAccountAbstraction,
-  riskGuardAccountSalt,
   somniaThirdwebChain,
   thirdwebClient
 } from "@/lib/thirdweb-client";
@@ -23,6 +22,11 @@ export interface InheritancePlanInput {
   heartbeatIntervalSeconds: number;
   gracePeriodSeconds: number;
   timelockPeriodSeconds: number;
+}
+
+export interface RiskGuardedInheritanceOptions {
+  riskGuardValidatorAddress?: string;
+  walletAddress?: string;
 }
 
 const inheritanceRegistryAbi = [
@@ -118,68 +122,6 @@ async function waitForPlanTx(txPromise: Promise<{ wait: () => Promise<unknown>; 
   return tx.hash;
 }
 
-async function ensureThirdwebSmartAccountDeployed(account: Account) {
-  if (!thirdwebClient) {
-    throw new Error("Thirdweb client is not configured.");
-  }
-
-  const provider = new BrowserProvider(getEthereumProvider());
-  const code = await provider.getCode(account.address);
-
-  if (code !== "0x") {
-    return;
-  }
-
-  const deployTransaction = prepareTransaction({
-    chain: somniaThirdwebChain,
-    client: thirdwebClient,
-    to: account.address,
-    value: 0n
-  });
-
-  await sendAndConfirmTransaction({
-    account,
-    transaction: deployTransaction
-  });
-}
-
-function isPaymasterOrBundlerError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-
-  return /paymaster|bundler|useroperation|aa95|out of gas|internal server error|status:?\s*500/i.test(message);
-}
-
-async function connectUserPaidThirdwebSmartAccount(expectedSmartAccountAddress: string) {
-  if (!thirdwebClient) {
-    throw new Error("Thirdweb client is not configured.");
-  }
-
-  const personalWallet = EIP1193.fromProvider({
-    provider: getEthereumProvider() as Parameters<typeof EIP1193.fromProvider>[0]["provider"],
-    walletId: "app.subwallet"
-  });
-  const personalAccount = await personalWallet.connect({
-    chain: somniaThirdwebChain,
-    client: thirdwebClient
-  });
-  const accountWallet = smartWallet({
-    ...createThirdwebAccountAbstraction({
-      overrides: { accountSalt: riskGuardAccountSalt }
-    }),
-    sponsorGas: false
-  });
-  const account = await accountWallet.connect({
-    client: thirdwebClient,
-    personalAccount
-  });
-
-  if (account.address.toLowerCase() !== expectedSmartAccountAddress.toLowerCase()) {
-    throw new Error("User-paid smart account fallback returned a different smart account address.");
-  }
-
-  return account;
-}
-
 export async function saveInheritancePlan(
   registryAddress: string,
   input: InheritancePlanInput,
@@ -218,7 +160,8 @@ export async function saveInheritancePlanWithThirdweb(
   registryAddress: string,
   input: InheritancePlanInput,
   account: Account,
-  currentPlan?: InheritancePlanStatus | null
+  currentPlan?: InheritancePlanStatus | null,
+  options: RiskGuardedInheritanceOptions = {}
 ) {
   if (!thirdwebClient) {
     throw new Error("Set NEXT_PUBLIC_THIRDWEB_CLIENT_ID before creating a smart-account plan.");
@@ -229,7 +172,6 @@ export async function saveInheritancePlanWithThirdweb(
     throw new Error("Select the active Thirdweb smart account before saving this plan.");
   }
 
-  await ensureThirdwebSmartAccountDeployed(account);
   const registry = getContract({
     address: registryAddress,
     chain: somniaThirdwebChain,
@@ -252,23 +194,12 @@ export async function saveInheritancePlanWithThirdweb(
       BigInt(input.timelockPeriodSeconds)
     ]
   });
-  const planReceipt = await sendAndConfirmTransaction({
+  return sendRiskGuardedSmartTransaction({
     account,
-    transaction: planTransaction
-  }).catch(async (error: unknown) => {
-    if (!isPaymasterOrBundlerError(error)) {
-      throw error;
-    }
-
-    const userPaidAccount = await connectUserPaidThirdwebSmartAccount(smartAccountAddress);
-    await ensureThirdwebSmartAccountDeployed(userPaidAccount);
-
-    return sendAndConfirmTransaction({
-      account: userPaidAccount,
-      transaction: planTransaction
-    });
+    ...(options.riskGuardValidatorAddress ? { riskGuardValidatorAddress: options.riskGuardValidatorAddress } : {}),
+    transaction: planTransaction,
+    ...(options.walletAddress ? { walletAddress: options.walletAddress } : {})
   });
-  return planReceipt.transactionHash;
 }
 
 export async function cancelInheritancePlan(registryAddress: string, expectedSmartAccount?: string) {
@@ -287,7 +218,11 @@ export async function cancelInheritancePlan(registryAddress: string, expectedSma
   return waitForPlanTx(registry.cancelPlan());
 }
 
-export async function cancelInheritancePlanWithThirdweb(registryAddress: string, account: Account) {
+export async function cancelInheritancePlanWithThirdweb(
+  registryAddress: string,
+  account: Account,
+  options: RiskGuardedInheritanceOptions = {}
+) {
   if (!thirdwebClient) {
     throw new Error("Set NEXT_PUBLIC_THIRDWEB_CLIENT_ID before cancelling a smart-account plan.");
   }
@@ -303,21 +238,10 @@ export async function cancelInheritancePlanWithThirdweb(registryAddress: string,
     gas: cancelPlanGasLimit,
     params: []
   });
-  const receipt = await sendAndConfirmTransaction({
+  return sendRiskGuardedSmartTransaction({
     account,
-    transaction
-  }).catch(async (error: unknown) => {
-    if (!isPaymasterOrBundlerError(error)) {
-      throw error;
-    }
-
-    const userPaidAccount = await connectUserPaidThirdwebSmartAccount(account.address);
-
-    return sendAndConfirmTransaction({
-      account: userPaidAccount,
-      transaction
-    });
+    ...(options.riskGuardValidatorAddress ? { riskGuardValidatorAddress: options.riskGuardValidatorAddress } : {}),
+    transaction,
+    ...(options.walletAddress ? { walletAddress: options.walletAddress } : {})
   });
-
-  return receipt.transactionHash;
 }
