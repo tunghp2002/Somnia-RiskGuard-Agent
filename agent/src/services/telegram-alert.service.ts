@@ -1,17 +1,10 @@
-import { randomUUID } from "node:crypto";
-
 import { formatUnits, getAddress, verifyMessage } from "ethers";
 import { z } from "zod";
 
 import type { AgentConfig } from "../config/env.js";
-import type {
-  AlertRecord,
-  AlertSeverity,
-  AlertsRepository
-} from "../persistence/alerts.repository.js";
+import type { AlertsRepository } from "../persistence/alerts.repository.js";
 import type { ActionNoncesRepository } from "../persistence/action-nonces.repository.js";
 import type { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
-import type { RiskSnapshotRecord } from "../persistence/risk-snapshots.repository.js";
 import type { TelegramBindingsRepository } from "../persistence/telegram-bindings.repository.js";
 import type { UsersRepository } from "../persistence/users.repository.js";
 import {
@@ -25,7 +18,6 @@ import {
   type PolicyDecision
 } from "../policies/execution-policy.js";
 import type { AuditService } from "./audit.service.js";
-import type { RiskScoreService } from "./risk-score.service.js";
 import {
   riskGuardPendingApprovalRequestSchema,
   type RiskGuardPendingApprovalRequest
@@ -162,22 +154,6 @@ export interface RiskGuardApprovalSubmitter {
   }): Promise<{ txHash: string; approvalStore: string }>;
 }
 
-function severityForScore(score: number): AlertSeverity {
-  if (score >= 90) {
-    return "critical";
-  }
-
-  if (score >= 70) {
-    return "high";
-  }
-
-  if (score >= 40) {
-    return "medium";
-  }
-
-  return "low";
-}
-
 function summarizeReason(explanation: string): string {
   return explanation.length > 240 ? `${explanation.slice(0, 237)}...` : explanation;
 }
@@ -233,7 +209,6 @@ export class TelegramAlertService {
     private readonly alerts: AlertsRepository,
     private readonly nonces: ActionNoncesRepository,
     private readonly portfolios: PortfolioSnapshotsRepository,
-    private readonly riskScore: RiskScoreService,
     private readonly telegram: TelegramClient,
     private readonly audit: AuditService,
     private readonly riskGuardApprovals?: RiskGuardApprovalSubmitter
@@ -495,110 +470,6 @@ export class TelegramAlertService {
     return binding;
   }
 
-  public async sendRiskAlert(riskSnapshot: RiskSnapshotRecord): Promise<AlertRecord | undefined> {
-    if (riskSnapshot.status !== "succeeded" || !riskSnapshot.threshold.exceeded) {
-      return undefined;
-    }
-
-    const binding = await this.bindings.latestForWallet(riskSnapshot.walletAddress);
-
-    if (!binding) {
-      await this.audit.record({
-        eventType: "telegram.alert.skipped",
-        status: "skipped",
-        metadata: {
-          walletAddress: riskSnapshot.walletAddress,
-          riskSnapshotId: riskSnapshot.riskSnapshotId,
-          reason: "missing_binding"
-        }
-      });
-      return undefined;
-    }
-
-    const health = await this.telegram.health();
-    if (!health.ok) {
-      await this.audit.record({
-        eventType: "telegram.alert.skipped",
-        status: "skipped",
-        metadata: {
-          walletAddress: riskSnapshot.walletAddress,
-          riskSnapshotId: riskSnapshot.riskSnapshotId,
-          reason: health.reason ?? "telegram_unhealthy"
-        }
-      });
-      return undefined;
-    }
-
-    const alertId = randomUUID();
-    const message = this.formatRiskAlertMessage(riskSnapshot);
-
-    try {
-      const buttons = await this.buildAlertButtons(binding, alertId, riskSnapshot.walletAddress);
-      const sent = await this.telegram.sendMessage({
-        chatId: binding.chatId,
-        text: message,
-        buttons
-      });
-
-      const alert = await this.alerts.append({
-        alertId,
-        userId: binding.userId,
-        walletAddress: binding.walletAddress,
-        chatId: binding.chatId,
-        riskSnapshotId: riskSnapshot.riskSnapshotId,
-        status: "sent",
-        severity: severityForScore(riskSnapshot.score),
-        score: riskSnapshot.score,
-        explanation: riskSnapshot.explanation,
-        message,
-        ...(sent.messageId ? { telegramMessageId: sent.messageId } : {})
-      });
-
-      await this.audit.record({
-        eventType: "telegram.alert.sent",
-        status: "succeeded",
-        metadata: {
-          alertId: alert.alertId,
-          userId: alert.userId,
-          walletAddress: alert.walletAddress,
-          riskSnapshotId: alert.riskSnapshotId,
-          score: alert.score,
-          severity: alert.severity
-        }
-      });
-
-      return alert;
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : "telegram send failed";
-      const alert = await this.alerts.append({
-        alertId,
-        userId: binding.userId,
-        walletAddress: binding.walletAddress,
-        chatId: binding.chatId,
-        riskSnapshotId: riskSnapshot.riskSnapshotId,
-        status: "failed",
-        severity: severityForScore(riskSnapshot.score),
-        score: riskSnapshot.score,
-        explanation: riskSnapshot.explanation,
-        message,
-        failureReason: reason
-      });
-
-      await this.audit.record({
-        eventType: "telegram.alert.failed",
-        status: "failed",
-        metadata: {
-          alertId: alert.alertId,
-          walletAddress: alert.walletAddress,
-          riskSnapshotId: alert.riskSnapshotId,
-          reason
-        }
-      });
-
-      return alert;
-    }
-  }
-
   public async processCallback(input: TelegramCallbackRequest): Promise<TelegramCallbackResult> {
     const parsed = telegramCallbackRequestSchema.parse(input);
     let callback: ReturnType<typeof verifyCompactTelegramCallbackData>;
@@ -652,14 +523,6 @@ export class TelegramAlertService {
     if (callbackRecord.actionType === "acknowledge_alert") {
       return this.acknowledgeAlert(
         callbackRecord.alertId,
-        binding.chatId,
-        callbackRecord.userId
-      );
-    }
-
-    if (callbackRecord.actionType === "refresh_analysis") {
-      return this.refreshAnalysis(
-        binding.walletAddress,
         binding.chatId,
         callbackRecord.userId
       );
@@ -739,43 +602,6 @@ export class TelegramAlertService {
     };
   }
 
-  private async buildAlertButtons(
-    binding: { userId: string; chatId: string },
-    alertId: string,
-    walletAddress: string
-  ) {
-    return [
-      {
-        text: "Acknowledge",
-        callbackData: await this.createCallbackData({
-          actionType: "acknowledge_alert",
-          userId: binding.userId,
-          chatId: binding.chatId,
-          alertId
-        })
-      },
-      {
-        text: "Refresh Analysis",
-        callbackData: await this.createCallbackData({
-          actionType: "refresh_analysis",
-          userId: binding.userId,
-          chatId: binding.chatId,
-          walletAddress
-        })
-      },
-      {
-        text: "Approve Safe Action",
-        callbackData: await this.createCallbackData({
-          actionType: "approve_safe_action",
-          userId: binding.userId,
-          chatId: binding.chatId,
-          walletAddress,
-          safeAction: "claim_small_reward"
-        })
-      }
-    ];
-  }
-
   private async createCallbackData(input: {
     actionType: TelegramActionType;
     userId: string;
@@ -800,17 +626,6 @@ export class TelegramAlertService {
     });
 
     return createCompactTelegramCallbackData(nonce.actionNonce, this.callbackSecret());
-  }
-
-  private formatRiskAlertMessage(riskSnapshot: RiskSnapshotRecord): string {
-    const severity = severityForScore(riskSnapshot.score);
-    return [
-      "Somnia RiskGuard Alert",
-      `Risk Score: ${riskSnapshot.score}/100`,
-      `Severity: ${severity}`,
-      `Reason: ${summarizeReason(riskSnapshot.explanation)}`,
-      "This is informational analysis, not financial advice."
-    ].join("\n");
   }
 
   private formatRiskGuardApprovalMessage(input: RiskGuardPendingApprovalRequest): string {
@@ -859,49 +674,6 @@ export class TelegramAlertService {
     });
 
     return { ok: true, message: "Alert acknowledged." };
-  }
-
-  private async refreshAnalysis(
-    walletAddress: string,
-    chatId: string,
-    userId: string
-  ): Promise<TelegramCallbackResult> {
-    const latestPortfolio = await this.portfolios.latestForWallet(walletAddress);
-
-    if (!latestPortfolio) {
-      return this.rejectCallback("telegram.callback.rejected", {
-        userId,
-        walletAddress,
-        reason: "missing_portfolio"
-      });
-    }
-
-    try {
-      const risk = await this.riskScore.analyze(latestPortfolio);
-      await this.telegram.sendMessage({
-        chatId,
-        text: [
-          "Refreshed Risk Analysis",
-          `Risk Score: ${risk.score}/100`,
-          `Severity: ${severityForScore(risk.score)}`,
-          `Reason: ${summarizeReason(risk.explanation)}`
-        ].join("\n")
-      });
-
-      await this.audit.record({
-        eventType: "telegram.analysis.refreshed",
-        status: "succeeded",
-        metadata: { userId, walletAddress, riskSnapshotId: risk.riskSnapshotId }
-      });
-
-      return { ok: true, message: "Risk analysis refreshed." };
-    } catch (error) {
-      return this.rejectCallback("telegram.callback.rejected", {
-        userId,
-        walletAddress,
-        reason: error instanceof Error ? error.message : "risk_refresh_failed"
-      });
-    }
   }
 
   private async approveSafeAction(

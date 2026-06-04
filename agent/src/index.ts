@@ -30,7 +30,6 @@ export {
 export { TelegramHeartbeatReminderNotifier } from "./services/heartbeat-reminder-notifier.js";
 export { TelegramRewardClaimNotifier } from "./services/reward-claim-notifier.js";
 export { PortfolioService } from "./services/portfolio.service.js";
-export { RiskScoreService } from "./services/risk-score.service.js";
 export {
   RewardClaimService,
   RewardClaimServiceError,
@@ -94,13 +93,6 @@ export {
   evaluateRewardClaimPolicy,
   rewardClaimPolicyInputSchema
 } from "./policies/reward-claim-policy.js";
-export { GroqClient } from "./integrations/llm/groq.client.js";
-export { DeepSeekClient } from "./integrations/llm/deepseek.client.js";
-export {
-  llmRiskResultSchema,
-  RiskProviderError
-} from "./integrations/llm/llm-risk.schema.js";
-export { buildRiskPrompt } from "./integrations/llm/risk-prompt.js";
 export {
   decodeTelegramCallback,
   encodeTelegramCallback,

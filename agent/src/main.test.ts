@@ -56,7 +56,7 @@ describe("agent startup", () => {
     await runCli({ env: {}, loadDotenv: false });
 
     expect(consoleError).toHaveBeenCalledOnce();
-    expect(consoleError.mock.calls[0]?.[0]).toContain("GROQ_API_KEY");
+    expect(consoleError.mock.calls[0]?.[0]).toContain("THIRDWEB_SECRET_KEY");
     expect(consoleError.mock.calls[0]?.[0]).not.toContain("SOMNIA_RPC_URL");
     expect(consoleError.mock.calls[0]?.[0]).not.toContain("ConfigValidationError");
     expect(consoleError.mock.calls[0]?.[0]).not.toContain("at ");

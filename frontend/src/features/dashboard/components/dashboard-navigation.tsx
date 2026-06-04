@@ -66,7 +66,7 @@ export function DashboardHeader({
   return (
     <header className="rg-header">
       <div>
-        <div className="rg-kicker"><Shield size={14} /> Somnia RiskGuard AgentCore</div>
+        <div className="rg-kicker"><Shield size={14} /> SomGuard</div>
         <h1>{activeNavItem?.label ?? "Overview"}</h1>
       </div>
       <div className="rg-header-actions">

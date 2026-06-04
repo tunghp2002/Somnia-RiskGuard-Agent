@@ -25,8 +25,6 @@ import { RewardClaimsRepository, rewardClaimsDataSchema } from "./persistence/re
 import { SupabaseSessionKeysRepository } from "./persistence/session-keys.repository.js";
 import { SupabaseJsonStore } from "./persistence/supabase-json-store.js";
 import type { RepositoryStore } from "./persistence/json-store.js";
-import { DeepSeekClient } from "./integrations/llm/deepseek.client.js";
-import { GroqClient } from "./integrations/llm/groq.client.js";
 import {
   createTelegramClient,
   type TelegramClient,
@@ -39,7 +37,6 @@ import {
 import { AuditService } from "./services/audit.service.js";
 import { TelegramHeartbeatReminderNotifier } from "./services/heartbeat-reminder-notifier.js";
 import { TelegramRewardClaimNotifier } from "./services/reward-claim-notifier.js";
-import { RiskScoreService } from "./services/risk-score.service.js";
 import { SetupService } from "./services/setup.service.js";
 import { DemoScenarioService } from "./services/demo-scenario.service.js";
 import { HeartbeatService } from "./services/heartbeat.service.js";
@@ -114,10 +111,6 @@ export async function startAgentRuntime(
   const sessionKeys = new SessionKeyService(config, sessionKeysRepository);
   const telegramClient = options.telegramClient ?? createTelegramClient(config);
   const somnia = options.somniaClient ?? createSomniaAgentKitClient(config);
-  const riskScore = new RiskScoreService(config, riskSnapshots, audit, {
-    primary: new GroqClient(config),
-    fallback: new DeepSeekClient(config),
-  });
   const riskGuardApprovals = new RiskGuardApprovalService(config, audit, sessionKeys);
   const telegramAlerts = new TelegramAlertService(
     config,
@@ -126,7 +119,6 @@ export async function startAgentRuntime(
     alerts,
     actionNonces,
     portfolioSnapshots,
-    riskScore,
     telegramClient,
     audit,
     riskGuardApprovals,
@@ -175,11 +167,7 @@ export async function startAgentRuntime(
     undefined,
     { demoMode: true },
   );
-  const portfolioMonitorJob = new PortfolioMonitorJob(
-    portfolioService,
-    riskScore,
-    telegramAlerts,
-  );
+  const portfolioMonitorJob = new PortfolioMonitorJob(portfolioService);
   const heartbeatJob = new HeartbeatJob(heartbeats);
   const rewardClaimJob = new RewardClaimJob(rewards);
   const riskGuardAgentReviewJob = new RiskGuardAgentReviewJob(
@@ -208,7 +196,6 @@ export async function startAgentRuntime(
     telegramConnect,
     heartbeats,
     rewards,
-    riskScore,
     publicChain: config.publicChain,
     health: async () => ({
       ok: true,

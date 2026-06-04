@@ -59,12 +59,6 @@ const sessionKeyEncryptionKeySchema = requiredNonEmptyString("SESSION_KEY_ENCRYP
     }
   }, "Must be a 32-byte hex or base64 key");
 
-const defaultModelString = (defaultValue: string) =>
-  z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    z.string().trim().min(1).default(defaultValue)
-  );
-
 const integerFromString = (fieldName: string) =>
   z
     .string({ error: `${fieldName} is required` })
@@ -126,10 +120,7 @@ const rawEnvSchema = z
   SUPABASE_SERVICE_ROLE_KEY: requiredNonEmptyString("SUPABASE_SERVICE_ROLE_KEY"),
   SESSION_KEY_ENCRYPTION_KEY: sessionKeyEncryptionKeySchema,
   MONITORED_WALLET_ADDRESS: optionalEthereumAddressSchema,
-  GROQ_API_KEY: requiredNonEmptyString("GROQ_API_KEY"),
-  GROQ_MODEL: defaultModelString("llama-3.3-70b-versatile"),
-  DEEPSEEK_API_KEY: requiredNonEmptyString("DEEPSEEK_API_KEY"),
-  DEEPSEEK_MODEL: defaultModelString("deepseek-chat"),
+  AGENT_WALLET_ADDRESS: optionalEthereumAddressSchema,
   RISK_SCORE_ALERT_THRESHOLD: integerFromString(
     "RISK_SCORE_ALERT_THRESHOLD"
   ).pipe(z.number().int().min(0).max(100)),
@@ -195,8 +186,6 @@ export const secretEnvKeys = [
   "THIRDWEB_SECRET_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "SESSION_KEY_ENCRYPTION_KEY",
-  "GROQ_API_KEY",
-  "DEEPSEEK_API_KEY",
   "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_WEBHOOK_SECRET"
 ] as const;
@@ -208,6 +197,7 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
     rpcUrl: env.SOMNIA_RPC_URL,
     chainId: Number(env.SOMNIA_CHAIN_ID),
     monitoredWalletAddress: env.MONITORED_WALLET_ADDRESS,
+    agentWalletAddress: env.AGENT_WALLET_ADDRESS,
     inheritanceRegistryContractAddress: env.INHERITANCE_REGISTRY_CONTRACT_ADDRESS
   },
   thirdweb: {
@@ -237,16 +227,6 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
       riskGuardValidatorModule: env.RISK_GUARD_VALIDATOR_MODULE_ADDRESS,
       riskGuardModularAccountFactory: env.RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS,
       riskGuardDefaultValidator: env.RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS
-    }
-  },
-  llm: {
-    groq: {
-      apiKey: env.GROQ_API_KEY,
-      model: env.GROQ_MODEL
-    },
-    deepSeek: {
-      apiKey: env.DEEPSEEK_API_KEY,
-      model: env.DEEPSEEK_MODEL
     }
   },
   riskScore: {

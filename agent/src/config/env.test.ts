@@ -18,10 +18,6 @@ const validEnv = {
   SUPABASE_URL: "https://riskguard.supabase.co",
   SUPABASE_SERVICE_ROLE_KEY: "supabase-service-role",
   SESSION_KEY_ENCRYPTION_KEY: "0x1111111111111111111111111111111111111111111111111111111111111111",
-  GROQ_API_KEY: "groq-test-token",
-  GROQ_MODEL: "llama-3.3-70b-versatile",
-  DEEPSEEK_API_KEY: "deepseek-test-token",
-  DEEPSEEK_MODEL: "deepseek-chat",
   RISK_SCORE_ALERT_THRESHOLD: "70",
   HEARTBEAT_INTERVAL_SECONDS: "86400",
   HEARTBEAT_GRACE_SECONDS: "3600",
@@ -50,16 +46,16 @@ describe("agent runtime config", () => {
   it("keeps backend-only Thirdweb and Supabase values out of the client config", () => {
     const config = validateConfig({
       ...validEnv,
-      GROQ_MODEL: "",
-      DEEPSEEK_MODEL: "",
       INHERITANCE_REGISTRY_CONTRACT_ADDRESS: ""
     });
 
     expect(config.thirdweb.secretKey).toBe("thirdweb-secret-key");
     expect(config.supabase.sessionKeyEncryptionKey).toBe(validEnv.SESSION_KEY_ENCRYPTION_KEY);
-    expect(config.llm.groq.model).toBe("llama-3.3-70b-versatile");
-    expect(config.llm.deepSeek.model).toBe("deepseek-chat");
-    expect(config.somnia.inheritanceRegistryContractAddress).toBeUndefined();
+    // An empty env override is not a disable: contract addresses fall back to the
+    // committed config/public-chains.json (the source of truth, per CONTEXT D10).
+    expect(config.somnia.inheritanceRegistryContractAddress).toBe(
+      "0xBaa6f77B9ea4E1ecaeEE7c64526bbb51d59E0e14"
+    );
   });
 
   it("fails with safe diagnostics when required values are missing", () => {
@@ -71,7 +67,7 @@ describe("agent runtime config", () => {
       expect(error).toBeInstanceOf(ConfigValidationError);
       const message = formatConfigError(error as ConfigValidationError);
 
-      expect(message).toContain("GROQ_API_KEY");
+      expect(message).toContain("THIRDWEB_SECRET_KEY");
       expect(message).not.toContain("SOMNIA_RPC_URL");
       expect(message).not.toContain("undefined");
     }
@@ -119,14 +115,12 @@ describe("agent runtime config", () => {
     ).toThrow(ConfigValidationError);
   });
 
-  it("rejects whitespace-only required secrets and model names", () => {
+  it("rejects whitespace-only required secrets", () => {
     expect(() =>
       validateConfig({
         ...validEnv,
-        GROQ_API_KEY: " ",
-        GROQ_MODEL: " ",
-        DEEPSEEK_API_KEY: " ",
-        DEEPSEEK_MODEL: " "
+        THIRDWEB_SECRET_KEY: " ",
+        SUPABASE_SERVICE_ROLE_KEY: " "
       })
     ).toThrow(ConfigValidationError);
   });
@@ -153,8 +147,8 @@ describe("agent runtime config", () => {
     const secretEnv = {
       ...validEnv,
       SESSION_KEY_ENCRYPTION_KEY: "",
-      GROQ_API_KEY: "",
-      DEEPSEEK_API_KEY: "",
+      THIRDWEB_SECRET_KEY: "",
+      SUPABASE_SERVICE_ROLE_KEY: "",
       TELEGRAM_BOT_TOKEN: "bad-token"
     };
 
@@ -164,8 +158,8 @@ describe("agent runtime config", () => {
       const message = formatConfigError(error as ConfigValidationError);
 
       expect(message).toContain("SESSION_KEY_ENCRYPTION_KEY");
-      expect(message).toContain("GROQ_API_KEY");
-      expect(message).toContain("DEEPSEEK_API_KEY");
+      expect(message).toContain("THIRDWEB_SECRET_KEY");
+      expect(message).toContain("SUPABASE_SERVICE_ROLE_KEY");
       expect(message).toContain("TELEGRAM_BOT_TOKEN");
       expect(message).not.toContain("bad-private-key");
       expect(message).not.toContain("bad-token");

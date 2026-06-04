@@ -29,7 +29,6 @@ import {
 } from "../services/telegram-alert.service.js";
 import { riskGuardPendingApprovalRequestSchema } from "../services/riskguard-approval.service.js";
 import { TelegramConnectService } from "../services/telegram-connect.service.js";
-import type { RiskScoreService } from "../services/risk-score.service.js";
 import {
   deadmanPolicyRequestSchema,
   heartbeatCheckInRequestSchema,
@@ -179,7 +178,6 @@ export interface AgentApiDependencies {
   telegramConnect?: TelegramConnectService;
   heartbeats?: HeartbeatService;
   rewards?: RewardClaimService;
-  riskScore?: RiskScoreService;
   publicChain?: PublicChainMetadata;
   health?: () => Promise<unknown> | unknown;
 }
@@ -255,30 +253,6 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
           ? await dependencies.riskSnapshots.latestForWallet(walletAddress)
           : await dependencies.riskSnapshots.latest();
         sendJson(response, 200, success(data ?? null, requestId));
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/risk-snapshots/analyze") {
-        if (!dependencies.riskSnapshots || !dependencies.portfolioSnapshots || !dependencies.riskScore) {
-          throw new ServerDependencyError("Risk analysis dependencies are not configured");
-        }
-
-        const body = await readJsonBody(request);
-        const walletAddress = parseOptionalWalletAddress(
-          typeof body === "object" && body && "walletAddress" in body
-            ? String((body as { walletAddress?: unknown }).walletAddress ?? "")
-            : null
-        );
-        const portfolio = walletAddress
-          ? await dependencies.portfolioSnapshots.latestForWallet(walletAddress)
-          : await dependencies.portfolioSnapshots.latest();
-
-        if (!portfolio) {
-          sendJson(response, 404, failure("not_found", "No portfolio snapshot is available"));
-          return;
-        }
-
-        sendJson(response, 200, success(await dependencies.riskScore.analyze(portfolio), requestId));
         return;
       }
 
@@ -675,25 +649,6 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         const body = riskGuardAgentReviewRequestedSchema.parse(await readJsonBody(request));
         const result = await dependencies.telegramAlerts.sendRiskGuardAgentReviewRequested(body);
         sendJson(response, 202, success(result, requestId));
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/telegram/test-alert") {
-        if (!dependencies.telegramAlerts || !dependencies.riskSnapshots) {
-          throw new ServerDependencyError("Telegram alert dependencies are not configured");
-        }
-        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
-        const riskSnapshot = walletAddress
-          ? await dependencies.riskSnapshots.latestForWallet(walletAddress)
-          : await dependencies.riskSnapshots.latest();
-
-        if (!riskSnapshot) {
-          sendJson(response, 404, failure("not_found", "No risk snapshot is available"));
-          return;
-        }
-
-        const alert = await dependencies.telegramAlerts.sendRiskAlert(riskSnapshot);
-        sendJson(response, 200, success(alert ?? null, requestId));
         return;
       }
 

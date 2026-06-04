@@ -28,12 +28,39 @@ revisionDocuments:
   - _bmad-output/implementation-artifacts/7-6-redesign-dashboard-ia-telegram-connect-and-public-chain-config.md
 ---
 
-# UX Design Specification Somnia RiskGuard Agent
+# UX Design Specification SomGuard
 
 **Author:** tug
 **Date:** 2026-05-14
 
 ---
+
+> **Revision note (2026-06-04)** — This spec's design language, emotional goals,
+> visual foundation, and component strategy remain valid, but the product
+> pivoted from passive AI risk *scoring* to an **active ERC-7579 smart-account
+> guard**, and the shipped dashboard IA differs from the planning-era section
+> list. Reconcile the following against the implemented UI before treating any
+> section below as current:
+>
+> - **Shipped dashboard sections** (`frontend/src/features/dashboard/`):
+>   **Overview** (Blockscout account assets + RiskGuard policy status),
+>   **Transfer** (native STT send from EOA or smart account with gas estimate
+>   and agent-review handling), **Inheritance** (non-custodial plan builder),
+>   **Profile** (display name + Telegram connect). The earlier
+>   setup/risk/heartbeat/reward/receipt/demo/health sections were consolidated
+>   into these four plus inline panels.
+> - **New active-guard UX**: a RiskGuard policy panel (enable + configure rules /
+>   large-transfer threshold on the smart account), a pending-approval / agent-
+>   review modal (`agent-review-modal.tsx`) shown when a transaction is blocked
+>   at `validateUserOp` and needs Telegram/agent approval, and Sonner notices.
+> - **Smart account**: connection is a Thirdweb ERC-4337/7579 modular smart
+>   account (gas sponsored), in addition to the browser EOA.
+> - The "AI Risk Score" is **advisory only** and never authorizes a transaction;
+>   the guarding/approval flow is the primary safety surface.
+>
+> Canonical living docs: [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md),
+> [`docs/CONTEXT.md`](../../docs/CONTEXT.md),
+> [`docs/riskguard-validation-module.md`](../../docs/riskguard-validation-module.md).
 
 <!-- UX design content will be appended sequentially through collaborative workflow steps -->
 
@@ -53,7 +80,7 @@ The component model should default to shadcn/ui-style primitives or local wrappe
 
 ### Project Vision
 
-Somnia RiskGuard Agent is a safety-first Web3 guardian for users who cannot continuously monitor their Somnia wallets. The UX must make constrained autonomy feel understandable and trustworthy: the agent watches portfolio risk, explains what matters, sends Telegram actions, claims only bounded rewards, and exposes heartbeat and Dead Man's Switch states without implying unrestricted control or financial advice.
+SomGuard is a safety-first Web3 guardian for users who cannot continuously monitor their Somnia wallets. The UX must make constrained autonomy feel understandable and trustworthy: the agent watches portfolio risk, explains what matters, sends Telegram actions, claims only bounded rewards, and exposes heartbeat and Dead Man's Switch states without implying unrestricted control or financial advice.
 
 ### Target Users
 

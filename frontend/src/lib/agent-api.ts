@@ -163,7 +163,7 @@ export interface RiskSnapshot {
   status: "succeeded" | "failed";
   score: number;
   explanation: string;
-  provider: "groq" | "deepseek" | "none";
+  provider: "demo" | "none";
   threshold: {
     alertThreshold: number;
     exceeded: boolean;

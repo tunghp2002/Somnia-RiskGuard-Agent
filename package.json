@@ -1,5 +1,5 @@
 {
-  "name": "somnia-riskguard-agent",
+  "name": "somguard",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.23.0",

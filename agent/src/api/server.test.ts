@@ -105,8 +105,7 @@ beforeEach(async () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }),
-    processCallback: vi.fn().mockResolvedValue({ ok: true, message: "ok" }),
-    sendRiskAlert: vi.fn().mockResolvedValue({ alertId: "33333333-3333-4333-8333-333333333333" })
+    processCallback: vi.fn().mockResolvedValue({ ok: true, message: "ok" })
   } as unknown as TelegramAlertService;
   server = createAgentApiServer({
     setupService,
@@ -242,7 +241,7 @@ describe("agent setup API", () => {
       walletAddress: wallet.address,
       score: 75,
       explanation: "Informational risk analysis.",
-      provider: "groq",
+      provider: "demo",
       threshold: { alertThreshold: 70, exceeded: true },
       safeNextSteps: ["Review risk factors."]
     });
@@ -448,26 +447,6 @@ describe("agent setup API", () => {
     expect(statusPayload.data.state).toBe("healthy");
     expect(beneficiaryPayload.data.executionAvailable).toBe(false);
     expect(policyPayload.data.allowed).toBe(false);
-  });
-
-  it("sends a test Telegram alert from the latest risk snapshot", async () => {
-    await riskSnapshots.append({
-      walletAddress: wallet.address,
-      score: 76,
-      explanation: "Informational risk analysis.",
-      provider: "groq",
-      threshold: { alertThreshold: 70, exceeded: true },
-      safeNextSteps: ["Review risk factors."]
-    });
-
-    const response = await fetch(`${baseUrl}/api/telegram/test-alert`, {
-      method: "POST"
-    });
-    const payload = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(payload.data.alertId).toBe("33333333-3333-4333-8333-333333333333");
-    expect(telegramAlerts.sendRiskAlert).toHaveBeenCalledOnce();
   });
 
   it("exposes reward settings, fixture, status, run, and policy routes", async () => {

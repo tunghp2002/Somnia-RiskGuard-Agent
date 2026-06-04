@@ -14,7 +14,7 @@ export const riskSnapshotSchema = z.object({
   status: z.enum(["succeeded", "failed"]),
   score: z.number().int().min(0).max(100),
   explanation: z.string(),
-  provider: z.enum(["groq", "deepseek", "none"]),
+  provider: z.enum(["demo", "none"]),
   threshold: z.object({
     alertThreshold: z.number().int().min(0).max(100),
     exceeded: z.boolean()

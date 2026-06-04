@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Somnia RiskGuard Agent",
+  title: "SomGuard",
   description: "AI portfolio guardian for Somnia."
 };
 

@@ -25,7 +25,7 @@ describe("TelegramConnectService", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.message).toContain("RiskGuard connected this Telegram chat");
+    expect(result.message).toContain("Telegram alerts are now enabled");
     expect(result.message).toContain("0x1111...1111");
     expect(linkChat).toHaveBeenCalledWith({
       walletAddress,

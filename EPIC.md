@@ -1,4 +1,4 @@
-# Somnia RiskGuard Agent - EPIC
+# SomGuard - EPIC
 
 ## Epic 1: Project Foundation
 Status: In Progress
@@ -18,7 +18,7 @@ Goal: Implement the TypeScript agent runtime for wallet monitoring, risk analysi
 Acceptance Criteria:
 - Agent boots with validated env config.
 - Portfolio monitor reads Somnia wallet state.
-- Risk service calls Groq and falls back to DeepSeek.
+- Risk service uses the on-chain Somnia risk agent review (Groq/DeepSeek removed).
 - Telegram service sends alerts with quick action buttons.
 - Reward claimer enforces configured limits.
 

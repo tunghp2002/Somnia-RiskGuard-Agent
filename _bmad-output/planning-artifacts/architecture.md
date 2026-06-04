@@ -14,865 +14,825 @@ inputDocuments:
 workflowType: 'architecture'
 lastStep: 8
 status: 'complete'
-completedAt: '2026-05-10'
-project_name: 'Somnia RiskGuard Agent'
+completedAt: '2026-06-04'
+project_name: 'SomGuard'
 user_name: 'tug'
-date: '2026-05-10'
+date: '2026-06-04'
+revisionNote: 'Revised 2026-06-04 to match the shipped v0.1.0 codebase (active ERC-7579 guard pivot, Supabase persistence, thirdweb AA, Reactivity-driven inheritance). Canonical living docs are docs/ARCHITECTURE.md and docs/CONTEXT.md.'
 ---
 
 # Architecture Decision Document
 
-_This document builds collaboratively through step-by-step discovery. Sections are appended as we work through each architectural decision together._
+_This document was originally drafted during planning (2026-05-10) and has been
+rewritten in place on 2026-06-04 to reflect the actually shipped system. Where
+this document and the living docs disagree, the living docs win:
+[`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) (current system) and
+[`docs/CONTEXT.md`](../../docs/CONTEXT.md) (append-only decision log, AD/D IDs)._
+
+### Revision note (2026-06-04)
+
+The planning-era architecture described a passive "Dead Man's Switch contract"
+with LLM portfolio *scoring* as the central feature. The product pivoted during
+implementation. Key changes captured in this revision:
+
+- **Active ERC-7579 smart-account guard (AD-4 / D4).** RiskGuard is no longer a
+  scoring side-channel. `RiskGuardValidator` (ERC-7579 module type 1) enforces a
+  deterministic risk policy inside `validateUserOp` and **blocks** risky
+  UserOps with a `PendingApprovalRequired` revert. Execution resumes only after
+  a short-lived approval is recorded on-chain in `RiskGuardApprovalStore`
+  (10-minute TTL, one-time use) — either by a Telegram-confirmed user or by a
+  consensus Somnia risk agent (`requestAgentReview` / `handleRiskAssessmentResponse`).
+  An experimental `RiskGuardHookModule` (type 4) carries the same policy but is
+  inactive (Thirdweb's ModularAccount does not run hooks on its primary execute
+  path). Risk intelligence comes from the on-chain Somnia risk agent review,
+  which is advisory/decisional (APPROVE/REJECT) but never directly authorizes a
+  transaction (AD-2).
+- **Off-chain LLM risk scoring removed (AD-2 / D11).** The planning-era off-chain
+  LLM risk-scoring path (a primary provider with a fallback provider) was deleted
+  in favor of the on-chain Somnia risk agent review. Portfolio monitoring still
+  runs (change
+  detection + snapshot persistence + audit), but with no off-chain LLM step; risk
+  snapshots now originate only from demo scenarios (`provider: "demo" | "none"`)
+  and the on-chain agent review decision.
+- **Dual persistence, not "JSON files only" (AD-8 / D8).** A single
+  `RepositoryStore<T>` contract has two implementations: `SupabaseJsonStore`
+  (Supabase Postgres REST — `agent_records`, `users`, `session_keys`) and
+  `JsonStore` (file-backed, local/dev/test). Session keys are AES-encrypted at
+  rest via `SESSION_KEY_ENCRYPTION_KEY`.
+- **thirdweb account abstraction (AD-7 / D7).** The dashboard is Next.js 16 /
+  React 19 using thirdweb v5 for an ERC-4337/7579 modular smart account with gas
+  sponsorship; the agent stays on ethers v6 for reads/writes/signing.
+- **Reactivity-driven, non-custodial inheritance (AD-5, AD-6 / D5, D6).**
+  `RiskGuardInheritanceRegistry` stores policy only — funds remain in the user's
+  smart account. Distribution is scheduled via Somnia Native On-Chain Reactivity
+  (precompile `0x0100`) and approved by consensus Somnia Agents, with a manual
+  `executeInheritance` fallback. EOAs cannot create plans.
+- **Jobs use `setInterval`, not `node-cron`.**
+- **Uniform API envelope** `{ ok, data | error, requestId }`, not `{ data, meta }`.
+
+The remainder of this document has been updated so every statement is true of
+the current code; the original planning rationale is retained where it still
+holds.
 
 ## Project Context Analysis
 
 ### Requirements Overview
 
 **Functional Requirements:**
-Somnia RiskGuard Agent requires a separated full-stack architecture that supports wallet setup, portfolio monitoring, AI Risk Score generation, Telegram alerting, authenticated quick actions, heartbeat tracking, Dead Man's Switch state, constrained reward claiming, dashboard visibility, demo simulation, and audit-friendly operations.
+SomGuard is an on-chain AI portfolio guardian for the Somnia
+Agentic L1. It requires a separated multi-surface architecture supporting wallet
+setup on a smart account, portfolio monitoring, an on-chain Somnia risk agent
+review for risky transactions, Telegram alerting with authenticated quick actions, an **active
+on-chain risk guard** that blocks risky transactions until approved, heartbeat
+tracking, non-custodial inheritance ("dead man's switch") state and execution,
+constrained reward claiming, dashboard visibility, demo simulation, and
+audit-friendly operations.
 
-The functional requirements imply at least three major runtime surfaces: a backend agent for monitoring and execution, a frontend dashboard for setup and overview, and smart contracts for Dead Man's Switch enforcement. A fourth supporting surface is demo/simulation tooling, because Agentathon judging requires deterministic flows for risk alerts, reward claims, heartbeat expiry, and timelock visibility.
+These requirements map to three runtime surfaces plus demo tooling: a backend
+**agent runtime** for monitoring/execution/approval coordination, a **Next.js
+dashboard** for setup, transfers, inheritance planning, and Telegram connect, and
+**Solidity contracts** for the ERC-7579 guard and the inheritance registry.
+Deterministic demo flows remain a requirement for Agentathon judging.
 
 **Non-Functional Requirements:**
-The strongest architecture drivers are security, reliability, and auditability. The system must separate user browser wallet responsibilities from backend agent wallet execution, load all secrets from environment variables, fail closed on invalid runtime configuration, and prevent LLM output from directly authorizing transactions. Telegram quick actions require authentication and replay protection. Contract state must be readable by both agent and dashboard.
-
-Performance targets are demo-oriented: Risk Score generation within 10 seconds, Telegram alert delivery within 15 seconds, and dashboard setup within 3 minutes. The validation report flags that NFRs need stronger verification methods, so the architecture should explicitly define testable controls for secret scanning, policy-gate tests, replay tests, audit-log tests, and failure-mode tests.
+The strongest drivers are **security**, **non-custody**, **auditability**, and
+**reliability**. The on-chain Somnia risk agent review is advisory/decisional and
+never directly authorizes a transaction; execution authority lives in
+deterministic policy gates plus on-chain validation. User
+funds stay in the user's smart account; contracts hold policy/state only. The
+browser never holds private keys; the agent signer and session keys live in
+env/Supabase (encrypted). Telegram quick actions require HMAC signing, nonce, and
+TTL replay protection. Every state-changing attempt records signer, chain ID,
+target, calldata summary, and outcome. Performance targets remain demo-oriented
+(agent review surfaced within ~15s, Telegram alert within ~15s, dashboard setup
+within ~3 min).
 
 **Scale & Complexity:**
 
-- Primary domain: full-stack Web3 AI agent
+- Primary domain: full-stack Web3 AI agent on an account-abstracted smart account
 - Complexity level: high
 - Estimated architectural components: 8 core components
 
 Core components:
-- Frontend dashboard
-- Backend agent runtime
-- Portfolio monitor
-- LLM risk engine
-- Telegram notification/action service
-- On-chain policy and execution service
-- Smart-account inheritance registry and executor/module
-- Demo/simulation and observability layer
+- Next.js dashboard (thirdweb AA, transfers, inheritance, profile/Telegram)
+- Backend agent runtime (HTTP API + jobs + services)
+- Portfolio monitor + on-chain Somnia risk agent review
+- Telegram notification/action service (signed callbacks)
+- ERC-7579 RiskGuard validator/hook + approval store (active guard)
+- Non-custodial inheritance registry (Reactivity + consensus agents)
+- Dual persistence (Supabase REST + JSON store) over typed repositories
+- Demo/simulation and audit/observability layer
 
 ### Technical Constraints & Dependencies
 
-The architecture must respect the project boundaries already defined in the repository:
+The architecture respects the repository's surface boundaries:
 
-- `/agent`: Node.js + TypeScript backend agent
-- `/frontend`: Next.js 15 App Router dashboard
-- `/contracts`: Solidity smart-account inheritance registry and executor/module contracts
-- Somnia Account Abstraction / Thirdweb smart wallet tooling for living-vault inheritance
-- `ethers.js v6`: blockchain provider, signer, and contract interaction
-- Groq: primary LLM provider
-- DeepSeek: fallback LLM provider
-- Telegram Bot API: alerts and quick action buttons
-- Somnia Testnet: primary chain environment
-- Local/demo simulation mode: deterministic Agentathon demo flows
-- Public chain config: committed `config/public-chains.json` for chain id, public RPC URL, explorer URL, native currency metadata, and public contract addresses
+- `/agent`: Node.js + TypeScript (NodeNext ESM) backend agent — HTTP API, jobs,
+  services, policies, integrations, persistence.
+- `/frontend`: Next.js 16 App Router dashboard (React 19, thirdweb v5,
+  Tailwind 4 + shadcn/ui).
+- `/contracts`: Solidity 0.8.35 + Foundry — ERC-7579 RiskGuard modules,
+  approval store, inheritance registry, Somnia agent interfaces.
+- thirdweb v5 for ERC-4337/7579 smart-account UX and gas sponsorship (frontend).
+- `ethers` v6 for backend contract reads/writes, event polling, and signing.
+- Somnia risk agent (on-chain LLM Inference) for risky-transaction review via
+  `RiskGuardValidator.requestAgentReview` / `handleRiskAssessmentResponse`; no
+  off-chain LLM provider.
+- Telegram Bot API for alerts and signed quick actions.
+- Somnia AgentRequester (consensus agents) and Somnia Native On-Chain Reactivity
+  (precompile `0x0100`) for inheritance liveness/distribution.
+- Supabase (Postgres REST) for durable records + encrypted session keys, with a
+  JSON file store for local/dev/test.
+- Blockscout (Shannon explorer) for token/NFT enumeration.
+- Somnia Testnet (chainId 50312, native STT); non-secret chain/contract metadata
+  in committed `config/public-chains.json`.
 
-The backend agent uses a dedicated environment-loaded agent wallet for safe actions. The frontend uses browser wallet connection only and must not request or store private keys. Secrets such as private keys, Telegram bot tokens, LLM API keys, and provider credentials remain environment-driven. Non-secret chain metadata such as chain id, public RPC URL, explorer URL, native currency metadata, and public contract addresses should be read from committed public config, with user-specific wallet/settings data stored through safe setup flows.
+Secrets (agent signer key, `SESSION_KEY_ENCRYPTION_KEY`, Telegram bot token,
+Supabase service-role key, thirdweb secret key) are environment-only and never
+persisted or logged (pino redaction).
 
 ### Cross-Cutting Concerns Identified
 
-- Secret management and startup configuration validation
-- Transaction policy gates before every signature
-- LLM output isolation from execution authority
-- Telegram action authentication and replay prevention
-- Dead Man's Switch false-trigger prevention
-- Smart-account inheritance authority, session-key/module limits, and cancellation/recovery semantics
-- Smart contract access control and timelock correctness
-- Audit-friendly logs without secret leakage
-- Provider failure handling for Groq, DeepSeek, Telegram, RPC, signer, and contracts
-- Clear separation of simulated demo behavior from Somnia Testnet behavior
-- Beneficiary-safe UX for non-technical users
-- Fintech/Web3 compliance posture and abuse-case threat modeling
+- Secret management and fail-closed startup configuration validation (Zod).
+- On-chain risk enforcement in bounded ERC-4337 validation (no sync external
+  calls inside `validateUserOp`).
+- Short-lived, one-time approval lifecycle (TTL + consume-once).
+- On-chain agent review isolation from execution authority (its APPROVE/REJECT
+  never directly authorizes a transaction).
+- Telegram action authentication and replay prevention (HMAC + nonce + TTL).
+- Dead-man's-switch false-trigger prevention via on-chain expiry + timelock.
+- Non-custodial smart-account distribution authority and beneficiary timelocks.
+- Smart-contract access control (precompile/platform-gated handler entrypoints).
+- Audit-friendly logs without secret leakage.
+- Provider failure handling for Telegram, RPC, Supabase, Blockscout, and Somnia
+  agents.
+- Clear separation of simulated demo behavior from Somnia Testnet behavior.
+- Beneficiary-safe UX for non-technical users.
 
 ## Starter Template Evaluation
 
 ### Primary Technology Domain
 
-The project is a full-stack Web3 AI agent system with three implementation workspaces: `/agent`, `/frontend`, and `/contracts`. A single full-stack starter is not a good fit because the product has distinct backend agent, dashboard, and smart contract runtimes. The architecture should use a root-level pnpm workspace with focused starters per surface.
-
-### Current Docs Checked
-
-- pnpm workspace configuration: https://pnpm.io/pnpm-workspace_yaml
-- Foundry `forge init`: https://getfoundry.sh/forge/reference/init/
-- Next.js `create-next-app`: https://nextjs.org/docs/app/api-reference/cli/create-next-app
-- shadcn/ui Next.js install: https://ui.shadcn.com/docs/installation/next
-- viem installation: https://viem.sh/docs/installation
-- node-cron package/docs: https://www.npmjs.com/package/node-cron and https://nodecron.com/getting-started.html
+A full-stack Web3 AI agent with three implementation workspaces (`/agent`,
+`/frontend`, `/contracts`). A single full-stack starter is a poor fit; the
+shipped solution uses a root pnpm workspace with focused per-surface tooling.
 
 ### Starter Options Considered
 
-**Option 1: Single Next.js/shadcn monorepo starter**
+**Option 1: Single Next.js/shadcn monorepo starter** — fast dashboard, but does
+not model the long-running agent runtime or the Foundry contract workspace.
 
-This provides fast dashboard setup and shadcn/ui integration, but it does not naturally model the backend agent runtime or Solidity contract workspace. It risks making the dashboard the center of gravity when the agent and contract safety layers are equally important.
+**Option 2: Hardhat + custom Node/Next** — viable, but Foundry was preferred for
+fast Solidity-first iteration, Anvil simulation, and concise tests.
 
-**Option 2: Hardhat contract starter plus custom Node/Next setup**
-
-Hardhat remains viable for teams that prefer TypeScript-driven contract tests and deployment tasks. For this project, Foundry is preferred because the Agentathon MVP benefits from fast Solidity-first iteration, Anvil local simulation, and concise contract tests.
-
-**Option 3: Foundry contracts plus root pnpm workspace**
-
-Use pnpm as the single package manager for the entire repository. `/agent`, `/frontend`, and `/contracts` should all be listed in `pnpm-workspace.yaml`. `/contracts` still uses Foundry for Solidity compile/test/script workflows, with a minimal `contracts/package.json` only for workspace metadata and root-script delegation.
+**Option 3 (selected): Foundry contracts + root pnpm workspace** — pnpm is the
+single JS/TS package manager; `/agent`, `/frontend`, `/contracts` are workspaces;
+Foundry owns Solidity build/test/script.
 
 ### Selected Starter: pnpm Workspace + Focused Surface Starters
 
-**Rationale for Selection:**
+**Rationale:** Preserves the explicit `/agent` · `/frontend` · `/contracts`
+boundary, gives one package manager and script surface, and lets Foundry own the
+contract toolchain. (AD-1 / D1.)
 
-The selected approach preserves the explicit `/agent`, `/frontend`, and `/contracts` separation required by the PRD. pnpm provides one repository-level package manager and script surface. Next.js and shadcn/ui provide the dashboard foundation. The backend agent remains a lean TypeScript Node package optimized for monitoring, scheduling, policy gates, Telegram, LLM, and blockchain integrations. Foundry gives the contract layer fast local compile/test/deploy loops with Anvil simulation support.
+**Architectural Decisions Provided by the Starter (as shipped):**
 
-**Initialization Commands:**
-
-```bash
-# root workspace
-pnpm init
-# create pnpm-workspace.yaml with agent, frontend, and contracts packages
-
-# frontend
-pnpm create next-app@latest frontend --ts --tailwind --eslint --app --src-dir --import-alias "@/*"
-cd frontend
-pnpm dlx shadcn@latest init
-pnpm dlx shadcn@latest add button card input badge tabs dialog
-
-# agent
-cd ../agent
-pnpm init
-pnpm add ethers viem zod dotenv pino node-cron
-pnpm add -D typescript tsx vitest @types/node
-
-# contracts
-cd ../contracts
-pnpm init
-forge init --force --no-git
-```
-
-**Root Workspace Configuration:**
-
-```yaml
-packages:
-  - "agent"
-  - "frontend"
-  - "contracts"
-```
-
-**Root Script Direction:**
-
-```json
-{
-  "scripts": {
-    "dev:agent": "pnpm --dir agent dev",
-    "dev:frontend": "pnpm --dir frontend dev",
-    "build:agent": "pnpm --dir agent build",
-    "build:frontend": "pnpm --dir frontend build",
-    "build:contracts": "pnpm --dir contracts build",
-    "test:agent": "pnpm --dir agent test",
-    "test:contracts": "pnpm --dir contracts test"
-  }
-}
-```
-
-`/contracts/package.json` should wrap Foundry commands, for example `build: forge build`, `test: forge test`, and `format: forge fmt`, while Foundry remains the contract toolchain of record.
-
-**Architectural Decisions Provided by Starter:**
-
-**Package Management:**
-pnpm is the single package manager for root workspace orchestration and JavaScript/TypeScript dependencies. Root scripts delegate to workspace scripts for agent, frontend, contracts, and CI tasks.
-
-**Language & Runtime:**
-- TypeScript across frontend and backend agent.
-- Solidity for Dead Man's Switch contracts.
-- Somnia smart-account integrations for living-vault inheritance where users retain day-to-day native and ERC-20 usage.
-- Node.js runtime for the backend agent.
-- Foundry toolchain for contract compilation, testing, scripting, and Anvil local simulation.
-
-**Styling Solution:**
-- Tailwind CSS from Next.js starter.
-- shadcn/ui copied components for app shell navigation, account menus, setup forms, dialogs/sheets, status panels, tables, toasts, and dashboard controls.
-- Desktop uses persistent left sidebar navigation; mobile uses bottom navigation with a More sheet/menu for lower-frequency sections.
-
-**Build Tooling:**
-- Next.js build pipeline for dashboard.
-- TypeScript compiler and `tsx` for agent development.
-- Foundry `forge` for contract build/test/script workflows.
-- pnpm root scripts for consistent local and CI entry points.
-
-**Testing Framework:**
-- Vitest for agent unit tests, policy-gate tests, LLM fallback tests, and Telegram action validation tests.
-- Foundry Solidity tests for Dead Man's Switch behavior.
-- Frontend tests can be added after dashboard architecture is defined.
-
-**Agent Dependencies:**
-- `zod` for runtime configuration and input validation.
-- `pino` for structured secret-safe logs.
-- `node-cron` for scheduled monitoring, heartbeat checks, and reward-claim polling.
-- `dotenv` for local environment loading.
-- `ethers` as the primary EVM integration library per PRD.
-- `viem` as an alternative typed Ethereum client where it improves read operations, ABI typing, or Anvil/local simulation ergonomics.
-
-**Frontend Account Abstraction Dependencies:**
-- Use the `thirdweb` package when implementing Somnia smart-wallet UX from the Somnia Thirdweb docs.
-- Thirdweb should own frontend smart-account connection, `ThirdwebProvider`, `ConnectButton`, `TransactionButton`, in-app wallet options, `somniaTestnet`, `accountAbstraction`, and sponsored/gasless transaction UX.
-- Keep Somnia Reactivity dependencies separate: `@somnia-chain/reactivity` or the precompile ABI is for schedule/subscription management, not wallet connection or smart-account UX.
-- The Somnia Thirdweb docs reference smart account gas sponsorship via `sponsorGas: true` and account factory `0x4be0ddfebca9a5a4a617dee4dece99e7c862dceb`.
-
-**Code Organization:**
-- `/frontend`: multi-section setup and overview dashboard with routes/sections for Overview, Setup, Risk, Heartbeat, Rewards, Safety Receipts, Demo, and Health.
-- `/agent`: monitoring, risk analysis, Telegram, scheduling, policy gates, and execution services.
-- `/contracts`: Dead Man's Switch contract, Solidity tests, Foundry scripts, and minimal pnpm package wrapper.
-- `/contracts` should later include a factory/registry and smart-account inheritance module or adapter that records one active inheritance plan per smart account and exposes cancel/update/read APIs.
-
-**Development Experience:**
-- One package manager and one workspace root.
-- Focused dev commands per workspace.
-- Clear runtime responsibility boundaries.
-- CI split by frontend, agent, and contracts.
-- Foundry local chain and Solidity tests keep contract iteration fast.
-- pnpm workspace keeps JavaScript dependency management consistent.
-
-**Note:** Project initialization should begin with root pnpm workspace setup, followed by frontend scaffold, agent package scaffold, and Foundry contract scaffold.
+- **Package management:** pnpm 10.x workspace; root scripts delegate per surface.
+- **Language & runtime:** TypeScript across agent + frontend; Solidity 0.8.35 for
+  contracts; Node.js agent runtime; Foundry (`via_ir`, 200 runs) for contracts.
+- **Frontend:** Next.js 16.2 App Router + React 19.2, Tailwind 4 + shadcn/ui
+  (New York), thirdweb v5 for ERC-4337/7579 smart-account connection, gas
+  sponsorship, and connect UX.
+- **Agent dependencies (actual):** `zod` (validation), `pino` (logs), `ethers`
+  v6 (EVM), `somnia-agent-kit` (3.0.x), Supabase REST client, native Node `http`
+  for the API server, and `vitest` for tests. Scheduling uses native
+  `setInterval` rather than `node-cron`. (The planning doc's `node-cron`/`viem`
+  assumptions did not survive implementation.)
+- **Account abstraction:** thirdweb owns frontend smart-account UX
+  (`createThirdwebAccountAbstraction`, deterministic `riskGuardAccountSalt`,
+  `sponsorGas`); the agent stays on ethers. `@somnia-chain/reactivity` /
+  precompile ABI is reserved for scheduling, not wallet UX. (AD-7 / D7.)
+- **Testing:** Vitest for agent unit/policy/service tests; Foundry Solidity tests
+  for guard + inheritance behavior.
 
 ## Core Architectural Decisions
 
 ### Decision Priority Analysis
 
-**Critical Decisions (Block Implementation):**
-- Agent owns monitoring, risk analysis orchestration, Telegram actions, scheduled jobs, safe on-chain execution, and Somnia Agent Kit integration.
-- Frontend is setup/overview only; it never stores or receives private keys.
-- Contracts use Foundry and implement minimal Dead Man's Switch state, heartbeat, beneficiary, timelock, and access control.
-- All execution actions pass deterministic policy gates before signing.
-- MVP uses Somnia Testnet plus explicit local/demo simulation mode.
+**Critical Decisions (shipped):**
+- RiskGuard is an **active** ERC-7579 validator that blocks risky UserOps and
+  requires a recorded approval before execution (AD-4).
+- LLM output is advisory only; it never authorizes a transaction (AD-2).
+- Every state-changing agent action passes a deterministic policy gate before
+  signing (AD-3).
+- Inheritance is **non-custodial**: funds stay in the user's smart account;
+  distribution executes from the account, scheduled by Reactivity and approved by
+  consensus agents (AD-5, AD-6).
+- Frontend never stores or receives private keys; agent signer + session keys are
+  env/Supabase-encrypted.
+- MVP targets Somnia Testnet plus explicit demo scenarios.
 
-**Important Decisions (Shape Architecture):**
-- Somnia Agent Kit is the core SDK boundary for agent registration, tool calling, and Somnia-oriented on-chain interactions.
-- Lightweight file-based persistence is preferred for MVP: JSON files plus an in-memory cache loaded at agent startup and flushed through controlled repository helpers.
-- `ethers` remains the primary EVM integration library per PRD, with `viem` available for typed reads, ABI ergonomics, and Anvil/local simulation utilities.
-- Telegram polling is preferred for local/demo MVP reliability; webhook deployment can be deferred.
+**Important Decisions (shipped):**
+- `somnia-agent-kit` is the SDK boundary for portfolio/reward/approval tool calls.
+- Dual persistence: Supabase REST in deployed mode, JSON store for local/dev
+  (AD-8).
+- ethers v6 is the agent's EVM library; thirdweb is the frontend AA library
+  (AD-7).
+- Telegram uses long-polling with signed callbacks (AD-9).
+- `config/public-chains.json` is the chain/contract metadata source of truth
+  (AD-10).
 
-**Deferred Decisions (Post-MVP):**
-- SQLite/PostgreSQL persistence.
-- Multi-chain support.
-- Advanced autonomous trading, rebalancing, or swapping.
-- Telegram webhook production deployment.
-- External audit required before production/mainnet or high-value usage.
+**Deferred Decisions (post-MVP):**
+- Activate the hook module once a ModularAccount variant runs hooks on the
+  primary execute path.
+- Production database migration beyond Supabase REST + JSON store.
+- Telegram webhook deployment.
+- Multi-chain support; external audit before mainnet/high-value usage.
+
+### Tech Stack (as shipped)
+
+| Layer | Technology | Version | Rationale |
+|-------|-----------|---------|-----------|
+| Monorepo | pnpm workspace | 10.x | One manager; `/agent`, `/frontend`, `/contracts` |
+| Agent runtime | Node.js + TypeScript | NodeNext ESM | Long-running monitor + HTTP API |
+| Agent HTTP | Node `http` (native) | — | Manual router + Zod; `{ ok, data, requestId }` |
+| EVM (agent) | ethers | 6.16 | Reads/writes, signing, event polling |
+| Validation | zod | 4.x | Env, payloads, persisted shapes, policy decisions |
+| Logging | pino | 10.x | Structured, secret-redacting logs |
+| Risk intelligence | Somnia risk agent (on-chain LLM Inference) | — | Risky txs reviewed by a consensus Somnia agent returning APPROVE/REJECT; no off-chain LLM provider |
+| Somnia SDK | somnia-agent-kit | 3.0.x | Portfolio/reward/approval tool calls |
+| Persistence | Supabase REST + JSON store | — | Dual `RepositoryStore<T>` |
+| Frontend | Next.js + React | 16.2 / 19.2 | Client-rich dashboard, no SSR data path |
+| Wallet / AA | thirdweb | 5.x | ERC-4337/7579 modular account, gas sponsorship |
+| Styling | Tailwind + shadcn/ui | Tailwind 4 | App shell, panels, forms |
+| Explorer data | Blockscout (Shannon) | — | Token/NFT enumeration |
+| Contracts | Solidity + Foundry | 0.8.35, via_ir, 200 | Fast iteration + Anvil |
+| Contract libs | OpenZeppelin | 5.6.1 | ReentrancyGuard, SafeERC20, ERC ifaces |
+| Chain | Somnia Testnet | 50312 | STT native; `public-chains.json` is SoT |
 
 ### Data Architecture
 
-- Use lightweight agent-owned file persistence for MVP state: users, watched wallets, heartbeat config, Telegram bindings, action nonces, risk snapshots, claim history, and audit events.
-- Keep an in-memory cache for active monitoring loops and write through typed repository functions to JSON files.
-- Do not store private keys in application state. Agent wallet private key remains env-only.
-- Use `zod` for runtime config, JSON persistence shape validation, request payloads, Telegram callback payloads, and policy decision schemas.
-- Use append-friendly audit event records so demo behavior and safety decisions can be reviewed.
+State persists through typed repositories over two interchangeable stores sharing
+the same `RepositoryStore<T>` contract:
+
+- **`SupabaseJsonStore`** (`agent/src/persistence/supabase-json-store.ts`) — REST
+  over Supabase; collection records in `agent_records` (collection + JSONB,
+  upsert-on-write). `users` and `session_keys` use dedicated tables via their
+  repositories.
+- **`JsonStore`** (`agent/src/persistence/json-store.ts`) — file-backed
+  (`agent/src/persistence/data/*.json`) with a write queue; local/dev/test.
+
+| Repository | Stores |
+|-----------|--------|
+| `users` | wallet address + display name |
+| `session-keys` | AES-encrypted session keys for smart-account actions |
+| `audit-events` | append-only `{ eventType, status, metadata, createdAt }` |
+| `portfolio-snapshots` | assets, USD value, rewards, risk signals per wallet |
+| `risk-snapshots` | risk snapshots (demo scenarios / on-chain agent review) + thresholds |
+| `reward-claims` | reward settings, fixtures, claim history |
+| `heartbeats` | heartbeat config/state per wallet + beneficiary |
+| `telegram-bindings` | wallet → chatId binding + metadata |
+| `action-nonces` | nonce tracking for replay prevention |
+| `alerts` | risk alert records |
+
+Private keys never enter application state; the agent signer key and
+`SESSION_KEY_ENCRYPTION_KEY` are env-only. Non-secret chain/contract metadata is
+committed in `config/public-chains.json`. Risk scores are integers `0-100`;
+wallet addresses are checksum-normalized before persistence; on-chain bigints
+serialize as decimal strings.
 
 ### Authentication & Security
 
-- Dashboard authentication: browser wallet connection plus signed-message proof for protected configuration actions.
-- Agent wallet: dedicated env-loaded executor wallet with narrow safe-action policy gates.
-- Telegram quick actions: signed callback payloads, nonce, TTL, replay protection, and wallet/Telegram binding checks.
-- LLM output cannot directly authorize transactions; it only produces risk analysis and suggested actions.
-- Somnia Agent Kit tool calls must be wrapped by local policy checks before any state-changing action.
-- Dead Man's Switch activation requires on-chain timelock state, not only off-chain agent judgment.
+- Dashboard auth: browser wallet connection + signed-message proof for protected
+  mutations.
+- Agent signer: dedicated env-loaded executor wallet bounded by deterministic
+  policy gates; session keys (encrypted in Supabase) sign bounded smart-account
+  actions and approval submissions.
+- Telegram quick actions: HMAC-SHA256 signed callbacks with nonce + TTL and
+  wallet↔chat binding; replays/forgeries fail closed.
+- The on-chain Somnia risk agent review (APPROVE/REJECT) cannot directly
+  authorize a transaction; execution still requires the validator's approval
+  check plus a user/agent signature.
+- `somnia-agent-kit` tool calls are wrapped by local policy checks before any
+  state-changing action.
+- Risk enforcement happens on-chain in `validateUserOp` (no synchronous
+  external/LLM/Telegram/API calls inside validation); approval is recorded
+  on-chain with a 10-minute TTL and consumed once.
+- Dead-man's-switch activation requires on-chain expiry + timelock, not off-chain
+  judgement; distribution is non-custodial.
 
 ### API & Communication Patterns
 
-- Agent exposes a local/demo REST JSON API for dashboard setup and state reads.
-- Dashboard calls the agent API; it does not duplicate monitoring or execution logic.
-- Somnia Agent Kit is used inside the agent service layer for agent registration, tool calling, and Somnia-specific chain interactions.
-- Telegram uses polling for local/demo MVP reliability, with webhook support deferred.
-- API errors use typed error codes and safe public messages; internal logs use `pino`.
+- The agent exposes a native-`http` REST JSON API (base path `/api`) for the
+  dashboard and Telegram callbacks. **All responses use the uniform envelope**
+  `{ ok, data | error, requestId }` — success `{ ok: true, data, requestId }`,
+  failure `{ ok: false, error: { code, message, ... }, requestId }`. (This
+  supersedes the planning-era `{ data, meta }` shape.)
+- Boundary errors map to status codes (ZodError/AddressValidationError → 400,
+  payload too large → 413, dependency errors → 500).
+- The dashboard calls the agent API; it does not duplicate monitoring/execution.
+- `somnia-agent-kit` is used inside the service layer for tool calling and
+  Somnia-specific chain interactions.
+- Telegram uses long-polling (`getUpdates`); webhook deferred.
 
 ### Frontend Architecture
 
-- Next.js App Router dashboard with shadcn/ui and Tailwind.
-- Minimal state: wallet connection, setup forms, portfolio/risk overview, heartbeat status, beneficiary status, and demo controls.
-- No private-key flows in frontend.
-- Frontend validates inputs client-side, but backend validation remains authoritative.
+Next.js App Router app under `frontend/src/app/`. `page.tsx` renders
+`ThirdwebAppProvider` → `RiskGuardDashboard`. Client-rich, no SSR data path.
+Dashboard sections are driven by `use-riskguard-dashboard.ts`:
+
+- **overview** — Blockscout asset enumeration + RiskGuard policy/module status.
+- **transfer** — native STT send from EOA or smart account, with gas estimate and
+  agent-review handling (`agent-review-modal.tsx`).
+- **inheritance** — non-custodial plan builder (`features/settings/*`).
+- **profile** — display name + Telegram connect.
+
+Key libs (`frontend/src/lib/`): `thirdweb-client.ts` (smart-account/chain/AA
+setup, `createThirdwebAccountAbstraction`, deterministic `riskGuardAccountSalt`),
+`riskguard-module.ts` (module install + policy config), `inheritance-registry.ts`
+(registry contract calls), `native-transfer.ts`, `agent-api.ts` (backend REST
+client), `blockscout-api.ts` (asset enumeration), `wallet.ts` (browser wallet).
+UI primitives are shadcn (button, input, badge, tooltip, sonner). Env consumed:
+`NEXT_PUBLIC_THIRDWEB_CLIENT_ID`, `NEXT_PUBLIC_AGENT_API_URL`/`_BASE_URL`,
+`NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`, `NEXT_PUBLIC_APP_NAME`.
 
 ### Infrastructure & Deployment
 
-- Root pnpm workspace orchestrates scripts for agent, frontend, and contracts.
-- Foundry handles contract build/test/deploy scripts.
-- CI should run agent tests, frontend build/lint, and Foundry tests separately.
-- Demo mode must be visibly separated from Somnia Testnet mode.
-- Production/mainnet use requires external audit; MVP target is internal review plus automated tests.
+- Root pnpm workspace orchestrates scripts for agent, frontend, contracts.
+- Foundry handles contract build/test/deploy; post-deploy agent wiring via
+  `pnpm --dir contracts configure:agents`.
+- CI runs agent tests, frontend build/lint, and Foundry tests separately.
+- Demo scenarios are explicit and never silently target Somnia Testnet.
+- Production/mainnet requires external audit; MVP target is internal review +
+  automated tests.
 
 ### Component Diagram
 
 ```mermaid
 flowchart LR
-  User[User Wallet Browser] --> Frontend[Next.js Dashboard]
-  Frontend --> AgentAPI[Agent REST API]
-  Telegram[Telegram Bot] <--> AgentAPI
+  User[User Wallet Browser] --> Frontend[Next.js 16 Dashboard\nthirdweb v5 AA / ethers v6 / Blockscout]
+  Frontend -->|REST NEXT_PUBLIC_AGENT_API_URL| AgentAPI[Agent HTTP API\nnative http, Zod, { ok, data, requestId }]
+  Telegram[Telegram Bot] <-->|polling + signed callbacks| AgentAPI
 
   subgraph Agent["/agent Node.js TypeScript"]
-    AgentAPI --> Monitor[Portfolio Monitor]
-    AgentAPI --> Heartbeat[Heartbeat Scheduler]
-    Monitor --> RiskEngine[AI Risk Engine]
-    RiskEngine --> Groq[Groq Primary]
-    RiskEngine --> DeepSeek[DeepSeek Fallback]
-    Monitor --> Policy[Execution Policy Gates]
-    Heartbeat --> Policy
-    TelegramActions[Telegram Quick Actions] --> Policy
-    Policy --> SomniaKit[Somnia Agent Kit]
-    AgentStore[JSON Persistence + In-Memory Cache] <--> AgentAPI
-    AgentStore <--> Monitor
-    AgentStore <--> Heartbeat
+    AgentAPI --> Services[Services\nportfolio, heartbeat,\nreward-claim, telegram-*, session-key,\nriskguard-approval, setup, audit, demo]
+    AgentAPI --> Jobs[Jobs setInterval\nportfolio-monitor 30s · heartbeat 60s\nreward-claim 60s · riskguard-review 15s]
+    Jobs --> Services
+    Services --> Policies[Policies pure\nexecution / deadman / reward-claim]
+    Policies --> Integrations[Integrations\ntelegram · somnia-agent-kit\ninheritance-registry]
+    Services --> Persistence[Persistence RepositoryStore]
+    Jobs --> Persistence
   end
 
-  SomniaKit --> EVM[Ethers v6 / Viem Clients]
-  EVM --> Somnia[Somnia Testnet RPC]
-  Somnia --> Registry[InheritanceRegistry Contract]
-  Somnia --> Rewards[Staking / LP Rewards]
-  Policy --> AgentWallet[Env Agent Wallet]
+  Persistence --> Supabase[(Supabase REST\nagent_records / users / session_keys)]
+  Persistence --> JsonStore[(JSON store local/dev)]
+  Integrations -->|ethers v6| EVM[Somnia Testnet RPC 50312]
+
+  subgraph Chain["Somnia Testnet"]
+    EVM --> ModularAccount[Thirdweb ModularAccount + Factory\n+ DefaultValidator]
+    ModularAccount --> Validator[RiskGuardValidator ERC-7579 t1\nvalidateUserOp -> PendingApprovalRequired]
+    ModularAccount -. experimental .-> Hook[RiskGuardHookModule ERC-7579 t4]
+    Validator --> ApprovalStore[RiskGuardApprovalStore\n10-min TTL, consume-once]
+    Validator --> AgentReq[Somnia AgentRequester\nrequestAgentReview / handleResponse]
+    EVM --> Registry[RiskGuardInheritanceRegistry\nnon-custodial policy + distribution]
+    Registry --> Reactivity[Reactivity precompile 0x0100\nSchedule at timelockEndsAt]
+    Registry --> AgentReq
+  end
 ```
 
 ### Decision Impact Analysis
 
-**Implementation Sequence:**
-1. Root pnpm workspace and package scripts.
-2. Foundry contract scaffold and Dead Man's Switch contract tests.
-3. Agent config validation, logger, JSON persistence, scheduler, and policy gate foundation.
-4. Somnia Agent Kit integration boundary.
-5. Agent API and Telegram action flow.
-6. Portfolio monitoring, AI Risk Score, and reward claim policies.
-7. Dashboard setup and overview.
-8. Simulation/demo flow.
-
 **Cross-Component Dependencies:**
-- Dashboard setup depends on agent API schemas.
-- Agent execution depends on contract ABI, deployed addresses, Somnia Agent Kit integration, and agent wallet config.
+- Dashboard setup depends on agent API schemas and `config/public-chains.json`.
+- Agent execution depends on contract ABIs, deployed addresses, `somnia-agent-kit`,
+  and the env signer + encrypted session keys.
 - Telegram quick actions depend on policy gates and nonce persistence.
-- Dead Man's Switch safety depends on both on-chain state and off-chain heartbeat reminders.
-- Demo mode depends on clearly separated JSON state, local chain config, and explicit simulation flags.
+- The on-chain guard depends on the validator module being installed on the
+  ModularAccount and on a fresh ApprovalStore/agent approval.
+- Inheritance safety depends on on-chain Reactivity scheduling + consensus-agent
+  approval, with a manual fallback.
 
 ## Implementation Patterns & Consistency Rules
 
-### Pattern Categories Defined
-
-**Critical Conflict Points Identified:**
-AI agents could diverge on file placement, API response shape, validation boundaries, persistence formats, Telegram callback payloads, policy gates, logging, and chain execution patterns. These rules prevent incompatible implementations.
-
 ### Naming Patterns
 
-**Persistence Naming Conventions:**
-- JSON files use kebab-case: `users.json`, `risk-snapshots.json`, `audit-events.json`.
-- JSON fields use camelCase: `walletAddress`, `telegramChatId`, `lastHeartbeatAt`.
-- IDs use explicit suffixes: `userId`, `actionNonce`, `riskSnapshotId`.
+**Persistence:** collection names kebab-case (`risk-snapshots`,
+`audit-events`); fields camelCase (`walletAddress`, `lastHeartbeatAt`); IDs use
+explicit suffixes (`userId`, `actionNonce`).
 
-**API Naming Conventions:**
-- REST endpoints use plural nouns: `/api/users`, `/api/portfolios`, `/api/heartbeats`.
-- Route params use `:id` in docs and `[id]` in Next.js files.
-- Query params use camelCase.
-- Custom headers use `X-RiskGuard-*`.
+**API:** REST endpoints use plural nouns / resource groups (`/api/users`,
+`/api/portfolios`, `/api/heartbeats`, `/api/riskguard/*`); query params camelCase.
 
-**Code Naming Conventions:**
-- TypeScript files use kebab-case except React components.
-- React components use PascalCase: `RiskScoreCard.tsx`.
-- Services use `*.service.ts`; repositories use `*.repository.ts`.
-- Zod schemas use `*Schema`; inferred types use the domain name.
+**Code:** TypeScript files kebab-case except React components (PascalCase
+`.tsx`); services `*.service.ts`; repositories `*.repository.ts`; policies
+`*-policy.ts`; jobs `*.job.ts`; Zod schemas `*Schema`.
 
 ### Structure Patterns
 
-**Project Organization:**
-- `/agent/src/config`: env and runtime config.
-- `/agent/src/persistence`: JSON repositories and cache.
-- `/agent/src/services`: agent business services.
-- `/agent/src/integrations`: Somnia, Telegram, LLM providers.
-- `/agent/src/policies`: deterministic execution gates.
-- `/agent/src/jobs`: cron jobs.
-- `/agent/src/types`: shared agent-local types.
-- Tests are co-located as `*.test.ts`.
-
-**Frontend Organization:**
-- `/frontend/src/app`: routes.
-- `/frontend/src/components`: reusable UI.
-- `/frontend/src/features`: domain UI modules.
-- `/frontend/src/lib`: API client, wallet helpers, formatting.
-
-**Contracts Organization:**
-- `/contracts/src`: Solidity contracts.
-- `/contracts/test`: Foundry tests.
-- `/contracts/script`: Foundry deploy/demo scripts.
+- `/agent/src/config`: env, logger, public-chain config.
+- `/agent/src/persistence`: stores (`json-store`, `supabase-json-store`) +
+  `*.repository.ts`.
+- `/agent/src/services`: domain services.
+- `/agent/src/integrations`: `somnia/`, `telegram/`.
+- `/agent/src/policies`: deterministic gates.
+- `/agent/src/jobs`: `setInterval` loops.
+- `/agent/src/api`: `server.ts` + `response.ts`.
+- Tests co-located as `*.test.ts`.
 
 ### Format Patterns
 
-**API Response Formats:**
-- Success: `{ "data": ..., "meta": ... }`
-- Failure: `{ "error": { "code": "...", "message": "...", "details": ... } }`
-- Dates are ISO 8601 strings.
-- BigInt/on-chain values serialize as decimal strings.
+- **API success:** `{ "ok": true, "data": ..., "requestId": "..." }`
+- **API failure:** `{ "ok": false, "error": { "code": "...", "message": "..." }, "requestId": "..." }`
+- Dates are ISO 8601 strings; on-chain bigints serialize as decimal strings.
+- Wallet addresses checksum-normalized before persistence; risk scores `0-100`.
+- Policy decisions carry `allowed`, `reason`, `policyId`, `signerAddress`,
+  `chainId`, `target`, `calldataSummary`, `createdAt`, optional `expiresAt`.
 
-**Data Exchange Formats:**
-- Wallet addresses are checksum-normalized before persistence.
-- Risk scores use integer `0-100`.
-- Action decisions include `allowed`, `reason`, `policyId`, and `createdAt`.
+### Communication & Telegram Patterns
 
-### Communication Patterns
-
-**Event and Audit Patterns:**
-- Event names use dot notation: `risk.score.updated`, `heartbeat.missed`.
-- Audit records are append-only.
-- Every signed transaction attempt records pre-policy, post-policy, tx hash if submitted, and final status.
-
-**Telegram Action Patterns:**
-- Callback payloads include action type, user ID, nonce, expiry, and signature.
-- Every callback is validated before execution.
-- Expired or replayed callbacks fail closed.
+- Audit records are append-only; every signed tx attempt records pre/post policy,
+  tx hash if submitted, and final status.
+- Telegram callback payloads are HMAC-SHA256-signed compact strings with action
+  type, nonce, and TTL, bound to a wallet↔chat pairing; expired/replayed/forged
+  callbacks fail closed.
 
 ### Process Patterns
 
-**Error Handling Patterns:**
-- Validate at boundaries with `zod`.
-- Never expose secrets, private keys, raw provider tokens, or stack traces.
-- User-facing errors are short and actionable.
-- Internal logs use `pino` with structured fields.
-
-**Execution Safety Patterns:**
-- LLM output is advisory only.
-- Somnia Agent Kit tool calls go through local policy gates.
-- Any state-changing chain action must include policy result, signer address, chain ID, target contract, and calldata summary.
-- Demo mode must be explicit and must not silently target Somnia Testnet.
+- Validate at boundaries with Zod; never expose secrets, keys, tokens, or stack
+  traces; pino structured logs internally.
+- The on-chain Somnia risk agent review never directly authorizes a transaction;
+  `somnia-agent-kit` calls go through policy gates; state-changing chain actions
+  include policy result, signer, chain ID, target, and calldata summary.
+- Demo scenarios are explicit and never silently target Somnia Testnet.
+- ERC-4337 validation stays bounded — no synchronous external calls in
+  `validateUserOp`.
 
 ### Enforcement Guidelines
 
 **All AI Agents MUST:**
-- Keep `/agent`, `/frontend`, and `/contracts` boundaries clean.
-- Use pnpm workspace scripts for JS/TS tasks.
-- Use Foundry for contract build/test/deploy.
-- Add or update zod schemas when changing external inputs or persisted JSON.
+- Keep `/agent`, `/frontend`, `/contracts` boundaries clean.
+- Use pnpm workspace scripts for JS/TS; Foundry for contract build/test/deploy.
+- Add/update Zod schemas when changing external inputs or persisted shapes.
 - Add tests for policy gates and contract safety behavior.
-- Update `SPECS.md`, `EPIC.md`, `TODO.md`, and `CHANGELOG.md` when scope or architecture changes.
-
-**Pattern Enforcement:**
-- Treat schema validation failures as implementation defects unless the failing payload is user-controlled input.
-- Review PRs and generated changes against these naming, structure, and format rules.
-- Record intentional deviations in this architecture document before implementation proceeds.
-
-### Pattern Examples
-
-**Good Examples:**
-- `agent/src/services/risk-score.service.ts`
-- `agent/src/persistence/risk-snapshots.repository.ts`
-- `frontend/src/features/heartbeat/HeartbeatSetupForm.tsx`
-- `contracts/src/InheritanceRegistry.sol`
-- `risk.score.updated`
+- Record intentional architectural deviations in `docs/CONTEXT.md` (append-only)
+  with a matching `AD-N` row in `docs/ARCHITECTURE.md`.
 
 **Anti-Patterns:**
 - Hardcoded keys, RPC URLs, bot tokens, or private keys.
-- LLM directly authorizing transactions.
-- Frontend handling backend agent private keys.
+- The agent review (or any model output) directly authorizing transactions.
+- Frontend handling backend private keys.
+- Synchronous external calls inside `validateUserOp`.
 - Silent fallback from testnet to demo mode.
-- JSON writes outside repository helpers.
+- Store writes outside repository helpers.
 
 ## Project Structure & Boundaries
 
-### Complete Project Directory Structure
+### Complete Project Directory Structure (as shipped)
 
 ```text
 somnia-riskguard-agent/
-├── .github/
-│   └── workflows/
-│       └── ci.yml
-├── .agents/
 ├── _bmad-output/
-│   └── planning-artifacts/
+│   └── planning-artifacts/        # this document, prd.md, etc.
+├── config/
+│   └── public-chains.json         # chain id/RPC/explorer/contract addresses (SoT)
+├── docs/
+│   ├── ARCHITECTURE.md            # canonical living architecture
+│   ├── CONTEXT.md                 # append-only decision log (AD/D IDs)
+│   └── ...                        # riskguard-validation-module.md, reactivity, etc.
+├── infra/
+│   └── supabase/                  # setup.sql
 ├── agent/
-│   ├── src/
-│   │   ├── api/
-│   │   │   ├── routes/
-│   │   │   │   ├── demo.routes.ts
-│   │   │   │   ├── health.routes.ts
-│   │   │   │   ├── heartbeats.routes.ts
-│   │   │   │   ├── portfolios.routes.ts
-│   │   │   │   └── users.routes.ts
-│   │   │   ├── response.ts
-│   │   │   └── server.ts
-│   │   ├── config/
-│   │   │   ├── env.ts
-│   │   │   └── logger.ts
-│   │   ├── integrations/
-│   │   │   ├── llm/
-│   │   │   │   ├── deepseek.client.ts
-│   │   │   │   ├── groq.client.ts
-│   │   │   │   └── risk-prompt.ts
-│   │   │   ├── somnia/
-│   │   │   │   ├── chain.client.ts
-│   │   │   │   ├── contracts.ts
-│   │   │   │   └── somnia-agent-kit.client.ts
-│   │   │   └── telegram/
-│   │   │       ├── callback-signing.ts
-│   │   │       ├── messages.ts
-│   │   │       └── telegram.bot.ts
-│   │   ├── jobs/
-│   │   │   ├── heartbeat.job.ts
-│   │   │   ├── portfolio-monitor.job.ts
-│   │   │   └── reward-claim.job.ts
-│   │   ├── persistence/
-│   │   │   ├── data/
-│   │   │   │   ├── action-nonces.json
-│   │   │   │   ├── audit-events.json
-│   │   │   │   ├── reward-claims.json
-│   │   │   │   ├── risk-snapshots.json
-│   │   │   │   └── users.json
-│   │   │   ├── action-nonces.repository.ts
-│   │   │   ├── audit-events.repository.ts
-│   │   │   ├── json-store.ts
-│   │   │   ├── risk-snapshots.repository.ts
-│   │   │   └── users.repository.ts
-│   │   ├── policies/
-│   │   │   ├── deadman-policy.ts
-│   │   │   ├── execution-policy.ts
-│   │   │   └── reward-claim-policy.ts
-│   │   ├── services/
-│   │   │   ├── audit.service.ts
-│   │   │   ├── heartbeat.service.ts
-│   │   │   ├── portfolio.service.ts
-│   │   │   ├── reward-claim.service.ts
-│   │   │   └── risk-score.service.ts
-│   │   ├── types/
-│   │   ├── index.ts
-│   │   └── main.ts
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vitest.config.ts
+│   └── src/
+│       ├── api/
+│       │   ├── response.ts
+│       │   └── server.ts          # native http router (+ server.test.ts)
+│       ├── config/
+│       │   ├── env.ts             # Zod, fail-closed (+ env.test.ts)
+│       │   ├── logger.ts          # pino (+ logger.test.ts)
+│       │   └── public-chain.ts    # reads config/public-chains.json
+│       ├── integrations/
+│       │   ├── somnia/
+│       │   │   ├── somnia-agent-kit.client.ts  (+ .test.ts)
+│       │   │   └── inheritance-registry.client.ts
+│       │   └── telegram/
+│       │       ├── telegram.client.ts          # BotApiClient / Disabled + polling
+│       │       └── callback-signing.ts         # HMAC + nonce + TTL
+│       ├── jobs/                  # setInterval loops
+│       │   ├── portfolio-monitor.job.ts        (+ .test.ts)
+│       │   ├── heartbeat.job.ts
+│       │   ├── reward-claim.job.ts
+│       │   └── riskguard-agent-review.job.ts
+│       ├── persistence/
+│       │   ├── json-store.ts                   (+ .test.ts)
+│       │   ├── supabase-json-store.ts
+│       │   ├── users.repository.ts
+│       │   ├── session-keys.repository.ts
+│       │   ├── audit-events.repository.ts
+│       │   ├── portfolio-snapshots.repository.ts
+│       │   ├── risk-snapshots.repository.ts
+│       │   ├── reward-claims.repository.ts
+│       │   ├── heartbeats.repository.ts
+│       │   ├── telegram-bindings.repository.ts
+│       │   ├── action-nonces.repository.ts
+│       │   ├── alerts.repository.ts
+│       │   └── data/              # JSON store (local/dev)
+│       ├── policies/
+│       │   ├── execution-policy.ts
+│       │   ├── deadman-policy.ts
+│       │   └── reward-claim-policy.ts
+│       ├── services/
+│       │   ├── portfolio.service.ts            (+ .test.ts)
+│       │   ├── heartbeat.service.ts            (+ .test.ts)
+│       │   ├── heartbeat-reminder-notifier.ts
+│       │   ├── reward-claim.service.ts         (+ .test.ts)
+│       │   ├── reward-claim-notifier.ts
+│       │   ├── telegram-alert.service.ts       (+ .test.ts)
+│       │   ├── telegram-connect.service.ts     (+ .test.ts)
+│       │   ├── telegram-check-in.service.ts
+│       │   ├── session-key.service.ts
+│       │   ├── session-key-crypto.ts
+│       │   ├── session-key-actions.ts
+│       │   ├── riskguard-approval.service.ts
+│       │   ├── setup.service.ts                (+ .test.ts)
+│       │   ├── audit.service.ts
+│       │   └── demo-scenario.service.ts
+│       ├── utils/datetime.ts
+│       ├── test-helpers/env.ts
+│       ├── index.ts               # public surface for tests
+│       └── main.ts                # bootstrap (+ main.test.ts)
 ├── contracts/
-│   ├── script/
-│   │   ├── DemoTrigger.s.sol
-│   │   └── DeployInheritanceRegistry.s.sol
 │   ├── src/
-│   │   └── InheritanceRegistry.sol
+│   │   ├── InheritanceRegistry.sol            # RiskGuardInheritanceRegistry
+│   │   ├── SomniaAgentInterfaces.sol          # IAgentRequester(+Handler)
+│   │   └── riskguard/
+│   │       ├── RiskGuardValidator.sol         # ERC-7579 module type 1
+│   │       ├── RiskGuardHookModule.sol        # ERC-7579 module type 4 (experimental)
+│   │       └── RiskGuardApprovalStore.sol     # 10-min TTL, consume-once
 │   ├── test/
-│   │   └── InheritanceRegistry.t.sol
+│   │   ├── InheritanceRegistry.t.sol
+│   │   └── RiskGuardValidator.t.sol
+│   ├── script/                    # deploy + configure:agents
 │   ├── foundry.toml
 │   └── package.json
-├── docs/
 ├── frontend/
-│   ├── public/
 │   ├── src/
 │   │   ├── app/
-│   │   │   ├── globals.css
 │   │   │   ├── layout.tsx
-│   │   │   └── page.tsx
+│   │   │   └── page.tsx           # ThirdwebAppProvider -> RiskGuardDashboard
 │   │   ├── components/
-│   │   │   └── ui/
+│   │   │   ├── providers/thirdweb-app-provider.tsx
+│   │   │   └── ui/                # badge, button, input, sonner, tooltip
 │   │   ├── features/
 │   │   │   ├── dashboard/
-│   │   │   ├── heartbeat/
-│   │   │   ├── portfolio/
-│   │   │   ├── risk-score/
-│   │   │   └── wallet/
+│   │   │   │   ├── riskguard-dashboard.tsx
+│   │   │   │   ├── config.tsx · types.ts · utils.ts
+│   │   │   │   ├── hooks/use-riskguard-dashboard.ts
+│   │   │   │   └── components/    # overview, transfer-panel,
+│   │   │   │                      # agent-review-modal, status-panels,
+│   │   │   │                      # account-assets-panel, navigation, notice-toast
+│   │   │   └── settings/          # inheritance + guardian settings
 │   │   └── lib/
-│   │       ├── agent-api.ts
-│   │       ├── format.ts
-│   │       └── wallet.ts
-│   ├── components.json
-│   ├── eslint.config.mjs
-│   ├── next.config.ts
-│   ├── package.json
-│   ├── postcss.config.mjs
-│   └── tsconfig.json
-├── infra/
-├── scripts/
-├── .env.example
-├── .gitignore
-├── CHANGELOG.md
-├── EPIC.md
-├── README.md
-├── SPECS.md
-├── TODO.md
-├── package.json
-├── pnpm-lock.yaml
-├── pnpm-workspace.yaml
-└── tsconfig.json
+│   │       ├── thirdweb-client.ts · riskguard-module.ts
+│   │       ├── inheritance-registry.ts · native-transfer.ts
+│   │       ├── agent-api.ts · blockscout-api.ts
+│   │       ├── wallet.ts · utils.ts
+│   ├── components.json · next.config.ts · package.json · tsconfig.json
+├── package.json · pnpm-workspace.yaml · tsconfig.json
+└── README.md
 ```
-
-### Root Workspace Files
-
-**`pnpm-workspace.yaml`:**
-
-```yaml
-packages:
-  - "agent"
-  - "frontend"
-  - "contracts"
-```
-
-**Root `package.json` script direction:**
-
-```json
-{
-  "private": true,
-  "packageManager": "pnpm",
-  "scripts": {
-    "dev": "pnpm --parallel dev",
-    "dev:agent": "pnpm --dir agent dev",
-    "dev:frontend": "pnpm --dir frontend dev",
-    "build": "pnpm -r build",
-    "build:agent": "pnpm --dir agent build",
-    "build:frontend": "pnpm --dir frontend build",
-    "build:contracts": "pnpm --dir contracts build",
-    "test": "pnpm -r test",
-    "test:agent": "pnpm --dir agent test",
-    "test:contracts": "pnpm --dir contracts test",
-    "lint": "pnpm -r lint",
-    "format:contracts": "pnpm --dir contracts format"
-  }
-}
-```
-
-**Root `tsconfig.json`:**
-Root TypeScript config should define shared strict compiler defaults and be extended by `/agent/tsconfig.json` and `/frontend/tsconfig.json`. Contract compilation is owned by Foundry and configured through `/contracts/foundry.toml`.
 
 ### Architectural Boundaries
 
-**API Boundaries:**
-- Frontend talks only to `/agent` REST API.
-- Agent API validates all requests with zod.
-- Telegram callbacks enter through Telegram integration, then policy gates.
-- Smart contract calls flow through policy gates, Somnia Agent Kit, and EVM clients.
+**API Boundaries:** Frontend talks only to the `/agent` REST API (Zod-validated,
+`{ ok, data | error, requestId }`). Telegram callbacks enter through the Telegram
+integration, then policy gates. Smart-contract calls flow through policy gates,
+`somnia-agent-kit`, and ethers clients.
 
-**Component Boundaries:**
-- `/frontend` owns UI setup and overview only.
-- `/agent` owns monitoring, AI risk analysis, scheduling, Telegram, persistence, and execution decisions.
-- `/contracts` owns on-chain heartbeat, timelock, beneficiary, and access-control enforcement.
-- `/docs` owns human-facing documentation and audit notes.
+**Component Boundaries:** `/frontend` owns UI (wallet connect, transfers,
+inheritance planning, profile/Telegram). `/agent` owns monitoring, on-chain
+agent-review coordination, scheduling, Telegram, persistence, approval
+coordination, and execution decisions. `/contracts` owns on-chain risk enforcement (validator/approval store)
+and non-custodial inheritance. `/docs` owns canonical living documentation.
 
-**Service Boundaries:**
-- API routes call services only, not integrations directly.
-- Services may call repositories, policies, and integrations.
-- Jobs call services, not repositories or integrations directly.
-- Policies are pure or near-pure modules that return explicit allow/deny decisions.
+**Service Boundaries:** API handlers call services; services call repositories,
+policies, and integrations; jobs call services; policies are pure modules
+returning explicit allow/deny decisions.
 
-**Data Boundaries:**
-- JSON files live inside `/agent/src/persistence/data` and are private to the agent runtime.
-- Dashboard reads state through API, never by reading JSON files.
-- Contract state is authoritative for Dead Man's Switch activation.
-- Environment variables are the only source for secrets and agent wallet credentials.
+**Data Boundaries:** Repositories are the only writers; the JSON store lives under
+`agent/src/persistence/data` and Supabase tables are accessed only via the
+service-role key server-side. The dashboard reads state via API, never directly.
+Contract state is authoritative for guard enforcement and dead-man's-switch
+activation. Secrets are env-only.
 
 ### Requirements to Structure Mapping
 
-**Portfolio Monitoring + Risk Score:**
-- `agent/src/jobs/portfolio-monitor.job.ts`
-- `agent/src/services/portfolio.service.ts`
-- `agent/src/services/risk-score.service.ts`
-- `agent/src/integrations/llm/`
-- `frontend/src/features/portfolio/`
-- `frontend/src/features/risk-score/`
+**Portfolio Monitoring + on-chain agent review:** `jobs/portfolio-monitor.job.ts`,
+`services/portfolio.service.ts`, `jobs/riskguard-agent-review.job.ts`,
+frontend overview section + `lib/blockscout-api.ts`.
 
-**Smart-Account Inheritance:**
-- `contracts/src/InheritanceRegistry.sol`
-- `contracts/test/InheritanceRegistry.t.sol`
-- `agent/src/services/heartbeat.service.ts`
-- `agent/src/jobs/heartbeat.job.ts`
-- `agent/src/policies/deadman-policy.ts`
-- `frontend/src/features/heartbeat/`
+**Active Risk Guard:** `contracts/src/riskguard/{RiskGuardValidator,
+RiskGuardHookModule,RiskGuardApprovalStore}.sol`,
+`contracts/src/SomniaAgentInterfaces.sol`, `services/riskguard-approval.service.ts`,
+`jobs/riskguard-agent-review.job.ts`, session-key signing, frontend
+`lib/riskguard-module.ts` + `agent-review-modal.tsx`,
+`test/RiskGuardValidator.t.sol`.
 
-**Smart Account Inheritance:**
-- Add a Somnia/Thirdweb smart-account integration boundary before productionizing living-vault inheritance.
-- Model the smart account as the asset-holding account. It can send native tokens through value-bearing calls and ERC-20 tokens through token contract calls, provided the inheritance module/session key/guardian policy has explicit authority.
-- Keep inheritance executor permissions narrow: beneficiary transfers only, configured token/native limits, heartbeat/timelock gating, cancel/update controls, and safety receipts for every attempted execution.
-- Do not keep the standalone vault as a user-facing mode; the product goal requires assets to remain usable in the smart account.
+**Non-custodial Inheritance:** `contracts/src/InheritanceRegistry.sol`,
+`test/InheritanceRegistry.t.sol`, `integrations/somnia/inheritance-registry.client.ts`,
+`services/heartbeat.service.ts`, `jobs/heartbeat.job.ts`, `policies/deadman-policy.ts`,
+frontend `features/settings/*` + `lib/inheritance-registry.ts`.
 
-**Telegram Alerts + Quick Actions:**
-- `agent/src/integrations/telegram/`
-- `agent/src/persistence/action-nonces.repository.ts`
-- `agent/src/policies/execution-policy.ts`
+**Telegram Alerts + Quick Actions:** `integrations/telegram/*`,
+`persistence/action-nonces.repository.ts`, `services/telegram-*`,
+`policies/execution-policy.ts`.
 
-**Auto Claim Small Rewards:**
-- `agent/src/jobs/reward-claim.job.ts`
-- `agent/src/services/reward-claim.service.ts`
-- `agent/src/policies/reward-claim-policy.ts`
-- `agent/src/integrations/somnia/somnia-agent-kit.client.ts`
+**Auto Claim Small Rewards:** `jobs/reward-claim.job.ts`,
+`services/reward-claim.service.ts`, `policies/reward-claim-policy.ts`,
+`integrations/somnia/somnia-agent-kit.client.ts`.
 
-**Dashboard Setup + Overview:**
-- `frontend/src/features/dashboard/`
-- `frontend/src/features/wallet/`
-- `frontend/src/lib/agent-api.ts`
-- `frontend/src/lib/wallet.ts`
+**Dashboard Setup + Transfers + Profile:** `frontend/features/dashboard/*`,
+`lib/agent-api.ts`, `lib/wallet.ts`, `lib/native-transfer.ts`,
+`lib/thirdweb-client.ts`.
 
-**Demo Flow:**
-- `agent/src/api/routes/demo.routes.ts`
-- `contracts/script/DemoTrigger.s.sol`
-- `frontend/src/features/dashboard/`
+**Demo Flow:** `services/demo-scenario.service.ts`, `/api/demo/scenarios`,
+`contracts/script/*`.
 
 ### Integration Points
 
-**Internal Communication:**
-- `agent/src/main.ts` starts config validation, logger setup, API server, Telegram bot, and cron jobs.
-- `agent/src/index.ts` exports reusable agent modules for tests and scripts.
-- Jobs call services.
-- Services call repositories, policies, and integrations.
-- Policies must pass before any state-changing Somnia Agent Kit or EVM call.
-- API routes call services only, not integrations directly.
+**Internal:** `agent/src/main.ts` loads + validates config (`loadConfig()`,
+fail-closed), then `startAgentRuntime(config)` wires the logger, repositories
+(Supabase + JSON store), the service graph, the
+`SomniaAgentKitClient`, the HTTP API server, four `setInterval` jobs, and (if a
+bot token is set) Telegram long-polling; it returns an `AgentRuntime` with
+`stop()`. `agent/src/index.ts` re-exports the public surface for tests.
 
-**External Integrations:**
-- Groq and DeepSeek through `agent/src/integrations/llm/`.
-- Telegram through `agent/src/integrations/telegram/`.
-- Somnia Agent Kit and EVM clients through `agent/src/integrations/somnia/`.
-- Browser wallet only through `frontend/src/lib/wallet.ts`.
+**External:** the Somnia risk agent (on-chain LLM Inference) via
+`RiskGuardValidator.requestAgentReview` / `handleRiskAssessmentResponse`;
+Telegram via `integrations/telegram/`; `somnia-agent-kit` + ethers + inheritance
+registry via `integrations/somnia/`; Supabase via the persistence layer;
+Blockscout + thirdweb from the frontend.
 
-**Data Flow:**
-- Wallet setup -> Frontend -> Agent API -> JSON persistence.
-- Portfolio event -> Monitor job -> Risk service -> LLM -> Risk snapshot -> Telegram/dashboard.
-- Quick action -> Telegram callback -> validation -> policy -> Somnia Agent Kit -> contract/reward action -> audit event.
+**Data Flow (revert-driven guard):**
 
-### File Organization Patterns
+```
+User submits a risky UserOp on the smart account
+  → RiskGuardValidator.validateUserOp() enforces policy
+  → triggers (value ≥ threshold | batch | calldata | contract recipient)
+  → reverts PendingApprovalRequired(account, txHash, signer, ctx)
+  → agent/RPC reads the revert data:
+       Telegram flow: TelegramAlertService sends approve/reject buttons
+         → RiskGuardApprovalService.submitApproval() → RiskGuardApprovalStore (10-min TTL)
+       Agent-first flow: requestAgentReview() → Somnia risk agent
+         → handleRiskAssessmentResponse() records agentApprovals[acct][txHash]
+  → user resubmits → validator finds a valid approval → execution allowed
+     (consumeApproval() clears the store entry, one-time)
+```
 
-**Configuration Files:**
-- Root workspace: `package.json`, `pnpm-workspace.yaml`, `tsconfig.json`, `.env.example`.
-- Agent: `agent/package.json`, `agent/tsconfig.json`, `agent/vitest.config.ts`.
-- Frontend: `frontend/next.config.ts`, `frontend/components.json`, `frontend/postcss.config.mjs`, `frontend/eslint.config.mjs`.
-- Contracts: `contracts/foundry.toml`, `contracts/package.json`.
+**Data Flow (inheritance / dead-man's-switch):**
 
-**Source Organization:**
-- Agent source is organized by runtime responsibility: API, config, integrations, jobs, persistence, policies, services, types.
-- Frontend source is organized by route, reusable UI, and feature domain.
-- Contracts source follows Foundry defaults: `src`, `test`, `script`.
+```
+Smart account createPlan(beneficiaries, assets, heartbeat, grace, timelock)
+  → registry schedules distribution via Reactivity at timelockEndsAt
+User checkIn() OR agent triggerAgentHeartbeat() → handleHeartbeatResponse()
+  → refreshes the deadline (stale schedules skipped)
+Heartbeat expires → Reactivity precompile (0x0100) → onEvent()
+  → registry triggerDistributionAgent() → handleDistributionResponse()
+  → _executeDistribution() transfers each asset to beneficiaries by share,
+     FROM the user's smart account (agent mode skips failed transfers;
+     manual executeInheritance() fails closed). Registry never custodies funds.
+```
 
-**Test Organization:**
-- Agent tests are co-located as `*.test.ts`.
-- Contract tests live in `contracts/test/*.t.sol`.
-- Frontend tests are deferred until dashboard interaction patterns are implemented.
+## API Architecture
 
-**Asset Organization:**
-- Frontend static assets live in `frontend/public`.
-- Agent generated demo/persistence JSON stays in `agent/src/persistence/data`.
-- Contract build artifacts remain in Foundry-managed output directories.
+Base path `/api`; uniform `{ ok, data | error, requestId }` envelope. Mutating
+endpoints acting on a wallet require a signed-message proof. The canonical,
+maintained endpoint table lives in `docs/ARCHITECTURE.md` (~35 endpoints). Groups:
 
-### Development Workflow Integration
+- **setup/health:** `/setup/readiness`, `/health`, `/public-chain`
+- **users/profile:** `/users` (POST), `/users/profile` (GET/PATCH)
+- **portfolio/risk:** `/portfolios/latest`, `/risk-snapshots/latest`
+- **audit:** `/audit-events/recent`
+- **session keys:** `/session-keys/action`
+- **inheritance:** `/inheritance/plan`
+- **demo:** `/demo/scenarios`
+- **heartbeats:** `/heartbeats/settings`, `/check-in`, `/status`,
+  `/beneficiary-status`; `/deadman/policy-check`
+- **rewards:** `/rewards/settings`, `/status`, `/fixtures`, `/run`,
+  `/policy-check`
+- **telegram:** `/telegram/health`, `/connect/{start,status,confirm}`,
+  `/bindings` (GET/POST/DELETE), `/callback`
+- **riskguard:** `/riskguard/pending-approval`, `/riskguard/agent-review/requested`
 
-**Development Server Structure:**
-- `pnpm dev:agent` runs the agent API, Telegram polling, and scheduled jobs. Runtime startup must log API host/port and scheduler activation, expose health for API/Telegram/RPC/signer/Somnia adapter where possible, and write audit events for job success, skip, and failure states. Local development must support browser API calls from localhost and the active LAN host without opening unsafe public origins.
-- `pnpm dev:frontend` runs the Next.js dashboard.
-- Foundry local simulation runs through contract/package scripts or explicit `anvil` commands.
+## Contracts Architecture
 
-**Build Process Structure:**
-- `pnpm build:agent` compiles TypeScript.
-- `pnpm build:frontend` builds Next.js.
-- `pnpm build:contracts` delegates to `forge build`.
+Foundry project (Solidity 0.8.35, `via_ir`, 200 runs, OpenZeppelin 5.6.1).
+Deployed on Somnia Testnet; addresses in `config/public-chains.json`
+(`inheritanceRegistry`, `riskGuardApprovalStore`, `riskGuardHookModule`,
+`riskGuardValidatorModule`, `riskGuardModularAccountFactory`,
+`riskGuardDefaultValidator`). AgentRequester (testnet 50312):
+`0x037Bb9C718F3f7fe5eCBDB0b600D607b52706776`.
 
-**Deployment Structure:**
-- Somnia Testnet contract deploy scripts live in `/contracts/script`.
-- Agent deployment consumes env vars and deployed contract addresses.
-- Frontend deployment consumes public dashboard env vars only.
+| Contract | Type | Responsibility |
+|----------|------|----------------|
+| `RiskGuardInheritanceRegistry` (`src/InheritanceRegistry.sol`) | App (`ReentrancyGuard`) | One non-custodial inheritance plan per smart account; beneficiaries (bps), protected assets, heartbeat/grace/timelock, check-in, beneficiary-change timelock, Reactivity-scheduled + agent-confirmed distribution, manual `executeInheritance` fallback. EOAs cannot create plans. |
+| `RiskGuardValidator` (`src/riskguard/RiskGuardValidator.sol`) | ERC-7579 validator (type 1) | Enforces risk policy in `validateUserOp`; allows safe sub-threshold native transfers; blocks batches/calldata/contract recipients/over-threshold via `PendingApprovalRequired`; consumes ApprovalStore or Somnia agent approvals; `requestAgentReview` + `handleRiskAssessmentResponse`. The active guard. |
+| `RiskGuardHookModule` (`src/riskguard/RiskGuardHookModule.sol`) | ERC-7579 hook (type 4) | Same policy via `preCheck`/`postCheck`; experimental — inactive on Thirdweb ModularAccount's primary execute path. |
+| `RiskGuardApprovalStore` (`src/riskguard/RiskGuardApprovalStore.sol`) | Registry | Bridges agent/Telegram approvals on-chain: `registerAgentAndHook`, `submitApproval`, `consumeApproval`; 10-minute TTL, one-time use. |
+| `SomniaAgentInterfaces.sol` | Interfaces | `IAgentRequester` / `IAgentRequesterHandler`, `Request`/`Response`/`ResponseStatus`/`ConsensusType`. |
+
+ERC-7579 modules are installed on a Thirdweb ModularAccount (factory +
+`DefaultValidator` for owner signatures) alongside the RiskGuard validator. Somnia
+agents are invoked via `IAgentRequester.createRequest{value: deposit}` with a
+`handleResponse(uint256,Response[],ResponseStatus,Request)` callback; callbacks
+verify `msg.sender == platform`, track pending request IDs, decode only successful
+responses, and enforce per-account agent budgets. Distribution scheduling uses the
+Reactivity precompile `0x0100`; handler entrypoints are gated to that caller.
+Tests: `test/InheritanceRegistry.t.sol` (plan lifecycle, heartbeat refresh,
+Reactivity schedule + stale-skip, beneficiary timelock, agent
+heartbeat/distribution, skip-on-fail, share integrity) and
+`test/RiskGuardValidator.t.sol` (agent review request → approval → allowed
+UserOp). Post-deploy wiring: `pnpm --dir contracts configure:agents`.
 
 ## Architecture Validation Results
 
 ### Coherence Validation
 
-**Decision Compatibility:**
-The architecture is coherent. pnpm workspace orchestration, Next.js dashboard, Node/TypeScript agent, Foundry contracts, Somnia Agent Kit, ethers/viem clients, Telegram, and JSON persistence fit the MVP constraints without forcing one runtime to own another.
-
-**Pattern Consistency:**
-The implementation patterns support the decisions: zod validates boundaries, pino handles audit-safe logs, policy gates protect Somnia Agent Kit calls, and JSON repositories encapsulate file persistence.
-
-**Structure Alignment:**
-The project structure supports all runtime boundaries. `/frontend`, `/agent`, and `/contracts` are separated clearly, with root scripts coordinating build/test/dev tasks.
+The shipped architecture is coherent. pnpm workspace orchestration, the Next.js
+16 / thirdweb dashboard, the Node/TypeScript agent on ethers, Foundry ERC-7579
+contracts, `somnia-agent-kit`, Telegram, and dual Supabase/JSON persistence fit
+the constraints without forcing one runtime to own another. The active-guard
+pivot (AD-4) resolves the core gap in the planning-era design: a passive score
+cannot prevent loss, whereas `validateUserOp` enforcement does.
 
 ### Requirements Coverage Validation
 
-**Epic/Feature Coverage:**
-- Portfolio monitoring: covered by agent jobs/services and frontend portfolio view.
-- AI Risk Score: covered by LLM integrations, risk service, persistence, and dashboard.
-- Smart-Account Inheritance: covered by contract, heartbeat job/service, policy, and dashboard setup.
-- Telegram quick actions: covered by Telegram integration, callback signing, nonce persistence, and policy gates.
-- Auto reward claim: covered by reward job/service/policy and Somnia integration.
-- Demo flow: covered by demo API route, Foundry scripts, and dashboard demo controls.
+- Portfolio monitoring + on-chain agent review: covered (jobs/services + agent-review job + dashboard).
+- Active risk guard: covered (validator/approval store + agent review job +
+  frontend module config).
+- Non-custodial inheritance: covered (registry + Reactivity + consensus agents +
+  manual fallback + frontend planner).
+- Telegram quick actions: covered (signed callbacks + nonce persistence +
+  policy gates).
+- Auto reward claim: covered (job/service/policy + somnia-agent-kit).
+- Demo flow: covered (demo-scenario service + `/api/demo/scenarios` + scripts).
 
-**Functional Requirements Coverage:**
-All MVP functional areas have explicit architectural homes and integration paths.
-
-**Non-Functional Requirements Coverage:**
-Security, reliability, auditability, and demo separation are covered architecturally. The earlier PRD validation warning around measurable NFRs remains a documentation follow-up, not an architecture blocker.
+Security, non-custody, auditability, and demo separation are covered
+architecturally.
 
 ### Implementation Readiness Validation
 
-**Decision Completeness:**
-Critical technology and responsibility decisions are documented.
+Technology and responsibility decisions are documented and reflected in code; the
+directory tree above matches the repository; naming, structure, response-format,
+Telegram-callback, audit, policy, and execution-safety patterns are documented and
+enforced.
 
-**Structure Completeness:**
-The directory tree is specific enough for implementation agents to create files consistently.
+### Gap Analysis / Open Questions
 
-**Pattern Completeness:**
-Naming, structure, response format, Telegram callback, audit, policy, and execution safety patterns are documented.
+- Activate the ERC-7579 hook module once a ModularAccount variant runs hooks on
+  the primary execute path (currently validator-only).
+- Production database migration beyond Supabase REST + JSON store.
+- Telegram webhook deployment (currently polling-only).
+- External audit before mainnet / high-value usage.
+- Multi-chain support beyond Somnia Testnet.
 
-### Gap Analysis Results
+### Architecture Decisions Summary
 
-**Critical Gaps:**
-None.
+Full rationale in `docs/CONTEXT.md`; AD-N rows summarized in `docs/ARCHITECTURE.md`.
 
-**Important Gaps:**
-- Somnia Agent Kit exact API surface must be confirmed during implementation against installed docs/package.
-- NFR verification should be tightened in PRD/SPECS with concrete tests for replay protection, policy gates, secret scanning, and DMS false-trigger prevention.
-- Frontend test framework remains deferred until dashboard implementation starts.
-
-**Nice-to-Have Gaps:**
-- Add generated contract ABI sharing strategy after Foundry scaffold exists.
-- Add demo script checklist for Agentathon judging.
-- Add architecture decision records if major trade-offs change later.
-
-### Validation Issues Addressed
-
-- Replaced SQLite with JSON + in-memory cache for MVP.
-- Made Somnia Agent Kit explicit in the agent execution boundary.
-- Moved JSON data under persistence ownership.
-- Added root workspace config and common scripts.
-- Added Mermaid component diagram.
-
-### Architecture Completeness Checklist
-
-**Requirements Analysis**
-- [x] Project context thoroughly analyzed
-- [x] Scale and complexity assessed
-- [x] Technical constraints identified
-- [x] Cross-cutting concerns mapped
-
-**Architectural Decisions**
-- [x] Critical decisions documented with versions
-- [x] Technology stack fully specified
-- [x] Integration patterns defined
-- [x] Performance considerations addressed
-
-**Implementation Patterns**
-- [x] Naming conventions established
-- [x] Structure patterns defined
-- [x] Communication patterns specified
-- [x] Process patterns documented
-
-**Project Structure**
-- [x] Complete directory structure defined
-- [x] Component boundaries established
-- [x] Integration points mapped
-- [x] Requirements to structure mapping complete
+| ID | Topic | Summary |
+|----|-------|---------|
+| AD-1 | pnpm workspace + focused starters | One repo; Next.js/agent/Foundry surfaces |
+| AD-2 | Risk intelligence is on-chain agent review (no off-chain LLM) | Somnia risk agent decides APPROVE/REJECT; off-chain LLM providers removed; execution still gated by validator + signature |
+| AD-3 | Deterministic policy gates | Explicit allow/deny before every signature |
+| AD-4 | Active ERC-7579 smart-account guard | `validateUserOp` enforcement + revert-driven approval |
+| AD-5 | Non-custodial inheritance | Funds stay in the smart account; registry stores policy only |
+| AD-6 | Reactivity + consensus Agents | On-chain scheduling/approval, not off-chain polling |
+| AD-7 | thirdweb (AA) + ethers (agent) | Frontend AA via thirdweb; backend ethers v6 |
+| AD-8 | Supabase + JSON-store persistence | Encrypted session keys/users in Supabase; JSON store local |
+| AD-9 | Telegram polling + signed callbacks | HMAC + nonce + TTL replay protection |
+| AD-10 | Public chain config is SoT | `config/public-chains.json` for chain/contract metadata |
 
 ### Architecture Readiness Assessment
 
-**Overall Status:** READY FOR IMPLEMENTATION
+**Overall Status:** SHIPPED (v0.1.0) — implemented and aligned with this document.
 
 **Confidence Level:** high
 
 **Key Strengths:**
-- Strong separation between dashboard, agent, and contracts.
-- Security-first execution path with LLM isolation and policy gates.
-- Hackathon-friendly persistence and Foundry workflow.
-- Clear project structure for parallel AI-agent implementation.
+- Active on-chain enforcement (guard) rather than passive scoring.
+- On-chain agent-review isolation + deterministic policy gates + bounded ERC-4337 validation.
+- Non-custodial inheritance with on-chain scheduling and consensus agents.
+- Clean `/agent` · `/frontend` · `/contracts` separation; canonical living docs.
 
-**Areas for Future Enhancement:**
-- Production database.
-- Webhook-based Telegram deployment.
-- External audit.
-- Multi-chain support.
-- Advanced autonomous DeFi actions.
+**Areas for Future Enhancement:** hook activation, production DB, Telegram
+webhooks, external audit, multi-chain.
 
 ### Implementation Handoff
 
-**AI Agent Guidelines:**
-- Follow all architectural decisions exactly as documented.
-- Use implementation patterns consistently across all components.
-- Respect `/agent`, `/frontend`, and `/contracts` boundaries.
-- Never bypass policy gates for state-changing actions.
-- Treat this architecture document as the source of truth for implementation.
-
-**First Implementation Priority:**
-Create the root pnpm workspace, workspace package files, Foundry scaffold, and minimal agent/frontend bootstraps.
-
+- Treat `docs/ARCHITECTURE.md` and `docs/CONTEXT.md` as the source of truth; this
+  planning artifact is a point-in-time snapshot revised to match them.
+- Follow the documented patterns and respect surface boundaries.
+- Never bypass policy gates or place synchronous external calls inside
+  `validateUserOp`.
+- Record intentional architectural changes in `docs/CONTEXT.md` (append-only) with
+  a matching `AD-N` row in `docs/ARCHITECTURE.md`.

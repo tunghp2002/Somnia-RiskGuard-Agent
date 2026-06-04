@@ -10,7 +10,7 @@ The name "RiskGuard Agent" fits this model better than the old score-only flow:
 - "Guard" is enforced by smart-account validation before execution.
 - "Agent" reviews risky attempts, explains why they are risky, coordinates Telegram confirmation, and produces auditable approval receipts.
 
-The validation module must not synchronously call Groq, DeepSeek, Telegram, or any external API from `validateUserOp`. ERC-4337 validation needs bounded, deterministic on-chain behavior. Off-chain agent work should happen before the UserOperation is submitted, then the UserOperation can carry an approval proof accepted by the module.
+The validation module must not synchronously call any external LLM, Telegram, or external API from `validateUserOp`. ERC-4337 validation needs bounded, deterministic on-chain behavior. Off-chain agent work should happen before the UserOperation is submitted, then the UserOperation can carry an approval proof accepted by the module.
 
 ## Guard Rules
 

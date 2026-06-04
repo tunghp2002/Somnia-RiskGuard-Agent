@@ -8,7 +8,6 @@ describe("structured logger", () => {
     expect(loggerRedactPaths).toContain("thirdweb.secretKey");
     expect(loggerRedactPaths).toContain("supabase.serviceRoleKey");
     expect(loggerRedactPaths).toContain("supabase.sessionKeyEncryptionKey");
-    expect(loggerRedactPaths).toContain("llm.groq.apiKey");
     expect(loggerRedactPaths).toContain("telegram.botToken");
   });
 

@@ -4,7 +4,7 @@
 # Date: 2026-05-10T09:36:43.078Z
 
 user_name: tug
-project_name: Somnia RiskGuard Agent
+project_name: SomGuard
 communication_language: English
 document_output_language: English
 output_folder: "{project-root}/_bmad-output"

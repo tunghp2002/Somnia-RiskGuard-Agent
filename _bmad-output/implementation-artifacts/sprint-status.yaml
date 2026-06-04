@@ -1,9 +1,9 @@
 # generated: 2026-05-11
 # last_updated: 2026-05-15
-# project: Somnia RiskGuard Agent
+# project: SomGuard
 # project_key: NOKEY
 # tracking_system: file-system
-# story_location: C:\Users\T\Subwallet\Somnia\_bmad-output\implementation-artifacts
+# story_location: _bmad-output/implementation-artifacts
 #
 # STATUS DEFINITIONS:
 # ==================
@@ -36,10 +36,10 @@
 
 generated: 2026-05-11
 last_updated: 2026-05-15
-project: Somnia RiskGuard Agent
+project: SomGuard
 project_key: NOKEY
 tracking_system: file-system
-story_location: C:\Users\T\Subwallet\Somnia\_bmad-output\implementation-artifacts
+story_location: _bmad-output/implementation-artifacts
 
 development_status:
   epic-1: done
@@ -54,7 +54,7 @@ development_status:
   epic-2: done
   2-1-monitor-portfolio-state-for-configured-wallets: done
   2-2-detect-portfolio-and-risk-signal-changes: done
-  2-3-generate-ai-risk-score-with-groq-and-deepseek-fallback: done
+  2-3-on-chain-somnia-agent-risk-review: done
   2-4-enforce-advisory-risk-explanation-boundaries: done
   2-5-persist-risk-snapshots-and-threshold-results: done
   epic-2-retrospective: optional

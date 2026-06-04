@@ -160,7 +160,7 @@ export class DemoScenarioService {
       walletAddress,
       score: 82,
       explanation: "Demo risk alert: concentration and drawdown signals exceeded the configured threshold.",
-      provider: "groq",
+      provider: "demo",
       threshold: {
         alertThreshold: this.config.riskScore.alertThreshold,
         exceeded: true

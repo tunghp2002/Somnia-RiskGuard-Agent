@@ -10,14 +10,52 @@ inputDocuments:
   - _bmad-output/planning-artifacts/architecture.md
 workflowType: 'epics-and-stories'
 status: 'complete'
-completedAt: '2026-05-11'
+completedAt: '2026-06-04'
+revision: '2026-06-04 — synced to shipped code after active-guard pivot'
 ---
 
-# Somnia RiskGuard Agent - Epic Breakdown
+# SomGuard - Epic Breakdown
+
+## Revision note (2026-06-04)
+
+This breakdown was revised in place to match the shipped v0.1.0 codebase. The
+product **pivoted from a passive LLM portfolio-scoring agent to an active
+on-chain guard** built on Thirdweb ERC-7579 modular smart accounts:
+
+- Risk is now **enforced on-chain** by an ERC-7579 `RiskGuardValidator` module
+  that blocks risky `UserOp`s at `validateUserOp` time via a
+  `PendingApprovalRequired` revert. Approvals are
+  recorded off-chain-then-on-chain through `RiskGuardApprovalStore` (Telegram
+  confirmation) or a consensus-validated Somnia risk agent
+  (`requestAgentReview` / `handleRiskAssessmentResponse`).
+- **Off-chain LLM risk scoring was removed (AD-2 / D11).** The former off-chain
+  LLM risk-scoring path (a primary LLM provider with a fallback provider, their
+  env vars, the `POST /api/risk-snapshots/analyze` and
+  `POST /api/telegram/test-alert` endpoints, and the Telegram risk-score alert)
+  was deleted in favor of the on-chain Somnia risk agent review, whose
+  APPROVE/REJECT decision never directly authorizes a transaction. This rewrites
+  Story 2.3 (now superseded) and the related FRs. Risk snapshots now originate
+  only from demo scenarios (`provider: "demo" | "none"`) and the agent review.
+- The dead-man's switch is a **non-custodial** `RiskGuardInheritanceRegistry`:
+  funds stay in the user's smart account; distribution is scheduled by Somnia
+  Native On-Chain Reactivity (`0x0100`) and confirmed by Somnia Agents, with a
+  manual `executeInheritance` fallback.
+- Persistence is **Supabase (Postgres REST) + JSON-file store** (not JSON-only);
+  session keys are AES-encrypted at rest. Smart accounts and gas sponsorship use
+  **Thirdweb**; the agent uses **ethers v6**. Background jobs run via
+  **`setInterval`** (not node-cron). Chain is **Somnia Testnet (chainId 50312)**,
+  native token **STT**, with `config/public-chains.json` as the metadata source
+  of truth.
+
+Authoritative sources for this revision: `docs/ARCHITECTURE.md`,
+`docs/CONTEXT.md` (decision log AD-1…AD-10 / D1…D10), and
+`_bmad-output/implementation-artifacts/sprint-status.yaml` (real story statuses).
+Statuses below reflect that file: **Epics 1-5 and 7 done; Epic 6 in-progress**
+(stories 6-1, 6-3, 6-5 in review; 6-2, 6-4 done).
 
 ## Overview
 
-This document provides the complete epic and story breakdown for Somnia RiskGuard Agent, decomposing the requirements from the PRD, UX Design if it exists, and Architecture requirements into implementable stories.
+This document provides the complete epic and story breakdown for SomGuard, decomposing the requirements from the PRD, UX Design if it exists, and Architecture requirements into implementable stories.
 
 ## Requirements Inventory
 
@@ -41,13 +79,13 @@ FR8: The agent can monitor configured wallet portfolio state on Somnia.
 
 FR9: The agent can detect relevant portfolio, reward, and risk signal changes.
 
-FR10: The agent can generate an AI Risk Score for a monitored wallet state.
+FR10: Risky transactions for a monitored smart account are reviewed by the on-chain Somnia risk agent (`RiskGuardValidator.requestAgentReview` → `handleRiskAssessmentResponse`), returning an APPROVE/REJECT decision used for review — never to directly authorize execution. (The former off-chain LLM risk-scoring path was removed.)
 
-FR11: The agent can explain the main factors behind a Risk Score in user-readable language.
+FR11: The agent can explain the agent-review decision and the triggered rule in user-readable language.
 
-FR12: The agent can retry risk analysis through a fallback AI provider when the primary provider fails.
+FR12: The on-chain agent review is the single risk-intelligence source; if it stalls, the manual Telegram approval path remains available.
 
-FR13: Users can view current portfolio status, Risk Score, and recent risk explanations.
+FR13: Users can view current portfolio status, the latest risk snapshot (demo scenarios / agent review), and recent risk explanations.
 
 FR14: The agent can send Telegram alerts when configured risk conditions occur.
 
@@ -57,27 +95,27 @@ FR16: Users can acknowledge alerts through Telegram.
 
 FR17: Users can request refreshed risk analysis through Telegram.
 
-FR18: Users can approve supported safe actions through authenticated Telegram quick actions.
+FR18: Users can approve supported safe actions and pending RiskGuard transactions through authenticated Telegram quick actions, recording a short-lived on-chain approval in `RiskGuardApprovalStore`.
 
-FR19: The system can reject unauthorized, expired, or replayed Telegram actions.
+FR19: The system can reject unauthorized, expired, or replayed Telegram actions (HMAC-signed payloads with nonce, TTL, and wallet/Telegram binding).
 
-FR20: Users can create and update heartbeat settings for a monitored wallet.
+FR20: Users can create and update an inheritance plan (beneficiaries by share, protected assets, heartbeat interval, grace period, and timelock) for a smart account in `RiskGuardInheritanceRegistry`.
 
-FR21: Users can perform heartbeat check-ins.
+FR21: Users can perform heartbeat check-ins on-chain, or have liveness confirmed by a consensus-validated Somnia heartbeat agent.
 
-FR22: The agent can detect missed heartbeat deadlines.
+FR22: The agent can detect approaching/missed heartbeat deadlines from on-chain plan state.
 
-FR23: The agent can send heartbeat reminder notifications before Dead Man's Switch activation.
+FR23: The agent can send heartbeat reminder notifications before the inheritance dead-man's switch activates.
 
-FR24: The system can expose heartbeat status, expiry status, and timelock status.
+FR24: The system can expose heartbeat status, expiry status, and timelock status from the inheritance registry to the agent and dashboard consistently.
 
-FR25: The Dead Man's Switch can enter an expired state after missed heartbeat rules are met.
+FR25: The dead-man's switch can enter an expired/scheduled-distribution state via Somnia Reactivity after missed heartbeat rules are met.
 
-FR26: The Dead Man's Switch can enforce a timelock before beneficiary execution.
+FR26: The dead-man's switch can enforce a timelock before beneficiary distribution executes.
 
-FR27: The beneficiary can view safe claim or execution status when the Dead Man's Switch is active.
+FR27: The beneficiary can view safe distribution status when the dead-man's switch is active.
 
-FR28: The system can prevent Dead Man's Switch execution before configured conditions are met.
+FR28: The system can prevent inheritance distribution before configured expiry and timelock conditions are met (non-custodial: funds move from the user's smart account, never the registry).
 
 FR29: The agent can identify claimable small staking or LP rewards.
 
@@ -87,17 +125,17 @@ FR31: The agent can execute eligible small reward claims through the dedicated a
 
 FR32: The system can record each skipped, attempted, failed, or successful on-chain action.
 
-FR33: The system can prevent unsupported actions such as arbitrary transfers, unrestricted trading, and unbounded rebalancing.
+FR33: The system can prevent unsupported actions such as arbitrary transfers, unrestricted trading, and unbounded rebalancing — both via off-chain deterministic policy gates and via the on-chain `RiskGuardValidator` which blocks batches, calldata, contract recipients, and over-threshold native value until approved.
 
-FR34: The system can require deterministic policy approval before any transaction is signed.
+FR34: The system can require deterministic policy approval before any transaction is signed (off-chain `PolicyDecision` gates plus on-chain `validateUserOp` enforcement); LLM output never authorizes a transaction.
 
-FR35: Users can view setup state, portfolio overview, Risk Score, heartbeat status, and recent actions in a dashboard overview.
+FR35: Users can view setup state, portfolio/asset overview, RiskGuard policy status, advisory Risk Score, native-transfer flow, inheritance plan, and recent actions across focused dashboard sections.
 
 FR36: Users can distinguish simulated demo behavior from Somnia Testnet-backed behavior.
 
 FR37: The operator can run deterministic demo scenarios for risk alerts, reward claims, heartbeat expiry, and Dead Man's Switch timelock.
 
-FR38: The operator can view subsystem health for monitoring, AI providers, Telegram, RPC, signer, and contracts.
+FR38: The operator can view subsystem health for monitoring, Somnia agents, Telegram, RPC, signer, and contracts.
 
 FR39: The operator can inspect secret-safe logs for alerts, risk analysis, policy decisions, and transaction outcomes.
 
@@ -113,7 +151,7 @@ FR44: The system can frame AI Risk Score output as informational analysis rather
 
 ### NonFunctional Requirements
 
-NFR1: Risk Score generation should complete within 10 seconds under normal demo conditions.
+NFR1: The on-chain Somnia agent review should resolve and surface its APPROVE/REJECT decision promptly (relayed by the 15s riskguard-review job) under normal demo conditions.
 
 NFR2: Telegram alerts should be sent within 15 seconds after a simulated or detected risk event.
 
@@ -121,13 +159,13 @@ NFR3: Dashboard setup flow should be completable within 3 minutes during demo.
 
 NFR4: Portfolio status and heartbeat status should refresh quickly enough for demo users to understand current system state without manual log inspection.
 
-NFR5: Secrets, private keys, bot tokens, RPC keys, and LLM API keys must only be loaded from environment variables.
+NFR5: Secrets, private keys, bot tokens, and RPC keys must only be loaded from environment variables.
 
 NFR6: The frontend must never request, store, or transmit user private keys.
 
 NFR7: The backend agent wallet must be separated from the user's browser wallet.
 
-NFR8: LLM output must never directly authorize transactions.
+NFR8: The on-chain Somnia agent review (APPROVE/REJECT) must never directly authorize transactions.
 
 NFR9: Every transaction must pass deterministic policy checks before signing.
 
@@ -137,19 +175,19 @@ NFR11: Logs must not expose secrets, private keys, full credentials, or sensitiv
 
 NFR12: Production, mainnet, or high-value usage requires external security audit before launch.
 
-NFR13: The agent must fail closed when required configuration, RPC provider, signer, contract address, Telegram token, or LLM provider is invalid.
+NFR13: The agent must fail closed when required configuration, RPC provider, signer, contract address, or Telegram token is invalid.
 
-NFR14: Groq failures must fall back to DeepSeek where possible.
+NFR14: A stalled Somnia agent review must leave the manual Telegram approval path available.
 
-NFR15: Failed Telegram, RPC, LLM, and transaction flows must produce actionable diagnostic logs.
+NFR15: Failed Telegram, RPC, Somnia agent, and transaction flows must produce actionable diagnostic logs.
 
 NFR16: Dead Man's Switch activation must include reminders, grace period handling, and timelock visibility to reduce false activation risk.
 
 NFR17: Reward claim automation must skip execution when thresholds or policy checks fail.
 
-NFR18: Somnia RPC, LLM providers, Telegram, and smart contract integrations must expose health or failure state to the operator.
+NFR18: Somnia RPC, Somnia agents, Telegram, and smart contract integrations must expose health or failure state to the operator.
 
-NFR19: Public chain metadata such as chain ID, public RPC URL, explorer URL, native currency metadata, and public contract addresses must be loaded from `config/public-chains.json` or an equivalent committed public config file; private keys, bot tokens, LLM keys, and provider credentials remain environment-driven.
+NFR19: Public chain metadata such as chain ID, public RPC URL, explorer URL, native currency metadata, and public contract addresses must be loaded from `config/public-chains.json` or an equivalent committed public config file; private keys, bot tokens, and provider credentials remain environment-driven.
 
 NFR20: Demo simulation mode must clearly distinguish simulated behavior from Somnia Testnet-backed behavior.
 
@@ -163,7 +201,7 @@ NFR24: Critical alerts must not rely on color alone to communicate severity.
 
 NFR25: Backend, frontend, and contracts must remain separated under `/agent`, `/frontend`, and `/contracts`.
 
-NFR26: Core policy checks must be testable independently from LLM output and Telegram delivery.
+NFR26: Core policy checks must be testable independently from the on-chain agent review and Telegram delivery.
 
 NFR27: Contract tests must cover heartbeat renewal, expiry, timelock behavior, beneficiary configuration, safe execution authorization, unauthorized access rejection, and false-trigger prevention.
 
@@ -174,18 +212,18 @@ NFR28: The codebase must use typed configuration and validation to prevent inval
 - Use a root-level pnpm workspace as the single JavaScript/TypeScript package manager across `/agent`, `/frontend`, and `/contracts`.
 - Include `agent`, `frontend`, and `contracts` in `pnpm-workspace.yaml`.
 - Use Foundry for `/contracts` Solidity build, test, formatting, scripts, and local simulation workflows.
-- Use Next.js 15 App Router, Tailwind, and shadcn/ui for the dashboard.
-- Use Node.js + TypeScript for the backend agent runtime.
-- Use Somnia Agent Kit as the core SDK boundary for agent registration, tool calling, and Somnia-specific on-chain interactions.
-- Use ethers.js v6 as the primary EVM integration library, with viem available for typed reads, ABI ergonomics, and Anvil/local simulation utilities.
-- Use Groq as the primary LLM provider and DeepSeek as fallback.
-- Use zod for runtime configuration, request validation, Telegram callback payloads, JSON persistence shape validation, and policy decision schemas.
+- Use Next.js 16 App Router, Tailwind 4, and shadcn/ui (New York) for the dashboard, with Thirdweb for ERC-7579 modular smart-account connection and gas sponsorship.
+- Use Node.js + TypeScript (NodeNext ESM) for the backend agent runtime, served via the native `http` module with a manual Zod-validated router.
+- Use Somnia Agent Kit as the SDK boundary for portfolio/reward/approval tool calls, and Somnia AgentRequester for consensus-validated risk/heartbeat/distribution agents.
+- Use ethers.js v6 as the agent's EVM integration library for contract reads/writes, event polling, and signing.
+- Use the on-chain Somnia risk agent (`RiskGuardValidator.requestAgentReview` → `handleRiskAssessmentResponse`) for risky-transaction review; its APPROVE/REJECT decision never directly authorizes a transaction. No off-chain LLM provider is used.
+- Use zod for runtime configuration, request validation, Telegram callback payloads, persistence shape validation, and policy decision schemas.
 - Use pino for structured, secret-safe logs.
-- Use node-cron for scheduled monitoring, heartbeat checks, and reward-claim polling.
+- Use `setInterval`-driven jobs for portfolio monitoring (30s), heartbeat reminders (60s), reward-claim polling (60s), and RiskGuard agent-review polling (15s).
 - Use dotenv for local secret loading.
-- Use `config/public-chains.json` for non-secret Somnia chain metadata shared by agent and frontend.
-- Use lightweight JSON file persistence plus in-memory cache for MVP state.
-- Keep JSON data under `/agent/src/persistence/data` and access it only through repository helpers.
+- Use `config/public-chains.json` for non-secret Somnia chain + deployed-contract metadata shared by agent and frontend.
+- Use Supabase (Postgres REST) for durable `users` and encrypted `session_keys`, with a JSON-file store (`agent/src/persistence/data`) as the local/dev fallback behind the same `RepositoryStore<T>` contract.
+- Access all persisted state only through repository helpers; encrypt session keys at rest with `SESSION_KEY_ENCRYPTION_KEY`.
 - Use append-friendly audit event records for risk analysis, alerts, skipped actions, policy decisions, and transaction outcomes.
 - Expose a local/demo REST JSON API from the agent for dashboard setup and state reads.
 - Use response format `{ data, meta }` for success and `{ error: { code, message, details } }` for failures.
@@ -193,17 +231,17 @@ NFR28: The codebase must use typed configuration and validation to prevent inval
 - Checksum-normalize wallet addresses before persistence.
 - Use signed-message proof for protected dashboard configuration actions.
 - Use signed Telegram callback payloads with nonce, TTL, replay protection, and wallet/Telegram binding checks.
-- Wrap every Somnia Agent Kit state-changing tool call in deterministic local policy checks.
-- Keep LLM output advisory only; it must never directly authorize a transaction.
-- Keep the frontend as setup/overview only; it must never store, request, or transmit private keys.
-- Use a dedicated env-loaded backend agent wallet for constrained safe actions.
+- Wrap every state-changing tool call in deterministic local policy checks, and enforce risk policy on-chain in the `RiskGuardValidator` `validateUserOp` path.
+- Keep the on-chain agent review's APPROVE/REJECT advisory/decisional only; it must never directly authorize a transaction. Execution authority lives in the validator/approval flow plus a user/agent signature.
+- Keep the frontend wallet-connect + smart-account UX only; it must never store, request, or transmit user private keys.
+- Use a dedicated env-loaded backend agent signer plus Supabase-encrypted session keys for constrained safe actions.
 - Use Telegram polling for local/demo MVP reliability; defer webhook deployment.
-- Maintain explicit local/demo simulation mode separate from Somnia Testnet behavior.
-- Contract scope must remain minimal: heartbeat, beneficiary configuration, expiry/timelock state, safe execution functions, access control, and readable state.
+- Maintain explicit local/demo simulation mode (fixtures) separate from Somnia Testnet behavior.
+- Contract scope: ERC-7579 RiskGuard validator/hook + approval store for risk enforcement, and a non-custodial inheritance registry for heartbeat/beneficiary/expiry/timelock state, Reactivity-scheduled + agent-confirmed distribution, access control, and readable state.
 - Contract implementation should prioritize simple, readable, secure code over extreme gas optimization.
 - Root scripts should orchestrate `dev`, `build`, `test`, `lint`, and contract formatting across workspaces.
 - Agent entrypoint should be `agent/src/main.ts`; `agent/src/index.ts` should export reusable modules for tests and scripts.
-- Tests should cover policy gates, Telegram replay/expiry checks, LLM fallback, JSON persistence validation, and contract safety behavior.
+- Tests should cover policy gates, Telegram replay/expiry checks, the on-chain agent-review approval flow, JSON persistence validation, and contract safety behavior.
 - CI should run agent tests, frontend build/lint, and Foundry tests separately.
 - Production/mainnet or high-value usage requires external audit beyond MVP internal review and automated tests.
 - PRD validation follow-up: tighten measurable NFR verification methods before implementation readiness review.
@@ -233,11 +271,11 @@ FR8: Epic 2 - Portfolio monitoring.
 
 FR9: Epic 2 - Portfolio, reward, and risk signal detection.
 
-FR10: Epic 2 - AI Risk Score generation.
+FR10: Epic 2 - On-chain Somnia agent risk review (APPROVE/REJECT; never directly authorizes execution; off-chain LLM path removed).
 
-FR11: Epic 2 - User-readable risk explanation.
+FR11: Epic 2 - User-readable agent-review explanation.
 
-FR12: Epic 2 - DeepSeek fallback when Groq fails.
+FR12: Epic 2 - On-chain agent review as the single risk source, with manual Telegram approval fallback.
 
 FR13: Epic 2 - Portfolio and risk visibility.
 
@@ -249,27 +287,27 @@ FR16: Epic 3 - Alert acknowledgment.
 
 FR17: Epic 3 - Refreshed analysis from Telegram.
 
-FR18: Epic 3 - Supported safe action approval.
+FR18: Epic 3 - Supported safe action and RiskGuard pending-transaction approval via signed callbacks + approval store.
 
-FR19: Epic 3 - Unauthorized, expired, or replayed action rejection.
+FR19: Epic 3 - Unauthorized, expired, or replayed action rejection (HMAC + nonce + TTL).
 
-FR20: Epic 4 - Heartbeat settings creation and update.
+FR20: Epic 4 - Inheritance plan (beneficiaries, assets, heartbeat/grace/timelock) creation and update.
 
-FR21: Epic 4 - Heartbeat check-ins.
+FR21: Epic 4 - On-chain check-ins and agent heartbeat confirmation.
 
-FR22: Epic 4 - Missed heartbeat deadline detection.
+FR22: Epic 4 - Missed/approaching heartbeat deadline detection from on-chain state.
 
 FR23: Epic 4 - Heartbeat reminder notifications.
 
-FR24: Epic 4 - Heartbeat, expiry, and timelock status.
+FR24: Epic 4 - Heartbeat, expiry, and timelock status from the inheritance registry.
 
-FR25: Epic 4 - Expired Dead Man's Switch state.
+FR25: Epic 4 - Reactivity-scheduled expired/distribution state.
 
-FR26: Epic 4 - Timelock enforcement.
+FR26: Epic 4 - Timelock enforcement before distribution.
 
-FR27: Epic 4 - Beneficiary safe claim or execution status.
+FR27: Epic 4 - Beneficiary-safe distribution status.
 
-FR28: Epic 4 - Prevention of early Dead Man's Switch execution.
+FR28: Epic 4 - Prevention of early, non-custodial inheritance distribution.
 
 FR29: Epic 5 - Claimable reward identification.
 
@@ -279,11 +317,11 @@ FR31: Epic 5 - Eligible reward claim execution.
 
 FR32: Epic 5 - On-chain action outcome recording.
 
-FR33: Epic 5 - Unsupported action prevention.
+FR33: Epic 5 - Unsupported action prevention (off-chain policy gates + on-chain RiskGuard validator).
 
-FR34: Epic 5 - Deterministic policy approval before signing.
+FR34: Epic 5 - Deterministic policy approval before signing (off-chain gates + on-chain `validateUserOp`).
 
-FR35: Epic 6 - Dashboard overview.
+FR35: Epic 6 - Multi-section dashboard (overview, transfer, inheritance, profile/Telegram).
 
 FR36: Epic 6 - Demo and Somnia Testnet distinction.
 
@@ -309,7 +347,9 @@ FR44: Epic 2 - Informational, non-advisory AI output.
 
 Users and the operator can run the project safely with validated config, separated wallets, workspace scaffolding, and basic monitored-wallet setup.
 
-**User Outcome:** The system can start safely, distinguish frontend user wallet from backend agent wallet, validate env config, and store user setup state without secrets.
+**Status:** done
+
+**User Outcome:** The system can start safely, distinguish frontend user wallet from backend agent signer, validate env config, and store user setup state (Supabase + JSON store) without secrets.
 
 **FRs covered:** FR1, FR2, FR40, FR41, FR42, FR43
 
@@ -317,11 +357,13 @@ Users and the operator can run the project safely with validated config, separat
 
 **Natural dependency:** Must come first.
 
-### Epic 2: Portfolio Monitoring & AI Risk Engine
+### Epic 2: Portfolio Monitoring & On-Chain Agent Risk Review
 
-Users can monitor a Somnia wallet and receive understandable AI Risk Scores with Groq primary and DeepSeek fallback.
+Users can monitor a Somnia wallet, and risky transactions are reviewed by the on-chain Somnia risk agent (APPROVE/REJECT). The former off-chain LLM risk-scoring path was removed.
 
-**User Outcome:** Alex can see portfolio state, risk score, and readable explanations without watching dashboards constantly.
+**Status:** done
+
+**User Outcome:** Alex can see portfolio state, the latest risk snapshot, and readable explanations of an on-chain agent-review decision without watching dashboards constantly. The decision informs review and alerts; it never directly authorizes execution.
 
 **FRs covered:** FR3, FR8, FR9, FR10, FR11, FR12, FR13, FR44
 
@@ -331,9 +373,11 @@ Users can monitor a Somnia wallet and receive understandable AI Risk Scores with
 
 ### Epic 3: Telegram Alerts & Authenticated Quick Actions
 
-Users can receive risk alerts in Telegram and respond through authenticated, replay-safe quick actions.
+Users can receive risk alerts in Telegram and respond through authenticated, replay-safe quick actions, including approving pending RiskGuard transactions.
 
-**User Outcome:** Alex can acknowledge alerts, refresh analysis, and approve supported safe actions without opening the dashboard.
+**Status:** done
+
+**User Outcome:** Alex can acknowledge alerts, refresh analysis, and approve supported safe actions and pending RiskGuard transactions without opening the dashboard.
 
 **FRs covered:** FR4, FR14, FR15, FR16, FR17, FR18, FR19
 
@@ -343,9 +387,11 @@ Users can receive risk alerts in Telegram and respond through authenticated, rep
 
 ### Epic 4: Heartbeat Timer & Dead Man's Switch Protection
 
-Users can configure heartbeat rules and beneficiary protection, while the system prevents premature or unsafe execution.
+Users can configure non-custodial inheritance rules and beneficiary protection on-chain, while Reactivity + agent confirmation and a timelock prevent premature or unsafe distribution.
 
-**User Outcome:** Alex can configure emergency protection, and Sarah can see clear beneficiary/timelock status if Alex misses check-ins.
+**Status:** done
+
+**User Outcome:** Alex can configure emergency inheritance protection, and Sarah can see clear beneficiary/timelock/distribution status if Alex misses check-ins.
 
 **FRs covered:** FR5, FR20, FR21, FR22, FR23, FR24, FR25, FR26, FR27, FR28
 
@@ -355,9 +401,11 @@ Users can configure heartbeat rules and beneficiary protection, while the system
 
 ### Epic 5: Safe Reward Claim Automation
 
-Users can enable constrained auto-claiming for small staking/LP rewards with deterministic policy checks and audit records.
+Users can enable constrained auto-claiming for small staking/LP rewards with deterministic policy checks, and the agent rejects unsupported actions both off-chain and via the on-chain RiskGuard validator.
 
-**User Outcome:** The agent proves useful on-chain autonomy by claiming small safe rewards while rejecting risky or unsupported actions.
+**Status:** done
+
+**User Outcome:** The agent proves useful, bounded on-chain autonomy by claiming small safe rewards while rejecting risky or unsupported actions.
 
 **FRs covered:** FR6, FR7, FR29, FR30, FR31, FR32, FR33, FR34
 
@@ -367,9 +415,11 @@ Users can enable constrained auto-claiming for small staking/LP rewards with det
 
 ### Epic 6: Dashboard, Demo Mode & Operator Visibility
 
-Users and judges can view setup state, portfolio/risk status, heartbeat state, recent actions, health checks, and deterministic demo scenarios.
+Users and judges can view setup state, portfolio/asset status, RiskGuard policy, advisory risk, inheritance state, recent actions, health checks, and deterministic demo scenarios across focused dashboard sections.
 
-**User Outcome:** The demo can show the full agentic loop clearly: setup -> monitoring -> AI reasoning -> Telegram action -> reward claim -> Dead Man's Switch simulation.
+**Status:** in-progress (6-1 / 6-3 / 6-5 in review; 6-2 / 6-4 done)
+
+**User Outcome:** The demo can show the full agentic loop clearly: setup -> monitoring -> advisory AI reasoning -> Telegram/RiskGuard approval -> reward claim -> non-custodial inheritance simulation.
 
 **FRs covered:** FR35, FR36, FR37, FR38, FR39
 
@@ -379,7 +429,9 @@ Users and judges can view setup state, portfolio/risk status, heartbeat state, r
 
 ### Epic 7: Runtime Integration & MVP Acceptance Hardening
 
-The team can trust that the marked-complete MVP works through the normal `pnpm dev` path, with scheduled agent behavior, browser-visible state, honest demo/testnet labeling, and repeatable smoke verification.
+The team can trust that the marked-complete MVP works through the normal `pnpm dev` path, with `setInterval`-driven agent behavior, browser-visible state, honest demo/testnet labeling, and repeatable smoke verification.
+
+**Status:** done
 
 **User Outcome:** The dashboard and agent behave as a coherent product instead of separate implemented slices. Operators can run a deterministic demo, inspect live state, and know exactly which flows are simulation-backed versus Somnia Testnet-backed.
 
@@ -394,6 +446,8 @@ The team can trust that the marked-complete MVP works through the normal `pnpm d
 Users and the operator can run the project safely with validated config, separated wallets, workspace scaffolding, and basic monitored-wallet setup.
 
 ### Story 1.1: Set Up Initial Project From Starter Template
+
+**Status:** done
 
 As a developer/operator,
 I want the root workspace, package scripts, and baseline configs created,
@@ -415,6 +469,8 @@ So that all implementation work starts from one consistent project structure.
 **Then** commands delegate to the correct workspace scripts without mixing toolchains.
 
 ### Story 1.2: Configure Secure Agent Runtime Startup
+
+**Status:** done
 
 As an operator,
 I want the agent to validate environment configuration before startup,
@@ -438,6 +494,8 @@ So that missing secrets, wrong chain settings, or unsafe runtime states fail clo
 
 ### Story 1.3: Add Structured Logging And Audit Event Foundation
 
+**Status:** done
+
 As an operator,
 I want structured secret-safe logs and append-friendly audit records,
 So that agent behavior can be inspected without leaking credentials.
@@ -458,11 +516,13 @@ So that agent behavior can be inspected without leaking credentials.
 **Then** it is written through the audit repository
 **And** it includes timestamp, event type, status, and safe metadata.
 
-### Story 1.4: Implement JSON Persistence Repositories
+### Story 1.4: Implement Persistence Repositories (Supabase + JSON Store)
+
+**Status:** done
 
 As a developer,
-I want typed JSON repositories under agent persistence,
-So that MVP state is durable enough for demos without introducing a database.
+I want typed repositories over a shared `RepositoryStore<T>` contract,
+So that MVP state is durable (Supabase) with a zero-dependency JSON-file fallback for local/dev and tests.
 
 **Effort:** Medium
 
@@ -470,20 +530,22 @@ So that MVP state is durable enough for demos without introducing a database.
 
 **Acceptance Criteria:**
 
-**Given** the agent needs to persist users, risk snapshots, nonces, reward claims, or audit events
+**Given** the agent needs to persist users, session keys, risk snapshots, nonces, reward claims, or audit events
 **When** a repository writes data
-**Then** JSON is stored under `agent/src/persistence/data`
-**And** writes go through schema-validated repository helpers.
+**Then** it uses `SupabaseJsonStore` (REST; `users`/`session_keys` tables plus `agent_records` for collections) or the `JsonStore` file fallback under `agent/src/persistence/data`
+**And** writes go through schema-validated repository helpers; session keys are encrypted at rest.
 
-**Given** persisted JSON is malformed
+**Given** persisted state is malformed
 **When** the repository loads state
 **Then** validation fails safely
 **And** the agent reports an actionable startup or repository error.
 
 ### Story 1.5: Implement Wallet Separation And Setup API
 
+**Status:** done
+
 As a user,
-I want to register my monitored wallet while the agent uses its own executor wallet,
+I want to register my monitored wallet while the agent uses its own env-loaded signer (and Supabase-encrypted session keys),
 So that portfolio monitoring and safe actions do not require exposing my private keys.
 
 **Effort:** Medium
@@ -503,6 +565,8 @@ So that portfolio monitoring and safe actions do not require exposing my private
 **And** secret values are never returned.
 
 ### Story 1.6: Create Somnia Agent Kit Integration Boundary
+
+**Status:** done
 
 As a developer/operator,
 I want Somnia Agent Kit isolated behind a local integration client,
@@ -524,11 +588,13 @@ So that agent registration, tool calling, and on-chain interactions are policy-g
 **Then** the failure is exposed as subsystem health
 **And** execution remains disabled.
 
-## Epic 2: Portfolio Monitoring & AI Risk Engine
+## Epic 2: Portfolio Monitoring & On-Chain Agent Risk Review
 
-Users can monitor a Somnia wallet and receive understandable AI Risk Scores with Groq primary and DeepSeek fallback.
+Users can monitor a Somnia wallet, and risky transactions are reviewed by the on-chain Somnia risk agent (APPROVE/REJECT). The former off-chain LLM risk-scoring path (a primary/fallback LLM provider) was removed.
 
 ### Story 2.1: Monitor Portfolio State For Configured Wallets
+
+**Status:** done
 
 As a user,
 I want the agent to read my Somnia portfolio state,
@@ -552,6 +618,8 @@ So that risk analysis is based on current wallet information.
 
 ### Story 2.2: Detect Portfolio And Risk Signal Changes
 
+**Status:** done
+
 As a user,
 I want the agent to detect meaningful portfolio or reward changes,
 So that I am alerted only when the state warrants analysis.
@@ -572,11 +640,19 @@ So that I am alerted only when the state warrants analysis.
 **Then** the agent skips risk analysis
 **And** records a safe audit event if configured.
 
-### Story 2.3: Generate AI Risk Score With Groq And DeepSeek Fallback
+### Story 2.3: On-Chain Somnia Agent Risk Review (supersedes the off-chain LLM risk-score path)
+
+**Status:** done
+
+> **Superseded:** This story originally produced an off-chain AI risk score via a
+> primary LLM provider with a fallback provider. That off-chain LLM risk-scoring
+> path was **removed** with the active-guard pivot (AD-2 / D11). Risk intelligence
+> now comes solely from the on-chain Somnia risk agent review; the story is
+> updated below to reflect that.
 
 As a user,
-I want an AI-generated Risk Score with provider fallback,
-So that analysis remains available when the primary provider fails.
+I want risky transactions reviewed by the on-chain Somnia risk agent,
+So that risk intelligence is consensus-verified on-chain rather than produced by an off-chain LLM.
 
 **Effort:** Medium
 
@@ -584,20 +660,22 @@ So that analysis remains available when the primary provider fails.
 
 **Acceptance Criteria:**
 
-**Given** portfolio context is ready for analysis
-**When** Groq returns a valid response
-**Then** the agent produces a Risk Score from 0 to 100
-**And** stores the provider, score, explanation, and timestamp.
+**Given** a risky transaction needs review
+**When** `RiskGuardValidator.requestAgentReview` invokes the Somnia risk agent
+**Then** `handleRiskAssessmentResponse` records an APPROVE/REJECT decision on-chain
+**And** the decision is surfaced to the user (relayed to Telegram by the 15s riskguard-review job) without ever directly authorizing a transaction.
 
-**Given** Groq fails or times out
-**When** fallback is available
-**Then** the agent retries with DeepSeek
-**And** records the fallback decision in logs and audit history.
+**Given** the off-chain LLM risk-scoring path (a primary/fallback LLM provider, its env vars, the `POST /api/risk-snapshots/analyze` and `POST /api/telegram/test-alert` endpoints, and the Telegram risk-score alert)
+**When** the active-guard pivot shipped
+**Then** that path is removed
+**And** risk snapshots originate only from demo scenarios (`provider: "demo" | "none"`) and the on-chain agent review.
 
 ### Story 2.4: Enforce Advisory Risk Explanation Boundaries
 
+**Status:** done
+
 As a user,
-I want Risk Score output to be clear and non-advisory,
+I want the agent-review explanation to be clear and non-advisory,
 So that the agent explains risk without pretending to be a financial advisor.
 
 **Effort:** Small
@@ -606,17 +684,19 @@ So that the agent explains risk without pretending to be a financial advisor.
 
 **Acceptance Criteria:**
 
-**Given** a risk analysis is generated
+**Given** an on-chain agent-review decision is available
 **When** the explanation is returned
-**Then** it includes user-readable reasons for the score
+**Then** it includes user-readable reasons for the APPROVE/REJECT decision and the triggered rule
 **And** frames output as informational analysis rather than investment advice.
 
-**Given** an LLM response proposes unsupported trading or arbitrary transfers
+**Given** any suggested follow-up would imply unsupported trading or arbitrary transfers
 **When** the response is processed
 **Then** unsafe recommendations are excluded from executable actions
-**And** only safe suggested next steps are displayed.
+**And** only safe suggested next steps are displayed; the agent-review decision never directly authorizes a transaction.
 
 ### Story 2.5: Persist Risk Snapshots And Threshold Results
+
+**Status:** done
 
 As a user,
 I want current and recent risk results persisted,
@@ -642,6 +722,8 @@ Users can receive risk alerts in Telegram and respond through authenticated, rep
 
 ### Story 3.1: Configure And Link Telegram Notifications
 
+**Status:** done
+
 As a user,
 I want to link Telegram notification settings,
 So that the agent can send alerts to the correct chat.
@@ -664,6 +746,8 @@ So that the agent can send alerts to the correct chat.
 
 ### Story 3.2: Send Risk Alerts With Explanation And Buttons
 
+**Status:** done
+
 As a user,
 I want Telegram risk alerts with clear explanations and quick actions,
 So that I can respond without opening the dashboard.
@@ -684,6 +768,8 @@ So that I can respond without opening the dashboard.
 **And** does not retry unsafe actions automatically.
 
 ### Story 3.3: Sign And Validate Telegram Callback Payloads
+
+**Status:** done
 
 As a user,
 I want Telegram quick actions protected from replay or spoofing,
@@ -706,6 +792,8 @@ So that only valid actions can affect my agent configuration or execution flow.
 
 ### Story 3.4: Support Acknowledge And Refresh Risk Actions
 
+**Status:** done
+
 As a user,
 I want to acknowledge alerts and request refreshed analysis from Telegram,
 So that I can manage risk notifications quickly.
@@ -726,10 +814,12 @@ So that I can manage risk notifications quickly.
 **Then** a new risk analysis is requested
 **And** the refreshed result is sent back to Telegram.
 
-### Story 3.5: Route Safe Action Approvals Through Policy Gates
+### Story 3.5: Route Safe Action And RiskGuard Approvals Through Policy Gates
+
+**Status:** done
 
 As a user,
-I want Telegram approvals to pass through deterministic policy gates,
+I want Telegram approvals to pass through deterministic policy gates and record a short-lived on-chain approval,
 So that quick actions cannot bypass execution safety.
 
 **Effort:** Medium
@@ -738,9 +828,9 @@ So that quick actions cannot bypass execution safety.
 
 **Acceptance Criteria:**
 
-**Given** a Telegram callback approves a supported safe action
+**Given** a Telegram callback approves a supported safe action or a pending RiskGuard transaction
 **When** the agent processes the approval
-**Then** the action is routed to the relevant policy gate before execution
+**Then** the action is routed to the relevant policy gate before execution, and RiskGuard approvals are written to `RiskGuardApprovalStore` (10-minute TTL, one-time use) via the session-key signer
 **And** policy denial prevents signing.
 
 **Given** the requested action is unsupported
@@ -750,13 +840,15 @@ So that quick actions cannot bypass execution safety.
 
 ## Epic 4: Heartbeat Timer & Dead Man's Switch Protection
 
-Users can configure heartbeat rules and beneficiary protection, while the system prevents premature or unsafe execution.
+Users can configure non-custodial inheritance rules and beneficiary protection on-chain, while Reactivity + agent confirmation and a timelock prevent premature or unsafe distribution.
 
-### Story 4.1: Implement Foundry Dead Man's Switch Contract Baseline
+### Story 4.1: Implement Foundry Inheritance Registry Baseline
+
+**Status:** done
 
 As a user,
-I want an on-chain Dead Man's Switch contract with heartbeat and beneficiary state,
-So that emergency protection is enforced by contract rules.
+I want an on-chain, non-custodial inheritance registry with heartbeat and beneficiary state,
+So that emergency protection is enforced by contract rules without the registry custodying funds.
 
 **Effort:** Large
 
@@ -764,20 +856,22 @@ So that emergency protection is enforced by contract rules.
 
 **Acceptance Criteria:**
 
-**Given** the contract is built with Foundry
+**Given** `RiskGuardInheritanceRegistry` (`contracts/src/InheritanceRegistry.sol`) is built with Foundry
 **When** `forge build` and `forge test` run
-**Then** the Dead Man's Switch contract compiles
-**And** baseline tests cover ownership, beneficiary configuration, and heartbeat renewal.
+**Then** the registry compiles (Solidity 0.8.35, via_ir, OpenZeppelin `ReentrancyGuard`)
+**And** baseline tests cover plan creation (beneficiaries by bps, protected assets), heartbeat renewal, and beneficiary-change timelock.
 
-**Given** an unauthorized caller attempts restricted actions
+**Given** an EOA or unauthorized caller attempts a restricted action
 **When** contract tests execute
-**Then** unauthorized access is rejected.
+**Then** EOAs cannot create plans and unauthorized access is rejected.
 
-### Story 4.2: Configure Heartbeat Settings And Check-Ins
+### Story 4.2: Configure Inheritance Plan And Check-Ins
+
+**Status:** done
 
 As a user,
-I want to configure heartbeat settings and perform check-ins,
-So that I can prove I am reachable before expiry.
+I want to configure an inheritance plan and perform check-ins,
+So that I can prove I am reachable before expiry while my funds stay in my smart account.
 
 **Effort:** Medium
 
@@ -785,21 +879,23 @@ So that I can prove I am reachable before expiry.
 
 **Acceptance Criteria:**
 
-**Given** a monitored wallet is configured
-**When** heartbeat interval, grace period, and beneficiary wallet are submitted
-**Then** the agent validates and persists the settings
+**Given** a smart account is connected
+**When** beneficiaries (by share), protected assets, heartbeat interval, grace period, and timelock are submitted
+**Then** the agent/contract validates and persists the plan
 **And** exposes current heartbeat status.
 
-**Given** the user performs a heartbeat check-in
+**Given** the user performs an on-chain check-in (or a Somnia heartbeat agent confirms liveness)
 **When** the check-in succeeds
-**Then** the next deadline is updated
+**Then** the next deadline is refreshed and stale schedules are skipped
 **And** an audit event is recorded.
 
 ### Story 4.3: Send Heartbeat Reminders Before Expiry
 
+**Status:** done
+
 As a user,
-I want reminders before Dead Man's Switch activation,
-So that missed check-ins do not immediately cause emergency flow activation.
+I want reminders before the inheritance dead-man's switch activates,
+So that missed check-ins do not immediately trigger distribution.
 
 **Effort:** Medium
 
@@ -807,8 +903,8 @@ So that missed check-ins do not immediately cause emergency flow activation.
 
 **Acceptance Criteria:**
 
-**Given** a heartbeat deadline is approaching
-**When** the heartbeat job runs
+**Given** a heartbeat deadline is approaching (read from on-chain plan state)
+**When** the heartbeat job runs (`setInterval`, 60s)
 **Then** reminder notifications are sent through configured channels
 **And** reminder events are recorded.
 
@@ -816,11 +912,13 @@ So that missed check-ins do not immediately cause emergency flow activation.
 **When** the job runs again
 **Then** duplicate reminders are limited by configured reminder rules.
 
-### Story 4.4: Enforce Expiry And Timelock Contract Behavior
+### Story 4.4: Enforce Expiry, Reactivity Schedule, And Timelock Behavior
+
+**Status:** done
 
 As a beneficiary,
-I want expired heartbeat state to enter a visible timelock,
-So that emergency execution cannot happen prematurely.
+I want expired heartbeat state to enter a Reactivity-scheduled, timelocked distribution,
+So that distribution cannot happen prematurely.
 
 **Effort:** Large
 
@@ -829,19 +927,21 @@ So that emergency execution cannot happen prematurely.
 **Acceptance Criteria:**
 
 **Given** heartbeat expiry conditions are met
-**When** expiry is evaluated
-**Then** the contract can enter expired/timelock state
-**And** state is readable by the agent and dashboard.
+**When** the Somnia Reactivity precompile (`0x0100`) fires `onEvent` at `timelockEndsAt`
+**Then** the registry requests the Somnia distribution agent and can enter the distribution state
+**And** state is readable by the agent and dashboard; handler entrypoints are gated to the precompile/platform caller.
 
 **Given** timelock is still pending
-**When** execution is attempted
-**Then** execution is rejected
-**And** tests cover false-trigger prevention.
+**When** distribution is attempted
+**Then** it is rejected
+**And** tests cover stale-schedule skip and false-trigger prevention.
 
 ### Story 4.5: Expose Beneficiary-Safe Status
 
+**Status:** done
+
 As a beneficiary,
-I want simple status messages for expiry, timelock, and claim readiness,
+I want simple status messages for expiry, timelock, and distribution readiness,
 So that I understand what is happening without technical expertise.
 
 **Effort:** Medium
@@ -850,20 +950,22 @@ So that I understand what is happening without technical expertise.
 
 **Acceptance Criteria:**
 
-**Given** a Dead Man's Switch is active or pending
-**When** beneficiary status is requested
-**Then** the system returns clear status, beneficiary wallet, timelock timing, and available next step.
+**Given** an inheritance plan is active or pending
+**When** beneficiary status is requested (`/api/heartbeats/beneficiary-status`)
+**Then** the system returns clear status, beneficiary share, timelock timing, and available next step.
 
 **Given** no beneficiary action is available yet
 **When** Sarah views status
 **Then** the system explains when to return
 **And** prevents ambiguous or unsafe action choices.
 
-### Story 4.6: Prevent Premature Dead Man's Switch Execution
+### Story 4.6: Prevent Premature Inheritance Distribution
+
+**Status:** done
 
 As a user,
-I want emergency execution blocked until every configured condition is met,
-So that false activation risk is minimized.
+I want distribution blocked until every configured condition is met,
+So that false activation risk is minimized and funds stay non-custodial.
 
 **Effort:** Medium
 
@@ -871,21 +973,22 @@ So that false activation risk is minimized.
 
 **Acceptance Criteria:**
 
-**Given** execution is requested before expiry, before timelock completion, or by an unauthorized caller
-**When** policy and contract checks run
-**Then** execution is rejected
+**Given** distribution is requested before expiry, before timelock completion, or by an unauthorized caller
+**When** policy and contract checks run (including the `deadman-policy` gate)
+**Then** distribution is rejected
 **And** the reason is recorded in audit history.
 
 **Given** all configured conditions are met
-**When** execution status is checked
-**Then** the system reports that the beneficiary path is available
-**And** does not execute without the required supported action flow.
+**When** distribution status is checked
+**Then** the system reports that the beneficiary path is available; agent-confirmed distribution moves assets **from the user's smart account** by share (skipping failed transfers), while manual `executeInheritance` fails closed.
 
 ## Epic 5: Safe Reward Claim Automation
 
 Users can enable constrained auto-claiming for small staking/LP rewards with deterministic policy checks and audit records.
 
 ### Story 5.1: Detect Claimable Rewards
+
+**Status:** done
 
 As a user,
 I want the agent to identify small claimable rewards,
@@ -909,6 +1012,8 @@ So that safe routine claims can be automated.
 
 ### Story 5.2: Apply Reward Claim Value And Gas Policies
 
+**Status:** done
+
 As a user,
 I want reward claims limited by value and gas thresholds,
 So that the agent does not execute uneconomic or risky transactions.
@@ -930,8 +1035,10 @@ So that the agent does not execute uneconomic or risky transactions.
 
 ### Story 5.3: Execute Eligible Reward Claims Through Agent Wallet
 
+**Status:** done
+
 As a user,
-I want eligible claims executed by the dedicated agent wallet,
+I want eligible claims executed by the dedicated agent signer,
 So that routine rewards can be claimed without exposing my browser wallet private key.
 
 **Effort:** Large
@@ -940,10 +1047,10 @@ So that routine rewards can be claimed without exposing my browser wallet privat
 
 **Acceptance Criteria:**
 
-**Given** reward policy allows a claim
+**Given** reward policy allows a claim (decision expires after 60s)
 **When** execution is requested
-**Then** the agent signs through the env-loaded agent wallet
-**And** the action flows through Somnia Agent Kit or the configured EVM client boundary.
+**Then** the agent signs through the env-loaded agent signer (ethers v6)
+**And** the action flows through the Somnia Agent Kit / configured EVM client boundary.
 
 **Given** signing, RPC, or contract execution fails
 **When** the transaction attempt completes
@@ -951,6 +1058,8 @@ So that routine rewards can be claimed without exposing my browser wallet privat
 **And** no retry bypasses policy checks.
 
 ### Story 5.4: Record And Notify Reward Claim Outcomes
+
+**Status:** done
 
 As a user,
 I want reward claim outcomes recorded and reported,
@@ -972,6 +1081,8 @@ So that I understand what the agent did or skipped.
 
 ### Story 5.5: Block Unsupported Autonomous Actions
 
+**Status:** done
+
 As a user,
 I want the agent to reject unsupported trading or transfer actions,
 So that MVP autonomy stays inside safe boundaries.
@@ -983,9 +1094,9 @@ So that MVP autonomy stays inside safe boundaries.
 **Acceptance Criteria:**
 
 **Given** a request attempts arbitrary transfer, unrestricted trading, or unbounded rebalancing
-**When** execution policy evaluates it
-**Then** the request is denied
-**And** no transaction is signed.
+**When** the off-chain `execution-policy` evaluates it (whitelisting only `claim_small_reward` and `deadman_check_in`), and on-chain the `RiskGuardValidator` evaluates the UserOp
+**Then** the request is denied off-chain and over-threshold / batch / calldata / contract-recipient UserOps are blocked on-chain via `PendingApprovalRequired`
+**And** no transaction is signed without an approval.
 
 **Given** a denied unsupported action occurs
 **When** audit history is inspected
@@ -995,10 +1106,12 @@ So that MVP autonomy stays inside safe boundaries.
 
 Users and judges can view setup state, portfolio/risk status, heartbeat state, recent actions, health checks, and deterministic demo scenarios.
 
-### Story 6.1: Build App Shell, Navigation, Auth, And Wallet Connection
+### Story 6.1: Build App Shell, Navigation, And Smart-Account Connection
+
+**Status:** review
 
 As a user,
-I want a dashboard shell with familiar sign in/out, browser wallet connection, and clear navigation,
+I want a dashboard shell with Thirdweb wallet/smart-account connection and clear navigation,
 So that I can manage RiskGuard without everything being crammed into one screen.
 
 **Effort:** Medium
@@ -1007,25 +1120,27 @@ So that I can manage RiskGuard without everything being crammed into one screen.
 
 **Acceptance Criteria:**
 
-**Given** the frontend starts
+**Given** the frontend starts (`ThirdwebAppProvider` → `RiskGuardDashboard`)
 **When** the user opens the dashboard
-**Then** the page renders an app shell with desktop left sidebar navigation, mobile bottom navigation, wallet/auth connection state, setup summary, and demo/testnet mode visibility.
+**Then** the page renders an app shell with section navigation (overview, transfer, profile, inheritance), wallet/smart-account connection state, setup summary, and demo/testnet mode visibility.
 
 **Given** the user signs out or disconnects
 **When** the action completes
 **Then** local wallet/session state is cleared
 **And** the UI returns to a clear disconnected state without stale private or account data.
 
-**Given** a browser wallet is connected
+**Given** a browser wallet / Thirdweb modular smart account is connected
 **When** the dashboard reads wallet state
-**Then** it displays wallet address and network status
+**Then** it displays the EOA + smart-account address and network status (Somnia Testnet 50312)
 **And** never requests or stores a private key.
 
 ### Story 6.2: Add Configuration Forms For MVP Settings
 
+**Status:** done
+
 As a user,
-I want focused setup screens for risk, Telegram, heartbeat, beneficiary, and reward settings,
-So that I can configure the agent without editing JSON manually.
+I want focused setup screens for RiskGuard policy, Telegram, inheritance (heartbeat/beneficiary), and reward settings,
+So that I can configure the agent and install the RiskGuard module without editing config manually.
 
 **Effort:** Large
 
@@ -1047,10 +1162,12 @@ So that I can configure the agent without editing JSON manually.
 **Then** the dashboard starts a bot deep-link, one-time code, QR/link fallback, or equivalent callback flow
 **And** the user is not asked to manually type a Telegram chat id.
 
-### Story 6.3: Display Portfolio, Risk, Heartbeat, And Recent Actions
+### Story 6.3: Display Portfolio, RiskGuard Policy, Inheritance, And Recent Actions
+
+**Status:** review
 
 As a user,
-I want a dashboard overview of current agent state,
+I want a dashboard overview of current agent and on-chain state,
 So that I can understand portfolio risk and protection status at a glance.
 
 **Effort:** Medium
@@ -1059,10 +1176,10 @@ So that I can understand portfolio risk and protection status at a glance.
 
 **Acceptance Criteria:**
 
-**Given** agent state is available
+**Given** agent and on-chain state are available
 **When** the dashboard loads
-**Then** the Overview route shows a concise status summary
-**And** portfolio/risk, heartbeat, rewards, and recent actions are available in focused sections instead of a single overloaded page.
+**Then** the Overview shows Blockscout-enumerated assets, RiskGuard policy/install status, and advisory risk
+**And** transfer, inheritance plan, rewards, and recent actions are available in focused sections instead of a single overloaded page.
 
 **Given** data is loading or unavailable
 **When** the dashboard renders
@@ -1070,9 +1187,11 @@ So that I can understand portfolio risk and protection status at a glance.
 
 ### Story 6.4: Add Deterministic Demo Scenario Controls
 
+**Status:** done
+
 As a demo operator,
 I want controlled demo scenarios,
-So that judges can see monitoring, risk analysis, reward claims, and Dead Man's Switch flow reliably.
+So that judges can see monitoring, advisory risk analysis, reward claims, RiskGuard approval, and the non-custodial inheritance flow reliably.
 
 **Effort:** Medium
 
@@ -1091,6 +1210,8 @@ So that judges can see monitoring, risk analysis, reward claims, and Dead Man's 
 
 ### Story 6.5: Show Operator Health And Secret-Safe Logs
 
+**Status:** review
+
 As an operator,
 I want subsystem health and recent secret-safe logs,
 So that I can troubleshoot demo or integration failures quickly.
@@ -1102,8 +1223,8 @@ So that I can troubleshoot demo or integration failures quickly.
 **Acceptance Criteria:**
 
 **Given** health data is available
-**When** the operator opens the status view
-**Then** monitoring, Groq, DeepSeek, Telegram, RPC, signer, contracts, and persistence health are shown.
+**When** the operator opens the status view (`/api/health`)
+**Then** Telegram, Somnia/RPC, public-chain, signer, contracts, and persistence (Supabase/JSON) health are shown.
 
 **Given** recent audit or diagnostic events exist
 **When** logs are displayed
@@ -1116,8 +1237,10 @@ The team can trust that the marked-complete MVP works through the normal `pnpm d
 
 ### Story 7.1: Run Agent Jobs In Normal Runtime
 
+**Status:** done
+
 As an operator,
-I want `pnpm dev` to start scheduled monitoring, heartbeat, and reward jobs,
+I want `pnpm dev` to start the `setInterval`-driven monitoring, heartbeat, reward, and RiskGuard agent-review jobs,
 So that the agent performs work without manual test harnesses.
 
 **Effort:** Medium
@@ -1128,10 +1251,12 @@ So that the agent performs work without manual test harnesses.
 
 **Given** valid env config and a monitored wallet
 **When** `pnpm dev` starts
-**Then** portfolio monitoring, heartbeat reminder evaluation, and reward policy evaluation run on configured intervals
+**Then** portfolio monitoring (30s), heartbeat reminders (60s), reward policy evaluation (60s), and RiskGuard agent-review polling (15s) run on their intervals
 **And** job success/failure is visible in audit events without exposing secrets.
 
 ### Story 7.2: Add Local Runtime Smoke Checks
+
+**Status:** done
 
 As a developer,
 I want repeatable smoke checks for the running frontend and agent,
@@ -1149,6 +1274,8 @@ So that “done” reflects real app behavior.
 
 ### Story 7.3: Make Demo/Testnet Capability Honest
 
+**Status:** done
+
 As a user or judge,
 I want the UI and docs to state whether each result is simulation-backed or Somnia Testnet-backed,
 So that the product does not overclaim live autonomy.
@@ -1164,11 +1291,13 @@ So that the product does not overclaim live autonomy.
 **Then** the UI labels it as simulation/demo
 **And** testnet mode does not silently show demo data.
 
-### Story 7.4: Wire Or Explicitly Gate Somnia Agent Kit Execution
+### Story 7.4: Wire Or Explicitly Gate Somnia / RiskGuard Execution
+
+**Status:** done
 
 As an operator,
-I want real Somnia execution either wired through the policy-gated adapter or visibly disabled,
-So that reward and DMS claims are not falsely presented as complete.
+I want real Somnia execution (reward claims, RiskGuard approvals, inheritance) either wired through the policy-gated adapter or visibly disabled,
+So that on-chain actions are not falsely presented as complete.
 
 **Effort:** Large
 
@@ -1176,15 +1305,17 @@ So that reward and DMS claims are not falsely presented as complete.
 
 **Acceptance Criteria:**
 
-**Given** Somnia Agent Kit adapter config is unavailable
+**Given** Somnia Agent Kit / contract adapter config is unavailable
 **When** execution-capable flows are viewed or attempted
 **Then** the system reports execution disabled and records a fail-closed receipt.
 
 **Given** adapter config is available
-**When** an eligible reward claim is run
-**Then** the state-changing call passes deterministic policy checks before signing.
+**When** an eligible reward claim, RiskGuard approval, or inheritance distribution is run
+**Then** the state-changing call passes deterministic policy checks before signing, and on-chain risk enforcement remains in the `RiskGuardValidator`.
 
 ### Story 7.5: Finish Dashboard Operational UX
+
+**Status:** done
 
 As a user,
 I want wallet disconnect, API failure states, refresh behavior, and safety receipts to work predictably,
@@ -1206,6 +1337,8 @@ So that I can operate the MVP without terminal inspection.
 
 ### Story 7.6: Redesign Dashboard IA, Telegram Connect, And Public Chain Config
 
+**Status:** done
+
 As a user,
 I want RiskGuard organized as a focused multi-section app with smooth account controls, Telegram Connect, and public chain settings loaded from config,
 So that setup and operations feel like a polished web app instead of a single overloaded dashboard.
@@ -1216,15 +1349,15 @@ So that setup and operations feel like a polished web app instead of a single ov
 
 **Acceptance Criteria:**
 
-**Given** the user opens the frontend on desktop
+**Given** the user opens the frontend
 **When** the dashboard renders
-**Then** it uses a persistent left sidebar app shell with focused sections for Overview, Setup, Risk, Heartbeat, Rewards, Receipts, Demo, and Health
+**Then** it uses a focused-section app shell (Overview, Transfer, Profile/Telegram, Inheritance) driven by `use-riskguard-dashboard.ts`
 **And** the Overview route summarizes status without containing every form and workflow.
 
-**Given** the user opens the frontend on mobile
-**When** the dashboard renders
-**Then** primary navigation appears as a bottom navigation bar
-**And** lower-frequency sections are available through a More sheet or menu.
+**Given** the user navigates between sections
+**When** the dashboard renders on smaller viewports
+**Then** navigation remains usable across sections
+**And** lower-frequency actions are reachable without crowding the primary view.
 
 **Given** the user connects, disconnects, signs out, or returns with prior local state
 **When** the account state changes

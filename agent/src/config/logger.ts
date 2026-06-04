@@ -18,8 +18,6 @@ export const loggerRedactPaths = [
   "thirdweb.secretKey",
   "supabase.serviceRoleKey",
   "supabase.sessionKeyEncryptionKey",
-  "llm.groq.apiKey",
-  "llm.deepSeek.apiKey",
   "telegram.botToken",
   "telegram.webhookSecret"
 ];
