@@ -17,6 +17,8 @@ import { PanelHeading } from "./status-panels";
 import type { PublicChainMetadata } from "@/lib/agent-api";
 
 type AssetTab = "tokens" | "nfts";
+const assetCacheTtlMs = 30_000;
+const assetSnapshotCache = new Map<string, { snapshot: AccountAssetSnapshot; fetchedAt: number }>();
 
 function uniqueAccounts(accounts: AccountOption[]) {
   const seen = new Set<string>();
@@ -81,6 +83,12 @@ export function AccountAssetsPanel({
     () => scopeAccounts(accountOptions, selectedScope),
     [accountOptions, selectedScope],
   );
+  const selectedAccountsKey = useMemo(
+    () => selectedAccounts
+      .map((account) => `${account.label}:${account.address?.toLowerCase() ?? ""}`)
+      .join("|"),
+    [selectedAccounts],
+  );
 
   useEffect(() => {
     if (!publicChain || selectedAccounts.length === 0) {
@@ -88,9 +96,24 @@ export function AccountAssetsPanel({
       return;
     }
 
+    const cacheKey = `${publicChain.chainId}:${selectedAccountsKey}`;
+    const cached = assetSnapshotCache.get(cacheKey);
+    const cacheFresh = cached ? Date.now() - cached.fetchedAt < assetCacheTtlMs : false;
+
+    if (cached) {
+      setAssets(cached.snapshot);
+      setError(null);
+    }
+
+    if (cacheFresh && refreshNonce === 0) {
+      return;
+    }
+
     let stopped = false;
     setLoading(true);
-    setError(null);
+    if (!cached) {
+      setError(null);
+    }
 
     void fetchAccountAssets({
       accounts: selectedAccounts.map((account) => ({
@@ -103,13 +126,17 @@ export function AccountAssetsPanel({
     })
       .then((snapshot) => {
         if (!stopped) {
+          assetSnapshotCache.set(cacheKey, { snapshot, fetchedAt: Date.now() });
           setAssets(snapshot);
+          setError(null);
         }
       })
       .catch((fetchError) => {
         if (!stopped) {
-          setAssets(null);
-          setError(fetchError instanceof Error ? fetchError.message : "Blockscout request failed");
+          if (!cached) {
+            setAssets(null);
+          }
+          setError(fetchError instanceof Error ? fetchError.message : "Blockscout refresh failed");
         }
       })
       .finally(() => {
@@ -121,7 +148,7 @@ export function AccountAssetsPanel({
     return () => {
       stopped = true;
     };
-  }, [publicChain, refreshNonce, selectedAccounts]);
+  }, [publicChain, refreshNonce, selectedAccounts, selectedAccountsKey]);
 
   const nativeTotal = (assets?.native ?? []).reduce((total, item) => total + Number(item.balance || 0), 0);
 
@@ -157,6 +184,16 @@ export function AccountAssetsPanel({
             ))}
           </select>
         </label>
+        <Button
+          aria-label="Refresh assets"
+          disabled={loading}
+          onClick={() => setRefreshNonce((current) => current + 1)}
+          title="Refresh assets"
+          type="button"
+          variant="secondary"
+        >
+          {loading ? <Loader2 className="spin" size={15} /> : <RefreshCw size={15} />}
+        </Button>
       </div>
 
       {error ? <p className="asset-error">{error}</p> : null}

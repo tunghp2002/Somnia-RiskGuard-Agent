@@ -20,6 +20,10 @@ export class TelegramConnectService {
     private readonly options: { botUsername?: string } = {}
   ) {}
 
+  public botUrl() {
+    return `https://t.me/${this.options.botUsername ?? "RiskGuardBot"}`;
+  }
+
   public start(walletAddress: string, smartAccountAddress?: string): TelegramConnectSession {
     const code = randomUUID().slice(0, 8).toUpperCase();
     const session: TelegramConnectSession = {
@@ -60,7 +64,7 @@ export class TelegramConnectService {
       status: session.status,
       connected: session.status === "connected",
       ...(session.binding ? { binding: session.binding } : {}),
-      botDeepLink: `https://t.me/${this.options.botUsername ?? "RiskGuardBot"}?start=${encodeURIComponent(session.code)}`
+      botDeepLink: `${this.botUrl()}?start=${encodeURIComponent(session.code)}`
     };
   }
 

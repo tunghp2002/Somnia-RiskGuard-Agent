@@ -32,6 +32,8 @@ const smartAccountExecuteGasLimit = 31_000_000n;
 const signedReplayCallGasLimit = 31_000_000n;
 const signedReplayVerificationGasLimit = 2_500_000n;
 const signedReplayPreVerificationGas = 500_000n;
+const signedReplayPaymasterVerificationGasLimit = 1n;
+const signedReplayPaymasterPostOpGasLimit = 1n;
 const zeroBytes32 = `0x${"00".repeat(32)}` as `0x${string}`;
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
@@ -173,6 +175,8 @@ async function createSignedReplayUserOp(options: {
         callGasLimit: signedReplayCallGasLimit,
         verificationGasLimit: signedReplayVerificationGasLimit,
         preVerificationGas: signedReplayPreVerificationGas,
+        paymasterVerificationGasLimit: signedReplayPaymasterVerificationGasLimit,
+        paymasterPostOpGasLimit: signedReplayPaymasterPostOpGasLimit,
       }),
     },
   });
@@ -284,12 +288,13 @@ export async function sendRiskGuardedSmartTransaction(options: {
     throw new Error("Set NEXT_PUBLIC_THIRDWEB_CLIENT_ID before sending a smart-account transaction.");
   }
 
-  const pendingUserOp = await createSignedReplayUserOp({
-    account: options.account,
-    transaction: options.transaction,
-  });
+  let pendingUserOp: Awaited<ReturnType<typeof createSignedReplayUserOp>> | undefined;
 
   try {
+    pendingUserOp = await createSignedReplayUserOp({
+      account: options.account,
+      transaction: options.transaction,
+    });
     const userOpHash = await bundleUserOp({
       userOp: pendingUserOp.userOp,
       options: {
@@ -336,7 +341,7 @@ export async function sendRiskGuardedSmartTransaction(options: {
       throw new Error(`RiskGuard requires Somnia Agent review, but requesting the review failed: ${message}`);
     });
 
-    if (options.walletAddress) {
+    if (options.walletAddress && pendingUserOp) {
       await agentApi.storeRiskGuardPendingUserOp({
         walletAddress: options.walletAddress,
         smartAccountAddress: pendingApproval.smartAccountAddress,

@@ -183,7 +183,7 @@ function telegramReviewUrl(session: TelegramConnectSession | null) {
   }
 
   const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME;
-  return botUsername ? `https://t.me/${botUsername.replace(/^@/, "")}` : "https://t.me/";
+  return botUsername ? `https://t.me/${botUsername.replace(/^@/, "")}` : undefined;
 }
 
 export function useRiskGuardDashboard() {
@@ -439,7 +439,7 @@ export function useRiskGuardDashboard() {
                   expiresAt: "",
                   status: "connected",
                   connected: true,
-                  botDeepLink: "",
+                  botDeepLink: telegramBinding.botUrl ?? "",
                   binding: {
                     chatId: binding.chatId,
                     ...(binding.telegramUserId
@@ -820,10 +820,11 @@ export function useRiskGuardDashboard() {
     } catch (error) {
       if (error instanceof SomniaAgentReviewRequestedError) {
         const requestTxUrl = transactionUrl(publicChain, error.requestTxHash);
+        const telegramUrl = telegramReviewUrl(telegramSession);
         setAgentReviewModal({
           requestTxHash: error.requestTxHash,
           ...(requestTxUrl ? { requestTxUrl } : {}),
-          telegramUrl: telegramReviewUrl(telegramSession),
+          ...(telegramUrl ? { telegramUrl } : {}),
         });
         return;
       }
@@ -969,10 +970,11 @@ export function useRiskGuardDashboard() {
     } catch (error) {
       if (error instanceof SomniaAgentReviewRequestedError) {
         const requestTxUrl = transactionUrl(publicChain, error.requestTxHash);
+        const telegramUrl = telegramReviewUrl(telegramSession);
         setAgentReviewModal({
           requestTxHash: error.requestTxHash,
           ...(requestTxUrl ? { requestTxUrl } : {}),
-          telegramUrl: telegramReviewUrl(telegramSession),
+          ...(telegramUrl ? { telegramUrl } : {}),
         });
         return false;
       }
@@ -1078,10 +1080,11 @@ export function useRiskGuardDashboard() {
     } catch (error) {
       if (error instanceof SomniaAgentReviewRequestedError) {
         const requestTxUrl = transactionUrl(publicChain, error.requestTxHash);
+        const telegramUrl = telegramReviewUrl(telegramSession);
         setAgentReviewModal({
           requestTxHash: error.requestTxHash,
           ...(requestTxUrl ? { requestTxUrl } : {}),
-          telegramUrl: telegramReviewUrl(telegramSession),
+          ...(telegramUrl ? { telegramUrl } : {}),
         });
         return false;
       }
@@ -1182,10 +1185,11 @@ export function useRiskGuardDashboard() {
     } catch (error) {
       if (error instanceof SomniaAgentReviewRequestedError) {
         const requestTxUrl = transactionUrl(publicChain, error.requestTxHash);
+        const telegramUrl = telegramReviewUrl(telegramSession);
         setAgentReviewModal({
           requestTxHash: error.requestTxHash,
           ...(requestTxUrl ? { requestTxUrl } : {}),
-          telegramUrl: telegramReviewUrl(telegramSession),
+          ...(telegramUrl ? { telegramUrl } : {}),
         });
         return;
       }

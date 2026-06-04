@@ -731,15 +731,21 @@ export class TelegramAlertService {
             guardedTxHash: callbackRecord.txHash
           })
         : { replayed: false as const, reason: "pending_userop_service_not_configured" };
+      const replayMessage = replay.replayed
+        ? [
+            `Submitted Tx: ${this.txLink(replay.txHash)}`,
+            `UserOp Hash: <code>${escapeHtml(replay.userOpHash)}</code>`,
+            "Original transaction submitted automatically."
+          ].join("\n")
+        : "No stored signed UserOp was found, so the app must submit the original transaction again.";
       await this.telegram.sendMessage({
         chatId: binding.chatId,
         text: [
           "🟢 RiskGuard approval succeeded.",
-          `Approval Tx: ${receipt.txHash}`,
-          replay.replayed
-            ? `Original transaction submitted automatically. UserOp: ${replay.userOpHash}`
-            : "No stored signed UserOp was found, so the app must submit the original transaction again."
-        ].join("\n")
+          `Approval Tx: ${this.txLink(receipt.txHash)}`,
+          replayMessage
+        ].join("\n"),
+        parseMode: "HTML"
       });
 
       return { ok: true, message: "RiskGuard approval submitted." };

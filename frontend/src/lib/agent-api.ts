@@ -108,6 +108,7 @@ export interface TelegramConnectSession {
 
 export interface TelegramBindingStatus {
   connected: boolean;
+  botUrl?: string;
   binding?: {
     chatId: string;
     walletAddress?: string;

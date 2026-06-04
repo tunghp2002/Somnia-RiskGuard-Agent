@@ -35,9 +35,9 @@ const inheritanceRegistryAbi = [
   "function cancelPlan()"
 ];
 
-// `createPlan` / `updatePlan` now schedules Somnia reactivity on-chain, which
-// materially increases execution cost under ERC-4337 simulation.
-const planWriteGasLimit = 5000_000_000n;
+// `createPlan` / `updatePlan` schedules Somnia reactivity on-chain, so keep a
+// generous explicit UserOp call gas limit without asking the bundler to chase it.
+const planWriteGasLimit = 5_000_000n;
 const cancelPlanGasLimit = 1_000_000n;
 
 type RegistryContract = Contract & {

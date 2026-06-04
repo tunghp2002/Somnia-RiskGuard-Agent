@@ -17,6 +17,7 @@ export const riskGuardPendingUserOpSchema = z.object({
   userOp: z.record(z.string(), z.unknown()),
   status: z.enum(["pending", "submitted", "failed", "expired"]),
   userOpHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
+  submittedTxHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
   submittedAt: isoDateTimeSchema.optional(),
   failureReason: z.string().optional()
 });
@@ -91,11 +92,18 @@ export class RiskGuardPendingUserOpsRepository {
       .at(-1);
   }
 
-  public async markSubmitted(pendingUserOpId: string, userOpHash: string) {
+  public async markSubmitted(pendingUserOpId: string, userOpHash: string, submittedTxHash?: string) {
     const now = new Date().toISOString();
     await this.store.update((records) => records.map((record) =>
       record.pendingUserOpId === pendingUserOpId
-        ? { ...record, status: "submitted", userOpHash, submittedAt: now, updatedAt: now }
+        ? {
+            ...record,
+            status: "submitted",
+            userOpHash,
+            ...(submittedTxHash ? { submittedTxHash } : {}),
+            submittedAt: now,
+            updatedAt: now
+          }
         : record
     ));
   }

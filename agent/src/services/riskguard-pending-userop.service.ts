@@ -1,5 +1,5 @@
 import { createThirdwebClient, defineChain } from "thirdweb";
-import { bundleUserOp, type UserOperation } from "thirdweb/wallets/smart";
+import { bundleUserOp, waitForUserOpReceipt, type UserOperation } from "thirdweb/wallets/smart";
 import { getAddress } from "ethers";
 import { z } from "zod";
 
@@ -97,7 +97,13 @@ export class RiskGuardPendingUserOpService {
           ...(record.entrypointAddress ? { entrypointAddress: record.entrypointAddress } : {})
         }
       });
-      await this.repository.markSubmitted(record.pendingUserOpId, userOpHash);
+      const receipt = await waitForUserOpReceipt({
+        chain,
+        client,
+        ...(record.entrypointAddress ? { entrypointAddress: record.entrypointAddress } : {}),
+        userOpHash
+      });
+      await this.repository.markSubmitted(record.pendingUserOpId, userOpHash, receipt.transactionHash);
       await this.audit.record({
         eventType: "riskguard.pending-userop.replayed",
         status: "succeeded",
@@ -105,11 +111,12 @@ export class RiskGuardPendingUserOpService {
           pendingUserOpId: record.pendingUserOpId,
           smartAccountAddress: record.smartAccountAddress,
           guardedTxHash: record.guardedTxHash,
-          userOpHash
+          userOpHash,
+          submittedTxHash: receipt.transactionHash
         }
       });
 
-      return { replayed: true as const, userOpHash };
+      return { replayed: true as const, userOpHash, txHash: receipt.transactionHash };
     } catch (error) {
       const reason = error instanceof Error ? error.message : "UserOp replay failed.";
       await this.repository.markFailed(record.pendingUserOpId, reason);

@@ -601,6 +601,7 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         const binding = await dependencies.telegramAlerts.latestBindingForWallet(walletAddress);
         sendJson(response, 200, success({
           connected: Boolean(binding),
+          botUrl: telegramConnect?.botUrl(),
           ...(binding ? { binding } : {})
         }, requestId));
         return;
