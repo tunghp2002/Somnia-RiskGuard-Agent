@@ -11,6 +11,7 @@ import {
 } from "./config/env.js";
 import { createLogger } from "./config/logger.js";
 import { createAgentApiServer } from "./api/server.js";
+import { ApprovalScannerService } from "./services/approval-scanner.service.js";
 import { z } from "zod";
 
 import { AuditEventsRepository, auditEventsSchema } from "./persistence/audit-events.repository.js";
@@ -128,6 +129,7 @@ export async function startAgentRuntime(
   );
   const riskGuardApprovals = new RiskGuardApprovalService(config, audit, sessionKeys);
   const riskGuardReviewBudget = new RiskGuardReviewBudgetService(config, audit, sessionKeys);
+  const approvalScanner = new ApprovalScannerService(config);
   const telegramAlerts = new TelegramAlertService(
     config,
     users,
@@ -215,6 +217,7 @@ export async function startAgentRuntime(
     rewards,
     riskGuardPendingUserOps,
     riskGuardReviewBudget,
+    approvalScanner,
     publicChain: config.publicChain,
     health: async () => ({
       ok: true,

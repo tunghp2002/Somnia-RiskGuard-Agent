@@ -95,6 +95,81 @@ export async function disconnectBrowserWallet(): Promise<void> {
   }
 }
 
+export interface BrowserTransactionRequest {
+  to: string;
+  data?: string;
+  value?: string; // hex-quantity (e.g. "0x...") or decimal string
+}
+
+export interface BrowserTransactionReceipt {
+  transactionHash: string;
+  status: string;
+  logs: Array<{ address: string; topics: string[]; data: string }>;
+}
+
+function toHexQuantity(value: string): string {
+  if (value.startsWith("0x")) {
+    return value;
+  }
+  return `0x${BigInt(value).toString(16)}`;
+}
+
+export async function ensureBrowserChain(chainIdHex: string): Promise<void> {
+  const provider = getProvider();
+  const current = await provider.request<string>({ method: "eth_chainId" });
+  if (current?.toLowerCase() === chainIdHex.toLowerCase()) {
+    return;
+  }
+  await provider.request({
+    method: "wallet_switchEthereumChain",
+    params: [{ chainId: chainIdHex }]
+  });
+}
+
+export async function sendBrowserTransaction(
+  request: BrowserTransactionRequest
+): Promise<string> {
+  const provider = getProvider();
+  const accounts = await provider.request<string[]>({ method: "eth_accounts" });
+  const from = accounts[0];
+  if (!from) {
+    throw new Error("Connect a browser wallet before sending a transaction");
+  }
+
+  return provider.request<string>({
+    method: "eth_sendTransaction",
+    params: [
+      {
+        from,
+        to: request.to,
+        ...(request.data ? { data: request.data } : {}),
+        ...(request.value ? { value: toHexQuantity(request.value) } : {})
+      }
+    ]
+  });
+}
+
+export async function waitForBrowserReceipt(
+  txHash: string,
+  { timeoutMs = 120_000, intervalMs = 3_000 }: { timeoutMs?: number; intervalMs?: number } = {}
+): Promise<BrowserTransactionReceipt> {
+  const provider = getProvider();
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const receipt = await provider.request<BrowserTransactionReceipt | null>({
+      method: "eth_getTransactionReceipt",
+      params: [txHash]
+    });
+    if (receipt) {
+      return receipt;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error("Timed out waiting for the transaction receipt");
+}
+
 export function subscribeBrowserWalletChanges(onChange: () => void): () => void {
   if (typeof window === "undefined" || !window.ethereum?.on) {
     return () => {};

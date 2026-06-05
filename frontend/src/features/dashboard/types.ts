@@ -10,6 +10,7 @@ export type Notice = {
 export type DashboardSection =
   | "overview"
   | "transfer"
+  | "allowances"
   | "profile"
   | "inheritance";
 

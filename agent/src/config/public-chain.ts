@@ -33,16 +33,38 @@ const publicChainSchema = z.object({
     riskGuardHookModule: optionalAddressSchema,
     riskGuardValidatorModule: optionalAddressSchema,
     riskGuardModularAccountFactory: optionalAddressSchema,
-    riskGuardDefaultValidator: optionalAddressSchema
+    riskGuardDefaultValidator: optionalAddressSchema,
+    approvalRiskScanner: optionalAddressSchema
   }).default({})
+});
+
+const scanChainSchema = z.object({
+  id: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+  chainId: z.number().int().positive(),
+  rpcUrl: z.string().url(),
+  blockExplorerUrl: z.string().url(),
+  explorerApiBaseUrl: z.string().url(),
+  explorerApiUrlTemplate: z.string().trim().min(1),
+  explorerApiSelector: z.string().trim().min(1),
+  explorerPageUrlTemplate: z.string().trim().min(1),
+  nativeCurrency: z.object({
+    name: z.string().trim().min(1),
+    symbol: z.string().trim().min(1),
+    decimals: z.number().int().nonnegative()
+  }),
+  scanSupported: z.boolean().default(true),
+  priority: z.number().int().nonnegative().default(0)
 });
 
 const publicChainConfigSchema = z.object({
   defaultChain: z.string().trim().min(1),
-  chains: z.record(z.string().trim().min(1), publicChainSchema)
+  chains: z.record(z.string().trim().min(1), publicChainSchema),
+  scanChains: z.array(scanChainSchema).default([])
 });
 
 export type PublicChain = z.infer<typeof publicChainSchema>;
+export type ScanChain = z.infer<typeof scanChainSchema>;
 
 export interface PublicChainMetadata extends PublicChain {
   key: string;
@@ -55,7 +77,7 @@ export class PublicChainConfigError extends Error {
   }
 }
 
-export function loadPublicChainMetadata(chainKey?: string): PublicChainMetadata {
+function loadPublicChainConfig(): z.infer<typeof publicChainConfigSchema> {
   let raw: unknown;
 
   try {
@@ -78,8 +100,13 @@ export function loadPublicChainMetadata(chainKey?: string): PublicChainMetadata 
     );
   }
 
-  const key = chainKey ?? parsed.data.defaultChain;
-  const chain = parsed.data.chains[key];
+  return parsed.data;
+}
+
+export function loadPublicChainMetadata(chainKey?: string): PublicChainMetadata {
+  const config = loadPublicChainConfig();
+  const key = chainKey ?? config.defaultChain;
+  const chain = config.chains[key];
 
   if (!chain) {
     throw new PublicChainConfigError(`Public chain config has no chain named ${key}`);
@@ -89,4 +116,11 @@ export function loadPublicChainMetadata(chainKey?: string): PublicChainMetadata 
     key,
     ...chain
   };
+}
+
+export function loadScanChains(): ScanChain[] {
+  const config = loadPublicChainConfig();
+  return [...config.scanChains]
+    .filter((chain) => chain.scanSupported)
+    .sort((a, b) => a.priority - b.priority);
 }

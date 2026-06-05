@@ -90,6 +90,7 @@ attempt records signer, chain ID, target, calldata summary, and outcome), and
      └──────────────────┘    │  RiskGuardValidator (ERC-7579 t1)  │
                              │  RiskGuardHookModule (ERC-7579 t4) │
                              │  RiskGuardApprovalStore            │
+                             │  ApprovalRiskScanner (3-agent scan)│
                              │  Thirdweb ModularAccount + Factory │
                              │  Somnia AgentRequester (agents)    │
                              │  Reactivity precompile (0x0100)    │
@@ -102,6 +103,7 @@ attempt records signer, chain ID, target, calldata summary, and outcome), and
 | Agent API | Read state, configure, callbacks (Telegram/RiskGuard) | Node `http` + Zod | `agent/src/api/server.ts`, `agent/src/api/response.ts` |
 | Jobs | Polled monitor/heartbeat/reward/review loops | `setInterval` | `agent/src/jobs/*.job.ts` |
 | Services | Domain logic (portfolio, heartbeat, reward, telegram, session-key, approvals) | TS | `agent/src/services/*.service.ts` |
+| Approval scanner | revoke.cash-style approval discovery (Blockscout indexer) + 3-agent risk scan orchestration | TS + ethers + fetch | `agent/src/services/approval-scanner.service.ts` |
 | Policies | Deterministic allow/deny gates before signing | Pure TS + Zod | `agent/src/policies/*.ts` |
 | Integrations | Telegram, Somnia agent-kit, inheritance registry | ethers, fetch | `agent/src/integrations/**` |
 | Persistence | Repositories over Supabase REST / JSON store | Supabase + fs | `agent/src/persistence/*` |
@@ -227,6 +229,40 @@ handleDistributionResponse() → _executeDistribution() transfers each asset to
   the registry never custodies funds.
 ```
 
+### Approval risk scan data flow (revoke.cash-style, 3-agent fan-out)
+
+Discovery is **off-chain per selected chain**; risk scoring runs **on Somnia**
+via the three base agents. The single signed tx is always on Somnia (it pays the
+agent deposits).
+
+```
+Discovery (off-chain, ApprovalScannerService):
+  GET /api/approvals/list?walletAddress&chainIds
+    │  Blockscout indexer  /api?module=logs&action=getLogs   (full range, NOT raw
+    │  RPC — Somnia eth_getLogs caps at 1000 blocks), topic0 = Approval /
+    │  ApprovalForAll, topic1 = owner. ERC-20 (3 topics) vs ERC-721 (4 topics) split.
+    ▼
+  Per (token, spender): read live allowance() / isApprovedForAll() over RPC,
+  drop zeroed/revoked, read symbol()/name(), flag isUnlimited (≥ 2^255).
+
+Scoring (on-chain, ApprovalRiskScanner.sol on Somnia):
+  POST /api/approvals/scan/prepare → ABI-encoded requestScan(items[]) + msg.value
+    │  user signs ONE tx
+    ▼
+  requestScan escrows deposits; per item fires in parallel:
+    JSON API Request agent (fetchString  → explorer getsourcecode facts)
+    LLM Parse Website agent (ExtractString → explorer address-page red flags)
+    │  both callbacks return → fan-in
+    ▼
+  LLM Inference agent (inferString) combines facts+findings+context → "NN|verdict"
+    │  → ItemScored event; ScanCompleted when all items done
+    ▼
+  GET /api/approvals/scan/status?scanId  reads getScan()/getItem() views → score/verdict
+```
+
+Failed/timed-out stage-1/2 responses still progress (empty data) so the pipeline
+never stalls; inference failure is fail-safe scored `100` (treat as high risk).
+
 ## API architecture
 
 Base path `/api`. All responses use the `{ ok, data | error, requestId }` shape.
@@ -242,6 +278,10 @@ Mutating endpoints that act on a wallet require a signed-message proof.
 | `/api/audit-events/recent` | GET | Recent audit events (limit) |
 | `/api/health` | GET | Telegram / Somnia / public-chain health |
 | `/api/public-chain` | GET | Chain + contract metadata |
+| `/api/approvals/chains` | GET | Supported scan chains (Somnia first) |
+| `/api/approvals/list` | GET | Discover active token approvals for a wallet (Blockscout indexer) |
+| `/api/approvals/scan/prepare` | POST | Build the `requestScan` calldata + deposit for the user to sign |
+| `/api/approvals/scan/status` | GET | Per-item agent risk scores for a scanId |
 | `/api/session-keys/action` | POST | Vend a session key for an action |
 | `/api/inheritance/plan` | GET | Inheritance plan state for a smart account |
 | `/api/demo/scenarios` | POST | Run a deterministic demo scenario |
@@ -281,6 +321,7 @@ Somnia Testnet (addresses in `config/public-chains.json`).
 | `RiskGuardValidator` (`src/riskguard/RiskGuardValidator.sol`) | ERC-7579 validator (module type 1) | Enforces risk policy in `validateUserOp` (ERC-4337). Allows safe sub-threshold native transfers; blocks batches, calldata, contract recipients, and over-threshold value via `PendingApprovalRequired` revert; consumes ApprovalStore approvals or Somnia agent approvals; `requestAgentReview` + `handleRiskAssessmentResponse`. |
 | `RiskGuardHookModule` (`src/riskguard/RiskGuardHookModule.sol`) | ERC-7579 hook (module type 4) | Same policy via `preCheck`/`postCheck`; experimental — Thirdweb's ModularAccount does not run hooks on its primary execute path, so the validator is the active guard. |
 | `RiskGuardApprovalStore` (`src/riskguard/RiskGuardApprovalStore.sol`) | Registry | Bridges agent/Telegram approvals on-chain: `registerAgentAndHook`, `submitApproval`, `consumeApproval`, 10-minute TTL, one-time use. |
+| `ApprovalRiskScanner` (`src/riskguard/ApprovalRiskScanner.sol`) | App contract (`ReentrancyGuard`) | revoke.cash-style approval risk scoring. `requestScan(items[])` escrows deposits and per item fans out to the **JSON API Request + LLM Parse Website** agents, then on fan-in fires the **LLM Inference** agent for a `0–100\|verdict`. Three callbacks dispatched by `requestId→stage`; escrow draw-down + `claimRefund`; `quoteScan`/`getScan`/`getItem` views. Configured via `configureAgents(platform, jsonApiId, parseWebsiteId, llmInferenceId)`. |
 | `SomniaAgentInterfaces.sol` | Interfaces | `IAgentRequester` / `IAgentRequesterHandler`, `Request`/`Response`/`ResponseStatus`/`ConsensusType` for Somnia agent invocation + callbacks. |
 
 ERC-7579 modules are installed on a **Thirdweb ModularAccount** (factory +
@@ -292,19 +333,25 @@ successful responses. Distribution scheduling uses the Reactivity precompile
 (`0x0100`); handler entrypoints are gated to that caller. Tests:
 `test/InheritanceRegistry.t.sol` (plan lifecycle, heartbeat refresh, Reactivity
 schedule + stale-skip, beneficiary timelock, agent heartbeat/distribution,
-skip-on-fail, share integrity) and `test/RiskGuardValidator.t.sol` (agent review
-request → approval → allowed UserOp). Post-deploy agent wiring:
-`pnpm --dir contracts configure:agents`.
+skip-on-fail, share integrity), `test/RiskGuardValidator.t.sol` (agent review
+request → approval → allowed UserOp), and `test/ApprovalRiskScanner.t.sol`
+(fan-in → inference → `ItemScored`, deposit math, duplicate/failed callbacks,
+unknown-requestId revert). Post-deploy agent wiring:
+`pnpm --dir contracts configure:agents` (wires RiskGuard, Inheritance, **and the
+ApprovalRiskScanner** agent IDs).
 
 ## Frontend architecture
 
 Next.js App Router app under `frontend/src/app/` (root `frontend/app/` is a thin
 compat shim). `page.tsx` renders `ThirdwebAppProvider` → `RiskGuardDashboard`.
-Client-rich, no SSR data path. Four dashboard sections via
+Client-rich, no SSR data path. Five dashboard sections via
 `use-riskguard-dashboard.ts`: **overview** (Blockscout assets + RiskGuard policy
 status), **transfer** (native STT send from EOA or smart account with gas
-estimate and agent-review handling), **profile** (display name + Telegram
-connect), **inheritance** (plan builder). RiskGuard module install + policy
+estimate and agent-review handling), **allowances** (Approval Risk Scanner —
+`components/approvals-panel.tsx` + `hooks/use-approval-scanner.ts`: chain
+multi-select, approval list, sign `requestScan`, poll per-spender agent scores),
+**profile** (display name + Telegram connect), **inheritance** (plan builder).
+RiskGuard module install + policy
 config lives in `lib/riskguard-module.ts`; smart-account/chain/AA setup in
 `lib/thirdweb-client.ts` (`createThirdwebAccountAbstraction`, deterministic
 `riskGuardAccountSalt`); inheritance contract calls in `lib/inheritance-registry.ts`;
@@ -337,7 +384,7 @@ shadcn (button, input, badge, tooltip, sonner). Env consumed:
 | Telegram Bot API | Approval requests + signed quick actions | `TELEGRAM_BOT_TOKEN` | `DisabledTelegramClient` (no-op) when unset |
 | Somnia Reactivity (0x0100) | Schedule inheritance distribution | precompile-gated | Manual `executeInheritance` after timelock |
 | Supabase | Encrypted session keys + records | `SUPABASE_SERVICE_ROLE_KEY` | JSON file store (local/dev) |
-| Blockscout (Shannon) | Token/NFT enumeration | public | Degrade to agent snapshot |
+| Blockscout (Shannon / Mainnet) | Token/NFT enumeration + approval discovery via indexed `getLogs` (full range; raw RPC `eth_getLogs` caps at 1000 blocks) + agent JSON/page sources | public (cloud explorer is rate-limited — use an API key / self-hosted for scale) | Degrade to agent snapshot / skip chain |
 | Thirdweb | Smart-account AA + gas sponsorship | `THIRDWEB_SECRET_KEY` (backend) / `CLIENT_ID` (frontend) | — |
 
 ## Architecture decisions

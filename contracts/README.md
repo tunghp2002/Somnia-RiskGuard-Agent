@@ -199,3 +199,22 @@ The registry itself does not move funds until each user's smart account has auth
 - per-smart-account agent budgets
 - native-token and ERC-20 distribution from an authorized smart account
 - skip-on-fail distribution behavior
+
+`contracts/test/RiskGuardValidator.t.sol` covers the agent review request →
+approval → allowed-UserOp path.
+
+`contracts/test/ApprovalRiskScanner.t.sol` covers the revoke.cash-style
+`ApprovalRiskScanner` (`src/riskguard/ApprovalRiskScanner.sol`):
+
+- `quoteScan` deposit math (`itemCount × 3 × _agentDeposit`)
+- `requestScan` firing the JSON-API + Parse-Website agents in parallel, then the
+  LLM-Inference agent on fan-in, ending in an `ItemScored` event
+- failed/timed-out stage callbacks still reaching a fail-safe inference score
+- duplicate/replayed callbacks (no-op + `UnknownAgentRequest`)
+- insufficient deposit and `OnlyAgentPlatform` guards
+
+Post-deploy, configure all three agent integrations (RiskGuard, Inheritance,
+ApprovalRiskScanner) with `pnpm --dir contracts configure:agents`. The scanner is
+read-only (no revoke action) and runs on Somnia; approval **discovery** is done
+off-chain by the agent backend via each chain's Blockscout `getLogs` indexer
+(raw RPC `eth_getLogs` is capped at 1000 blocks on Somnia).

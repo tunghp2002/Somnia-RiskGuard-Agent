@@ -4,6 +4,7 @@ import { InheritanceSettings } from "@/features/settings/guardian-settings";
 
 import { AccountAssetsPanel } from "./components/account-assets-panel";
 import { AgentReviewRequestModal } from "./components/agent-review-modal";
+import { ApprovalsPanel } from "./components/approvals-panel";
 import {
   DashboardHeader,
   DashboardSidebar,
@@ -65,6 +66,13 @@ export function RiskGuardDashboard() {
         ) : null}
 
         <section className="rg-grid">
+          {state.activeSection === "allowances" ? (
+            <ApprovalsPanel
+              publicChain={state.publicChain}
+              walletAddress={state.wallet?.address ?? state.activeWalletAddress}
+            />
+          ) : null}
+
           {state.activeSection === "profile" ? (
             <ProfilePanel
               actionLoading={state.actionLoading}

@@ -53,6 +53,12 @@ import {
   type RewardClaimService
 } from "../services/reward-claim.service.js";
 import { InheritanceRegistryClient } from "../integrations/somnia/inheritance-registry.client.js";
+import {
+  approvalListRequestSchema,
+  approvalScanPrepareRequestSchema,
+  ApprovalScannerServiceError,
+  type ApprovalScannerService
+} from "../services/approval-scanner.service.js";
 
 const defaultMaxBodyBytes = 1_048_576;
 const sensitiveResponseKeyPattern =
@@ -217,6 +223,7 @@ export interface AgentApiDependencies {
   rewards?: RewardClaimService;
   riskGuardPendingUserOps?: RiskGuardPendingUserOpService;
   riskGuardReviewBudget?: RiskGuardReviewBudgetService;
+  approvalScanner?: ApprovalScannerService;
   publicChain?: PublicChainMetadata;
   health?: () => Promise<unknown> | unknown;
 }
@@ -321,6 +328,60 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
           throw new ServerDependencyError("Public chain metadata is not configured");
         }
         sendJson(response, 200, success(dependencies.publicChain, requestId));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/approvals/chains") {
+        if (!dependencies.approvalScanner) {
+          throw new ServerDependencyError("Approval scanner service is not configured");
+        }
+        sendJson(
+          response,
+          200,
+          success(dependencies.approvalScanner.getSupportedChains(), requestId)
+        );
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/approvals/list") {
+        if (!dependencies.approvalScanner) {
+          throw new ServerDependencyError("Approval scanner service is not configured");
+        }
+        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
+        const chainIds = (url.searchParams.get("chainIds") ?? "")
+          .split(",")
+          .map((value) => Number(value.trim()))
+          .filter((value) => Number.isInteger(value) && value > 0);
+        const parsed = approvalListRequestSchema.parse({ walletAddress, chainIds });
+        const approvals = await dependencies.approvalScanner.discoverApprovals(
+          parsed.walletAddress,
+          parsed.chainIds
+        );
+        sendJson(response, 200, success({ approvals }, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/approvals/scan/prepare") {
+        if (!dependencies.approvalScanner) {
+          throw new ServerDependencyError("Approval scanner service is not configured");
+        }
+        const body = approvalScanPrepareRequestSchema.parse(await readJsonBody(request));
+        const prepared = await dependencies.approvalScanner.prepareScan(body.approvals);
+        sendJson(response, 200, success(prepared, requestId));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/approvals/scan/status") {
+        if (!dependencies.approvalScanner) {
+          throw new ServerDependencyError("Approval scanner service is not configured");
+        }
+        const scanId = Number(url.searchParams.get("scanId"));
+        if (!Number.isInteger(scanId) || scanId < 1) {
+          sendJson(response, 400, failure("validation_failed", "scanId must be a positive integer"));
+          return;
+        }
+        const status = await dependencies.approvalScanner.getScanStatus(scanId);
+        sendJson(response, 200, success(status, requestId));
         return;
       }
 
@@ -755,6 +816,12 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
 
       if (error instanceof RewardClaimServiceError) {
         sendJson(response, error.statusCode, failure(error.code, error.message));
+        return;
+      }
+
+      if (error instanceof ApprovalScannerServiceError) {
+        const statusCode = error.code === "scan_not_found" ? 404 : 400;
+        sendJson(response, statusCode, failure(error.code, error.message));
         return;
       }
 

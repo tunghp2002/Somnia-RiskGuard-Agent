@@ -129,6 +129,26 @@ RISK_GUARD_AGENT_REWARD_PER_CALL_STT=0.1
 INHERITANCE_AGENT_REWARD_PER_CALL_STT=0.1
 ```
 
+### Approval Risk Scanner (revoke.cash-style tab)
+
+```bash
+# Deployed ApprovalRiskScanner address (also accepted via
+# config/public-chains.json → somnia-*.contracts.approvalRiskScanner).
+APPROVAL_SCANNER_CONTRACT_ADDRESS=
+# Agent IDs from the Somnia Agent Explorer (agents.somnia.network). The LLM
+# inference id falls back to RISK_GUARD_RISK_ASSESSMENT_AGENT_ID if unset.
+APPROVAL_SCANNER_JSON_API_AGENT_ID=
+APPROVAL_SCANNER_PARSE_WEBSITE_AGENT_ID=
+APPROVAL_SCANNER_LLM_INFERENCE_AGENT_ID=
+APPROVAL_SCANNER_AGENT_REWARD_PER_CALL_STT=0.1
+```
+
+> Chains the scanner can discover approvals on live in `config/public-chains.json`
+> → `scanChains[]` (each needs `rpcUrl` + a Blockscout `explorerApiBaseUrl`;
+> Somnia mainnet is `priority: 0`). The scanner **contract** runs on Somnia only.
+> Until the agent IDs + address are set, the Allowances tab can list approvals but
+> `prepare`/`analyze` returns `scanner_not_configured`.
+
 ### Reward claiming
 
 ```bash
@@ -180,7 +200,8 @@ steps in [local-supabase.md](local-supabase.md).
 ```bash
 pnpm --dir contracts build
 pnpm --dir contracts test
-# After deploying, register Somnia agent platform + agent IDs:
+# After deploying, register Somnia agent platform + agent IDs
+# (RiskGuard, Inheritance, and the ApprovalRiskScanner):
 pnpm --dir contracts configure:agents   # needs WALLET_DEPLOYER_PRIVATE_KEY + agent IDs
 ```
 

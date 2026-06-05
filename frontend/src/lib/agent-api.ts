@@ -173,6 +173,63 @@ export interface RiskSnapshot {
   createdAt: string;
 }
 
+export interface ScanChainSummary {
+  id: string;
+  name: string;
+  chainId: number;
+  blockExplorerUrl: string;
+  nativeCurrencySymbol: string;
+  priority: number;
+}
+
+export interface ApprovalEntry {
+  chainId: number;
+  chainName: string;
+  token: string;
+  symbol: string;
+  name: string;
+  standard: "erc20" | "erc721" | "erc1155";
+  spender: string;
+  allowance: string;
+  isUnlimited: boolean;
+  explorerSpenderUrl: string;
+}
+
+export interface ApprovalScanPrepare {
+  scannerAddress: string;
+  calldata: string;
+  value: string;
+  deposit: string;
+  items: Array<{
+    chainId: number;
+    spender: string;
+    token: string;
+    context: string;
+  }>;
+}
+
+export interface ScanItemStatus {
+  itemIndex: number;
+  chainId: number;
+  spender: string;
+  token: string;
+  context: string;
+  status: "pending" | "inferring" | "complete";
+  riskScore: number;
+  verdict: string;
+  jsonFacts: string;
+  webFindings: string;
+}
+
+export interface ScanStatus {
+  scanId: number;
+  requester: string;
+  itemCount: number;
+  completedCount: number;
+  complete: boolean;
+  items: ScanItemStatus[];
+}
+
 export interface HeartbeatStatus {
   walletAddress: string;
   beneficiaryAddress: string;
@@ -313,6 +370,31 @@ export const agentApi = {
     request<PortfolioSnapshot | null>(`/api/portfolios/latest${walletQuery(walletAddress)}`),
   getRisk: (walletAddress?: string) =>
     request<RiskSnapshot | null>(`/api/risk-snapshots/latest${walletQuery(walletAddress)}`),
+  getApprovalChains: () => request<ScanChainSummary[]>("/api/approvals/chains"),
+  listApprovals: (walletAddress: string, chainIds: number[]) =>
+    request<{ approvals: ApprovalEntry[] }>(
+      `/api/approvals/list?walletAddress=${encodeURIComponent(walletAddress)}&chainIds=${encodeURIComponent(
+        chainIds.join(",")
+      )}`
+    ),
+  prepareApprovalScan: (body: {
+    walletAddress: string;
+    approvals: Array<{
+      chainId: number;
+      token: string;
+      spender: string;
+      symbol?: string;
+      standard?: "erc20" | "erc721" | "erc1155";
+      allowance?: string;
+      isUnlimited?: boolean;
+    }>;
+  }) =>
+    request<ApprovalScanPrepare>("/api/approvals/scan/prepare", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  getApprovalScanStatus: (scanId: number) =>
+    request<ScanStatus>(`/api/approvals/scan/status?scanId=${encodeURIComponent(String(scanId))}`),
   analyzeRisk: (body: { walletAddress?: string }) =>
     request<RiskSnapshot>("/api/risk-snapshots/analyze", {
       method: "POST",

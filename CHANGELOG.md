@@ -7,7 +7,26 @@ This project follows [Keep a Changelog](https://keepachangelog.com/) and
 
 ## [Unreleased]
 
-(empty — track work here while in dev but not yet shipped)
+### Added
+- **Approval Risk Scanner — "Allowances" tab (revoke.cash-style).** Lists every
+  contract a wallet approved as a token spender and scores each 0–100 using **all
+  three Somnia base agents**.
+  - Contract `contracts/src/riskguard/ApprovalRiskScanner.sol`: `requestScan`
+    escrows agent deposits and per item fans out to the **JSON API Request** +
+    **LLM Parse Website** agents, then on fan-in fires the **LLM Inference** agent
+    for an `NN|verdict` score; `getScan`/`getItem`/`quoteScan` views, `claimRefund`,
+    and `configureAgents`. Tests in `contracts/test/ApprovalRiskScanner.t.sol`;
+    wired by `configure:agents`.
+  - Backend `agent/src/services/approval-scanner.service.ts` + routes
+    `/api/approvals/{chains,list,scan/prepare,scan/status}`. Approval **discovery**
+    uses each chain's Blockscout `getLogs` indexer (raw RPC `eth_getLogs` is capped
+    at 1000 blocks on Somnia), then live `allowance`/`isApprovedForAll` reads.
+  - Frontend `frontend/src/features/dashboard/components/approvals-panel.tsx` +
+    `hooks/use-approval-scanner.ts`: multi-chain select (Somnia first), one signed
+    `requestScan` tx, polled per-spender scores. Read-only (no revoke).
+  - Config: `config/public-chains.json` gains `scanChains[]` (Somnia mainnet +
+    testnet, Blockscout `explorerApiBaseUrl`) and `contracts.approvalRiskScanner`;
+    new `APPROVAL_SCANNER_*` env vars.
 
 ---
 

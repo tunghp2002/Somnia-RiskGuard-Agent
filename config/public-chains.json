@@ -17,8 +17,39 @@
         "riskGuardHookModule": "0x296Dc049b35447Aaf9Ea8996667eFB289F257289",
         "riskGuardValidatorModule": "0x99eAD10e154693c137B61cEFEB5487db136A342F",
         "riskGuardModularAccountFactory": "0xE5B5897f84AfE449B2Afc962AD8164425C89AD8D",
-        "riskGuardDefaultValidator": "0x60A206E8927d8e2e02c48e4CdD499fCe66eB82a5"
+        "riskGuardDefaultValidator": "0x60A206E8927d8e2e02c48e4CdD499fCe66eB82a5",
+        "approvalRiskScanner": ""
       }
     }
-  }
+  },
+  "scanChains": [
+    {
+      "id": "somnia-mainnet",
+      "name": "Somnia Mainnet",
+      "chainId": 5031,
+      "rpcUrl": "https://api.infra.mainnet.somnia.network",
+      "blockExplorerUrl": "https://explorer.somnia.network/",
+      "explorerApiBaseUrl": "https://explorer.somnia.network/api",
+      "explorerApiUrlTemplate": "https://explorer.somnia.network/api?module=contract&action=getsourcecode&address={spender}",
+      "explorerApiSelector": "result.0.ContractName",
+      "explorerPageUrlTemplate": "https://explorer.somnia.network/address/{spender}",
+      "nativeCurrency": { "name": "Somnia", "symbol": "SOMI", "decimals": 18 },
+      "scanSupported": true,
+      "priority": 0
+    },
+    {
+      "id": "somnia-testnet",
+      "name": "Somnia Testnet (Shannon)",
+      "chainId": 50312,
+      "rpcUrl": "https://dream-rpc.somnia.network",
+      "blockExplorerUrl": "https://shannon-explorer.somnia.network/",
+      "explorerApiBaseUrl": "https://shannon-explorer.somnia.network/api",
+      "explorerApiUrlTemplate": "https://shannon-explorer.somnia.network/api?module=contract&action=getsourcecode&address={spender}",
+      "explorerApiSelector": "result.0.ContractName",
+      "explorerPageUrlTemplate": "https://shannon-explorer.somnia.network/address/{spender}",
+      "nativeCurrency": { "name": "Somnia Test Token", "symbol": "STT", "decimals": 18 },
+      "scanSupported": true,
+      "priority": 1
+    }
+  ]
 }

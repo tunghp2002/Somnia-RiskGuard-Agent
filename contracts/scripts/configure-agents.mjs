@@ -36,6 +36,15 @@ const inheritanceRegistryAbi = [
   "function distributionAgentId() view returns (uint256)",
   "function agentRewardPerCall() view returns (uint256)",
 ];
+const approvalRiskScannerAbi = [
+  "function configureAgents(address platform,uint256 jsonApiAgentId,uint256 parseWebsiteAgentId,uint256 llmInferenceAgentId) external",
+  "function setAgentRewardPerCall(uint256 newReward) external",
+  "function agentPlatform() view returns (address)",
+  "function jsonApiAgentId() view returns (uint256)",
+  "function parseWebsiteAgentId() view returns (uint256)",
+  "function llmInferenceAgentId() view returns (uint256)",
+  "function agentRewardPerCall() view returns (uint256)",
+];
 
 async function main() {
   const privateKey = requireEnv("WALLET_DEPLOYER_PRIVATE_KEY");
@@ -57,6 +66,7 @@ async function main() {
 
   await configureRiskGuard({ agentRequester, signer });
   await configureInheritance({ agentRequester, signer });
+  await configureApprovalRiskScanner({ agentRequester, signer });
 }
 
 async function configureRiskGuard({ agentRequester, signer }) {
@@ -138,6 +148,57 @@ async function configureInheritance({ agentRequester, signer }) {
   console.log(`InheritanceRegistry heartbeatAgentId: ${storedHeartbeatAgentId.toString()}`);
   console.log(`InheritanceRegistry distributionAgentId: ${storedDistributionAgentId.toString()}`);
   console.log(`InheritanceRegistry agentRewardPerCall: ${formatEther(storedReward)} STT`);
+}
+
+async function configureApprovalRiskScanner({ agentRequester, signer }) {
+  const jsonApiAgentId = env.APPROVAL_SCANNER_JSON_API_AGENT_ID;
+  const parseWebsiteAgentId = env.APPROVAL_SCANNER_PARSE_WEBSITE_AGENT_ID;
+  const llmInferenceAgentId =
+    env.APPROVAL_SCANNER_LLM_INFERENCE_AGENT_ID || env.RISK_GUARD_RISK_ASSESSMENT_AGENT_ID;
+  const scannerAddress =
+    env.APPROVAL_SCANNER_CONTRACT_ADDRESS || contracts.approvalRiskScanner;
+
+  if (!jsonApiAgentId || !parseWebsiteAgentId || !llmInferenceAgentId) {
+    console.log(
+      "Skipping ApprovalRiskScanner: set APPROVAL_SCANNER_JSON_API_AGENT_ID, APPROVAL_SCANNER_PARSE_WEBSITE_AGENT_ID and APPROVAL_SCANNER_LLM_INFERENCE_AGENT_ID.",
+    );
+    return;
+  }
+
+  if (!scannerAddress) {
+    console.log("Skipping ApprovalRiskScanner: scanner address is not configured.");
+    return;
+  }
+
+  const scanner = new Contract(scannerAddress, approvalRiskScannerAbi, signer);
+  const tx = await scanner.configureAgents(
+    agentRequester,
+    BigInt(jsonApiAgentId),
+    BigInt(parseWebsiteAgentId),
+    BigInt(llmInferenceAgentId),
+  );
+  console.log(`ApprovalRiskScanner configure tx: ${tx.hash}`);
+  await tx.wait();
+
+  const reward = env.APPROVAL_SCANNER_AGENT_REWARD_PER_CALL_STT;
+  if (reward) {
+    const rewardTx = await scanner.setAgentRewardPerCall(parseEther(reward));
+    console.log(`ApprovalRiskScanner reward tx: ${rewardTx.hash}`);
+    await rewardTx.wait();
+  }
+
+  const [storedPlatform, storedJson, storedWeb, storedInfer, storedReward] = await Promise.all([
+    scanner.agentPlatform(),
+    scanner.jsonApiAgentId(),
+    scanner.parseWebsiteAgentId(),
+    scanner.llmInferenceAgentId(),
+    scanner.agentRewardPerCall(),
+  ]);
+  console.log(`ApprovalRiskScanner agentPlatform: ${storedPlatform}`);
+  console.log(`ApprovalRiskScanner jsonApiAgentId: ${storedJson.toString()}`);
+  console.log(`ApprovalRiskScanner parseWebsiteAgentId: ${storedWeb.toString()}`);
+  console.log(`ApprovalRiskScanner llmInferenceAgentId: ${storedInfer.toString()}`);
+  console.log(`ApprovalRiskScanner agentRewardPerCall: ${formatEther(storedReward)} STT`);
 }
 
 function loadEnv(path) {

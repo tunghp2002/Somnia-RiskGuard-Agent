@@ -136,6 +136,8 @@ const rawEnvSchema = z
   RISK_GUARD_VALIDATOR_MODULE_ADDRESS: optionalEthereumAddressSchema,
   RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS: optionalEthereumAddressSchema,
   RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS: optionalEthereumAddressSchema,
+  APPROVAL_SCANNER_CONTRACT_ADDRESS: optionalEthereumAddressSchema,
+  SOMNIA_AGENT_REQUESTER_ADDRESS: optionalEthereumAddressSchema,
   AUTO_CLAIM_ENABLED: booleanFromString,
   MAX_CLAIM_GAS_USD: numberFromString("MAX_CLAIM_GAS_USD").pipe(
     z.number().nonnegative()
@@ -226,8 +228,13 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
       riskGuardHookModule: env.RISK_GUARD_HOOK_MODULE_ADDRESS,
       riskGuardValidatorModule: env.RISK_GUARD_VALIDATOR_MODULE_ADDRESS,
       riskGuardModularAccountFactory: env.RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS,
-      riskGuardDefaultValidator: env.RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS
+      riskGuardDefaultValidator: env.RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS,
+      approvalRiskScanner: env.APPROVAL_SCANNER_CONTRACT_ADDRESS
     }
+  },
+  approvalScanner: {
+    contractAddress: env.APPROVAL_SCANNER_CONTRACT_ADDRESS,
+    agentRequesterAddress: env.SOMNIA_AGENT_REQUESTER_ADDRESS
   },
   riskScore: {
     alertThreshold: env.RISK_SCORE_ALERT_THRESHOLD
@@ -300,6 +307,8 @@ export function validateConfig(
     RISK_GUARD_VALIDATOR_MODULE_ADDRESS: publicChain.contracts.riskGuardValidatorModule,
     RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS: publicChain.contracts.riskGuardModularAccountFactory,
     RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS: publicChain.contracts.riskGuardDefaultValidator,
+    APPROVAL_SCANNER_CONTRACT_ADDRESS:
+      env.APPROVAL_SCANNER_CONTRACT_ADDRESS ?? publicChain.contracts.approvalRiskScanner,
     PUBLIC_CHAIN_KEY: publicChain.key,
     PUBLIC_CHAIN_NAME: publicChain.name,
     PUBLIC_CHAIN_EXPLORER_URL: publicChain.blockExplorerUrl,

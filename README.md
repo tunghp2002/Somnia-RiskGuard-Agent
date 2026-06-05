@@ -19,6 +19,13 @@ Agentathon.
   consensus-validated Somnia risk agent (on-chain LLM Inference) that returns an
   APPROVE/REJECT decision. There is no off-chain LLM; the agent's decision never
   directly authorizes a transaction — the validator + a signature do.
+- **Approval Risk Scanner (revoke.cash-style)** — the **Allowances** tab lists
+  every contract a wallet approved as a token spender (discovered from the
+  chain's Blockscout indexer), then scores each spender 0–100 with **all three
+  Somnia base agents**: JSON API Request (explorer facts) + LLM Parse Website
+  (explorer-page red flags) → LLM Inference (combined verdict). Read-only; one
+  signed `requestScan` tx on Somnia pays the agent deposits. Multi-chain select,
+  Somnia prioritized.
 - **Smart-account inheritance** — one non-custodial plan per smart account
   (beneficiaries by share, protected assets, heartbeat/grace/timelock);
   distribution is scheduled on-chain via Reactivity and approved by a Somnia
@@ -28,7 +35,8 @@ Agentathon.
 - **Bounded auto-claim** — small staking/LP reward claims under configured
   value/gas policies.
 - **Dashboard** — wallet connect, RiskGuard policy config, native transfers,
-  inheritance planning, profile + Telegram connect, portfolio/risk overview.
+  approval risk scanning, inheritance planning, profile + Telegram connect,
+  portfolio/risk overview.
 
 ## Repository structure
 

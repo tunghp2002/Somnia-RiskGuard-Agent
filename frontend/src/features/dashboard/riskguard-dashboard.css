@@ -3049,3 +3049,94 @@ label {
     width: 150px;
   }
 }
+
+/* --- Approval Risk Scanner tab --- */
+.chain-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.chain-chip {
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--soft);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.chain-chip:hover {
+  border-color: var(--purple);
+}
+
+.chain-chip.is-selected {
+  border-color: var(--green);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--green);
+}
+
+.approvals-table {
+  display: flex;
+  flex-direction: column;
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.approvals-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr 1fr 1.4fr;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.approvals-row:last-child {
+  border-bottom: none;
+}
+
+.approvals-head {
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.approvals-row a {
+  color: var(--cyan);
+  text-decoration: none;
+}
+
+.approvals-row a:hover {
+  text-decoration: underline;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.badge-warn {
+  background: rgb(251 191 36 / 18%);
+  color: var(--amber);
+}
+
+@media (max-width: 720px) {
+  .approvals-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .approvals-head {
+    display: none;
+  }
+}
