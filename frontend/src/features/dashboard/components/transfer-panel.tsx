@@ -1,24 +1,22 @@
 import { AlertCircle, CheckCircle2, ChevronDown, Loader2, Send } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+import {
+  useNativeTransferEstimate,
+  type TransferEstimateState,
+} from "../hooks/use-native-transfer-estimate";
 import { formatAddress } from "../utils";
 
 import type {
   NativeTransferEstimate,
   NativeTransferInput,
-  TransferSource
+  TransferSource,
 } from "../types";
 import type { PublicChainMetadata } from "@/lib/agent-api";
 import type { BrowserWalletState } from "@/lib/wallet";
-
-const emptyEstimateState = {
-  error: null as string | null,
-  loading: false,
-  value: null as NativeTransferEstimate | null
-};
 
 export function TransferPanel({
   actionLoading,
@@ -27,7 +25,7 @@ export function TransferPanel({
   onTransferSubmit,
   publicChain,
   smartAccountAddress,
-  wallet
+  wallet,
 }: {
   actionLoading: string | null;
   estimateTransfer: (input: NativeTransferInput) => Promise<NativeTransferEstimate>;
@@ -41,45 +39,32 @@ export function TransferPanel({
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [touched, setTouched] = useState(false);
-  const [estimate, setEstimate] = useState(emptyEstimateState);
 
+  const symbol = publicChain?.nativeCurrency.symbol ?? "STT";
   const sourceAddress = source === "eoa" ? wallet?.address : smartAccountAddress;
+
+  const input = useMemo<NativeTransferInput>(
+    () => ({ amount, recipient, source }),
+    [amount, recipient, source],
+  );
+  const estimate = useNativeTransferEstimate(input, estimateTransfer);
+
   const canShowEstimate = touched || Boolean(recipient.trim() || amount.trim());
   const submitDisabled =
     actionLoading === "transfer" ||
     estimate.loading ||
     !estimate.value ||
     Boolean(estimate.error);
-  const input = useMemo(
-    () => ({
-      amount,
-      recipient,
-      source
-    }),
-    [amount, recipient, source]
-  );
 
-  useEffect(() => {
-    if (!recipient.trim() || !amount.trim()) {
-      setEstimate(emptyEstimateState);
-      return;
-    }
+  function resetForm() {
+    setRecipient("");
+    setAmount("");
+    setTouched(false);
+  }
 
-    const timeoutId = window.setTimeout(() => {
-      setEstimate({ error: null, loading: true, value: null });
-      estimateTransfer(input)
-        .then((value) => setEstimate({ error: null, loading: false, value }))
-        .catch((error: unknown) => {
-          setEstimate({
-            error: error instanceof Error ? error.message : "Could not estimate transfer fee.",
-            loading: false,
-            value: null
-          });
-        });
-    }, 450);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [estimateTransfer, input]);
+  function hasError(keyword: string) {
+    return Boolean(touched && estimate.error?.toLowerCase().includes(keyword));
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -87,9 +72,7 @@ export function TransferPanel({
 
     const ok = await onTransferSubmit(input);
     if (ok) {
-      setRecipient("");
-      setAmount("");
-      setEstimate(emptyEstimateState);
+      resetForm();
     }
   }
 
@@ -99,38 +82,24 @@ export function TransferPanel({
         <div className="panel-heading">
           <div>
             <h2>Transfer</h2>
-            <span>{publicChain?.nativeCurrency.symbol ?? "STT"} native token</span>
+            <span>{symbol} native token</span>
           </div>
         </div>
 
         <form className="transfer-form" onSubmit={handleSubmit}>
-          <label>
-            Send from
-            <div className="transfer-select-wrap">
-              <select
-                aria-label="Transfer source"
-                onChange={(event) => {
-                  setSource(event.target.value as TransferSource);
-                  setTouched(false);
-                  setEstimate(emptyEstimateState);
-                }}
-                value={source}
-              >
-                <option value="smart">Smart account</option>
-                <option value="eoa">EOA wallet</option>
-              </select>
-              <ChevronDown size={16} />
-            </div>
-            <div className={sourceAddress ? "transfer-address-box" : "transfer-address-box empty"}>
-              <span>{source === "smart" ? "Thirdweb smart account" : "Browser wallet"}</span>
-              <strong>{sourceAddress ? formatAddress(sourceAddress) : "not connected"}</strong>
-            </div>
-          </label>
+          <TransferSourceField
+            source={source}
+            sourceAddress={sourceAddress}
+            onSourceChange={(nextSource) => {
+              setSource(nextSource);
+              setTouched(false);
+            }}
+          />
 
           <label>
             Recipient
             <Input
-              aria-invalid={Boolean(touched && estimate.error && estimate.error.toLowerCase().includes("recipient"))}
+              aria-invalid={hasError("recipient")}
               autoComplete="off"
               inputMode="text"
               onBlur={() => setTouched(true)}
@@ -148,7 +117,7 @@ export function TransferPanel({
             Amount
             <div className="transfer-amount-input">
               <Input
-                aria-invalid={Boolean(touched && estimate.error && estimate.error.toLowerCase().includes("amount"))}
+                aria-invalid={hasError("amount")}
                 inputMode="decimal"
                 min="0"
                 onBlur={() => setTouched(true)}
@@ -161,37 +130,11 @@ export function TransferPanel({
                 type="number"
                 value={amount}
               />
-              <span>{publicChain?.nativeCurrency.symbol ?? "STT"}</span>
+              <span>{symbol}</span>
             </div>
           </label>
 
-          {canShowEstimate ? <div className="transfer-estimate-box">
-            {estimate.loading ? (
-              <span className="transfer-estimate-row">
-                <Loader2 className="spin" size={15} />
-                Estimating network fee
-              </span>
-            ) : estimate.error && touched ? (
-              <span className="transfer-estimate-row bad">
-                <AlertCircle size={15} />
-                {estimate.error}
-              </span>
-            ) : estimate.value ? (
-              <>
-                <span className="transfer-estimate-row">
-                  <CheckCircle2 size={15} />
-                  Estimated fee
-                  <strong>{estimate.value.gasLabel}</strong>
-                </span>
-                <span className="transfer-estimate-row muted-row">
-                  Total debit
-                  <strong>{estimate.value.totalLabel}</strong>
-                </span>
-              </>
-            ) : (
-              <span className="transfer-estimate-row muted-row">Enter recipient and amount to estimate fee.</span>
-            )}
-          </div> : null}
+          {canShowEstimate ? <TransferEstimateBox estimate={estimate} touched={touched} /> : null}
 
           <div className="transfer-actions">
             {!wallet ? (
@@ -208,5 +151,74 @@ export function TransferPanel({
         </form>
       </section>
     </section>
+  );
+}
+
+function TransferSourceField({
+  source,
+  sourceAddress,
+  onSourceChange,
+}: {
+  source: TransferSource;
+  sourceAddress: string | undefined;
+  onSourceChange: (source: TransferSource) => void;
+}) {
+  return (
+    <label>
+      Send from
+      <div className="transfer-select-wrap">
+        <select
+          aria-label="Transfer source"
+          onChange={(event) => onSourceChange(event.target.value as TransferSource)}
+          value={source}
+        >
+          <option value="smart">Smart account</option>
+          <option value="eoa">EOA wallet</option>
+        </select>
+        <ChevronDown size={16} />
+      </div>
+      <div className={sourceAddress ? "transfer-address-box" : "transfer-address-box empty"}>
+        <span>{source === "smart" ? "Thirdweb smart account" : "Browser wallet"}</span>
+        <strong>{sourceAddress ? formatAddress(sourceAddress) : "not connected"}</strong>
+      </div>
+    </label>
+  );
+}
+
+function TransferEstimateBox({
+  estimate,
+  touched,
+}: {
+  estimate: TransferEstimateState;
+  touched: boolean;
+}) {
+  return (
+    <div className="transfer-estimate-box">
+      {estimate.loading ? (
+        <span className="transfer-estimate-row">
+          <Loader2 className="spin" size={15} />
+          Estimating network fee
+        </span>
+      ) : estimate.error && touched ? (
+        <span className="transfer-estimate-row bad">
+          <AlertCircle size={15} />
+          {estimate.error}
+        </span>
+      ) : estimate.value ? (
+        <>
+          <span className="transfer-estimate-row">
+            <CheckCircle2 size={15} />
+            Estimated fee
+            <strong>{estimate.value.gasLabel}</strong>
+          </span>
+          <span className="transfer-estimate-row muted-row">
+            Total debit
+            <strong>{estimate.value.totalLabel}</strong>
+          </span>
+        </>
+      ) : (
+        <span className="transfer-estimate-row muted-row">Enter recipient and amount to estimate fee.</span>
+      )}
+    </div>
   );
 }

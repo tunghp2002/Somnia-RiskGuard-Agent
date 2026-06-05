@@ -32,6 +32,10 @@ import {
   riskGuardPendingUserOpRequestSchema,
   type RiskGuardPendingUserOpService
 } from "../services/riskguard-pending-userop.service.js";
+import {
+  riskGuardReviewBudgetRequestSchema,
+  type RiskGuardReviewBudgetService
+} from "../services/riskguard-review-budget.service.js";
 import { TelegramConnectService } from "../services/telegram-connect.service.js";
 import {
   deadmanPolicyRequestSchema,
@@ -72,10 +76,39 @@ function isAllowedDevOrigin(origin: string): boolean {
   }
 }
 
+// Production frontends. Set ALLOWED_ORIGINS (comma-separated, e.g.
+// "https://somguard.vercel.app") to the deployed dashboard URL. Any
+// *.vercel.app subdomain is also accepted so Vercel preview deploys work.
+function getConfiguredOrigins(): string[] {
+  return (process.env.ALLOWED_ORIGINS ?? process.env.FRONTEND_URL ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase().replace(/\/$/, ""))
+    .filter(Boolean);
+}
+
+function isAllowedOrigin(origin: string): boolean {
+  if (isAllowedDevOrigin(origin)) {
+    return true;
+  }
+
+  try {
+    const url = new URL(origin);
+    const hostname = url.hostname.toLowerCase();
+    if (hostname === "vercel.app" || hostname.endsWith(".vercel.app")) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+
+  const normalized = origin.toLowerCase().replace(/\/$/, "");
+  return getConfiguredOrigins().includes(normalized);
+}
+
 function applyCorsHeaders(request: IncomingMessage, response: Parameters<typeof sendJson>[0]) {
   const origin = request.headers.origin;
 
-  if (origin && isAllowedDevOrigin(origin)) {
+  if (origin && isAllowedOrigin(origin)) {
     response.setHeader("Access-Control-Allow-Origin", origin);
     response.setHeader("Vary", "Origin");
   }
@@ -183,6 +216,7 @@ export interface AgentApiDependencies {
   heartbeats?: HeartbeatService;
   rewards?: RewardClaimService;
   riskGuardPendingUserOps?: RiskGuardPendingUserOpService;
+  riskGuardReviewBudget?: RiskGuardReviewBudgetService;
   publicChain?: PublicChainMetadata;
   health?: () => Promise<unknown> | unknown;
 }
@@ -664,6 +698,16 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         }
         const body = riskGuardPendingUserOpRequestSchema.parse(await readJsonBody(request));
         const result = await dependencies.riskGuardPendingUserOps.store(body);
+        sendJson(response, 202, success(result, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/riskguard/ensure-review-budget") {
+        if (!dependencies.riskGuardReviewBudget) {
+          throw new ServerDependencyError("RiskGuard review budget service is not configured");
+        }
+        const body = riskGuardReviewBudgetRequestSchema.parse(await readJsonBody(request));
+        const result = await dependencies.riskGuardReviewBudget.ensureBudget(body);
         sendJson(response, 202, success(result, requestId));
         return;
       }

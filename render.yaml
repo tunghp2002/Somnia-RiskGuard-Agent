@@ -1,0 +1,57 @@
+# Render Blueprint for the SomGuard agent backend.
+# https://render.com → New → Blueprint → pick this repo. Render reads this file,
+# builds the agent, and redeploys automatically on every push to the branch.
+#
+# Secrets (sync: false) are NOT stored here — set them once in the Render
+# dashboard (Environment tab). Use the same values as your local agent .env.
+services:
+  - type: web
+    name: somguard-agent
+    runtime: node
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /api/health
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @somnia-riskguard/agent build
+    startCommand: pnpm --filter @somnia-riskguard/agent start
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      # Non-secret runtime config (safe defaults — override in the dashboard if needed)
+      - key: RISK_SCORE_ALERT_THRESHOLD
+        value: "70"
+      - key: HEARTBEAT_INTERVAL_SECONDS
+        value: "86400"
+      - key: HEARTBEAT_GRACE_SECONDS
+        value: "3600"
+      - key: AUTO_CLAIM_ENABLED
+        value: "false"
+      - key: MAX_CLAIM_GAS_USD
+        value: "1"
+      - key: MIN_REWARD_VALUE_USD
+        value: "2"
+      # Comma-separated allowed frontend origins for CORS (your Vercel URL).
+      # *.vercel.app is already allowed automatically.
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # Secrets — set these in the Render dashboard (same as local .env)
+      - key: THIRDWEB_SECRET_KEY
+        sync: false
+      - key: THIRDWEB_CLIENT_ID
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SESSION_KEY_ENCRYPTION_KEY
+        sync: false
+      - key: AGENT_WALLET_ADDRESS
+        sync: false
+      # Telegram (optional — if you set the token you must also set the username)
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_USERNAME
+        sync: false

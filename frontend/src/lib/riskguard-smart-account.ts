@@ -321,6 +321,14 @@ export async function sendRiskGuardedSmartTransaction(options: {
       throw new Error("RiskGuard requires Somnia Agent review, but the validator contract is not configured in public chain metadata.");
     }
 
+    // Ask the agent backend to top up the validator's review budget first, so
+    // the user does not have to sign a separate fundAgentBudget transaction.
+    // Best-effort: if the backend cannot fund it, requestSomniaAgentReview still
+    // falls back to funding from the user's wallet (no behaviour change).
+    await agentApi
+      .ensureRiskGuardReviewBudget({ smartAccountAddress: pendingApproval.smartAccountAddress })
+      .catch(() => undefined);
+
     const reviewTxHash = await requestSomniaAgentReview({
       riskGuardValidatorAddress: options.riskGuardValidatorAddress,
       smartAccountAddress: pendingApproval.smartAccountAddress,

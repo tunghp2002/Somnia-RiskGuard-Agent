@@ -11,13 +11,14 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Modal, ModalActions } from "@/components/ui/modal";
 
 import { formatAddress } from "../utils";
+import { PanelHeading } from "./common";
 
 import type { GuardRuleId, RiskGuardConfig, RiskGuardRule } from "../types";
 import type { Mode, Readiness } from "@/lib/agent-api";
 import type { BrowserWalletState } from "@/lib/wallet";
-import type { ReactNode } from "react";
 
 export function GuardianStatus({
   ready,
@@ -186,131 +187,92 @@ export function RiskPolicyGuard({
       </div>
 
       {modalOpen ? (
-        <div className="profile-modal-overlay" role="presentation">
-          <form
-            aria-modal="true"
-            className="profile-modal risk-policy-modal"
-            onSubmit={async (event) => {
-              event.preventDefault();
-              await submitConfig({ ...draftConfig, enabled: true });
-            }}
-            role="dialog"
-          >
-            <h3>{moduleReady ? "Edit RiskGuard Setup" : "Setup RiskGuard Module"}</h3>
-            <p>Choose which risky UserOps require agent validation before execution.</p>
-            <div className="risk-policy-checks">
-              {rules.map((rule) => (
-                <label className="risk-policy-check" key={rule.id}>
-                  <input
-                    checked={draftConfig.selectedRules.includes(rule.id)}
-                    onChange={() => toggleRule(rule.id)}
-                    type="checkbox"
-                  />
-                  <span>
-                    <strong>{rule.label}</strong>
-                    <small>{rule.detail}</small>
-                  </span>
-                </label>
-              ))}
+        <Modal
+          className="risk-policy-modal"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            await submitConfig({ ...draftConfig, enabled: true });
+          }}
+        >
+          <h3>{moduleReady ? "Edit RiskGuard Setup" : "Setup RiskGuard Module"}</h3>
+          <p>Choose which risky UserOps require agent validation before execution.</p>
+          <div className="risk-policy-checks">
+            {rules.map((rule) => (
+              <label className="risk-policy-check" key={rule.id}>
+                <input
+                  checked={draftConfig.selectedRules.includes(rule.id)}
+                  onChange={() => toggleRule(rule.id)}
+                  type="checkbox"
+                />
+                <span>
+                  <strong>{rule.label}</strong>
+                  <small>{rule.detail}</small>
+                </span>
+              </label>
+            ))}
+          </div>
+          {largeTransferEnabled ? (
+            <div className="risk-policy-threshold-grid">
+              <label>
+                Validate by
+                <select
+                  onChange={(event) => {
+                    setValidationError(null);
+                    setDraftConfig((current) => ({
+                      ...current,
+                      largeTransferMode: event.target.value as RiskGuardConfig["largeTransferMode"],
+                      largeTransferThreshold: sanitizeThreshold(current.largeTransferThreshold, event.target.value as RiskGuardConfig["largeTransferMode"]),
+                    }));
+                  }}
+                  value={draftConfig.largeTransferMode}
+                >
+                  <option value="amount">SOMI amount</option>
+                  <option value="percent">Balance %</option>
+                </select>
+              </label>
+              <label>
+                Threshold
+                <Input
+                  inputMode="decimal"
+                  max={draftConfig.largeTransferMode === "percent" ? 100 : undefined}
+                  min="0"
+                  onKeyDown={(event) => {
+                    if (["-", "+", "e", "E"].includes(event.key)) {
+                      event.preventDefault();
+                    }
+                  }}
+                  onChange={(event) => {
+                    setValidationError(null);
+                    setDraftConfig((current) => ({
+                      ...current,
+                      largeTransferThreshold: sanitizeThreshold(event.target.value, current.largeTransferMode),
+                    }));
+                  }}
+                  placeholder={draftConfig.largeTransferMode === "percent" ? "Enter percent" : "Enter SOMI"}
+                  type="number"
+                  value={draftConfig.largeTransferThreshold}
+                />
+              </label>
             </div>
-            {largeTransferEnabled ? (
-              <div className="risk-policy-threshold-grid">
-                <label>
-                  Validate by
-                  <select
-                    onChange={(event) => {
-                      setValidationError(null);
-                      setDraftConfig((current) => ({
-                        ...current,
-                        largeTransferMode: event.target.value as RiskGuardConfig["largeTransferMode"],
-                        largeTransferThreshold: sanitizeThreshold(current.largeTransferThreshold, event.target.value as RiskGuardConfig["largeTransferMode"]),
-                      }));
-                    }}
-                    value={draftConfig.largeTransferMode}
-                  >
-                    <option value="amount">SOMI amount</option>
-                    <option value="percent">Balance %</option>
-                  </select>
-                </label>
-                <label>
-                  Threshold
-                  <Input
-                    inputMode="decimal"
-                    max={draftConfig.largeTransferMode === "percent" ? 100 : undefined}
-                    min="0"
-                    onKeyDown={(event) => {
-                      if (["-", "+", "e", "E"].includes(event.key)) {
-                        event.preventDefault();
-                      }
-                    }}
-                    onChange={(event) => {
-                      setValidationError(null);
-                      setDraftConfig((current) => ({
-                        ...current,
-                        largeTransferThreshold: sanitizeThreshold(event.target.value, current.largeTransferMode),
-                      }));
-                    }}
-                    placeholder={draftConfig.largeTransferMode === "percent" ? "Enter percent" : "Enter SOMI"}
-                    type="number"
-                    value={draftConfig.largeTransferThreshold}
-                  />
-                </label>
-              </div>
-            ) : null}
-            {validationError ? <p className="field-error">{validationError}</p> : null}
-            <div className="profile-modal-actions">
-              <Button onClick={() => setModalOpen(false)} type="button" variant="secondary">
-                Cancel
-              </Button>
-              <Button
-                className="confirm-button"
-                disabled={savingGuard || disablingGuard}
-                type="submit"
-                variant="primary"
-              >
-                {savingGuard ? <Loader2 className="spin" size={16} /> : null}
-                Confirm
-              </Button>
-            </div>
-          </form>
-        </div>
+          ) : null}
+          {validationError ? <p className="field-error">{validationError}</p> : null}
+          <ModalActions>
+            <Button onClick={() => setModalOpen(false)} type="button" variant="secondary">
+              Cancel
+            </Button>
+            <Button
+              className="confirm-button"
+              disabled={savingGuard || disablingGuard}
+              type="submit"
+              variant="primary"
+            >
+              {savingGuard ? <Loader2 className="spin" size={16} /> : null}
+              Confirm
+            </Button>
+          </ModalActions>
+        </Modal>
       ) : null}
     </section>
-  );
-}
-
-export function PanelHeading({
-  icon,
-  title,
-  action
-}: {
-  icon: ReactNode;
-  title: string;
-  action?: string;
-}) {
-  return (
-    <div className="panel-heading">
-      <div>{icon}<h2>{title}</h2></div>
-    </div>
-  );
-}
-
-export function HealthRow({
-  icon,
-  label,
-  value,
-  tone
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  tone: "ok" | "warn" | "bad" | "neutral";
-}) {
-  return (
-    <div className="health-row">
-      <span>{icon}{label}</span>
-      <strong className={`status-${tone}`}>{value}</strong>
-    </div>
   );
 }
 

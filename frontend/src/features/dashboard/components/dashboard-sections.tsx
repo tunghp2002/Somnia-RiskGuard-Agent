@@ -3,9 +3,10 @@ import { useState, type SyntheticEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Modal, ModalActions } from "@/components/ui/modal";
 
 import { classForStatus, formatAddress, formatDate, formatUsd, hasOkFlag, readableMetadata } from "../utils";
-import { HealthRow, PanelHeading } from "./status-panels";
+import { HealthRow, PanelHeading } from "./common";
 
 import type {
   PortfolioSnapshot,
@@ -32,7 +33,6 @@ export function ProfilePanel({
   actionLoading,
   onConnectTelegram,
   onDisconnectTelegram,
-  onDisconnectWallet,
   onProfileSubmit,
   telegramSession,
   userProfile,
@@ -41,7 +41,6 @@ export function ProfilePanel({
   actionLoading: string | null;
   onConnectTelegram: () => void;
   onDisconnectTelegram: () => void;
-  onDisconnectWallet: () => void;
   onProfileSubmit: (event: SyntheticEvent<HTMLFormElement, SubmitEvent>) => void;
   telegramSession: TelegramConnectSession | null;
   userProfile: UserRecord | null;
@@ -122,29 +121,27 @@ export function ProfilePanel({
               </Button>
             </div>
             {telegramConfirmOpen ? (
-              <div className="profile-modal-overlay" role="presentation">
-                <div aria-modal="true" className="profile-modal" role="dialog">
-                  <h3>Disconnect Telegram</h3>
-                  <p>Are you sure you want to disconnect {formatTelegramIdentity(telegramSession)}?</p>
-                  <div className="profile-modal-actions">
-                    <Button onClick={() => setTelegramConfirmOpen(false)} type="button" variant="secondary">
-                      Cancel
-                    </Button>
-                    <Button
-                      className="confirm-button"
-                      disabled={actionLoading === "telegram-unlink"}
-                      onClick={() => {
-                        setTelegramConfirmOpen(false);
-                        onDisconnectTelegram();
-                      }}
-                      type="button"
-                      variant="primary"
-                    >
-                      {actionLoading === "telegram-unlink" ? "Disconnecting" : "Confirm"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
+              <Modal>
+                <h3>Disconnect Telegram</h3>
+                <p>Are you sure you want to disconnect {formatTelegramIdentity(telegramSession)}?</p>
+                <ModalActions>
+                  <Button onClick={() => setTelegramConfirmOpen(false)} type="button" variant="secondary">
+                    Cancel
+                  </Button>
+                  <Button
+                    className="confirm-button"
+                    disabled={actionLoading === "telegram-unlink"}
+                    onClick={() => {
+                      setTelegramConfirmOpen(false);
+                      onDisconnectTelegram();
+                    }}
+                    type="button"
+                    variant="primary"
+                  >
+                    {actionLoading === "telegram-unlink" ? "Disconnecting" : "Confirm"}
+                  </Button>
+                </ModalActions>
+              </Modal>
             ) : null}
           </>
         ) : (

@@ -122,7 +122,6 @@ export function useInheritanceSettingsForm({
 
       return [{ address: selectedSmartAccountAddress, kind: "contract" }, ...current];
     });
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSmartAccountDiscoveryChecked(true);
   }, [selectedSmartAccountAddress]);
 

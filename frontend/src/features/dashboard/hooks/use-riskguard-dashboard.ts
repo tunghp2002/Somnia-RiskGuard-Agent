@@ -34,13 +34,13 @@ import {
   sendNativeTransferFromEoa,
   sendNativeTransferFromSmartAccount,
 } from "@/lib/native-transfer";
-import { SomniaAgentReviewRequestedError } from "@/lib/riskguard-smart-account";
 import {
   configureRiskGuardPolicyWithThirdweb,
   connectRiskGuardBootstrapSmartAccount,
   connectRiskGuardSmartAccount,
   connectUserPaidThirdwebSmartAccount,
 } from "@/lib/riskguard-module";
+import { SomniaAgentReviewRequestedError } from "@/lib/riskguard-smart-account";
 import {
   connectBrowserWallet,
   disconnectBrowserWallet,
@@ -57,12 +57,12 @@ import {
   isSimulationEvent,
   readableMetadata,
 } from "../utils";
+import { useStoredRiskGuardConfig } from "./use-stored-risk-guard-config";
 
 import type {
   AccountStatus,
   AgentReviewRequestModal,
   DashboardSection,
-  GuardRuleId,
   Notice,
   NativeTransferEstimate,
   NativeTransferInput,
@@ -75,67 +75,6 @@ import type {
 } from "@/lib/blockscout-api";
 
 const telegramConnectTimeoutMs = 60_000;
-const riskGuardConfigStorageKey = "riskguard-policy-config";
-
-const defaultRiskGuardConfig: RiskGuardConfig = {
-  enabled: false,
-  selectedRules: ["large-transfer", "unlimited-approve", "new-contract"],
-  largeTransferMode: "amount",
-  largeTransferThreshold: "",
-};
-
-function loadStoredRiskGuardConfig(): RiskGuardConfig {
-  if (typeof window === "undefined") {
-    return defaultRiskGuardConfig;
-  }
-
-  try {
-    const stored = window.localStorage.getItem(riskGuardConfigStorageKey);
-
-    if (!stored) {
-      return defaultRiskGuardConfig;
-    }
-
-    const parsed = JSON.parse(stored) as Partial<RiskGuardConfig>;
-    const validRules: GuardRuleId[] = [
-      "large-transfer",
-      "unlimited-approve",
-      "new-contract",
-    ];
-    const selectedRules = (
-      parsed.selectedRules ?? defaultRiskGuardConfig.selectedRules
-    ).filter((rule): rule is GuardRuleId =>
-      validRules.includes(rule as GuardRuleId),
-    );
-    const legacyPercentSelected = (parsed.selectedRules ?? []).includes(
-      "balance-percent" as GuardRuleId,
-    );
-    const largeTransferMode =
-      parsed.largeTransferMode ??
-      (legacyPercentSelected
-        ? "percent"
-        : defaultRiskGuardConfig.largeTransferMode);
-
-    return {
-      enabled: Boolean(parsed.enabled),
-      selectedRules:
-        legacyPercentSelected && !selectedRules.includes("large-transfer")
-          ? [...selectedRules, "large-transfer"]
-          : selectedRules,
-      largeTransferMode,
-      largeTransferThreshold:
-        parsed.largeTransferThreshold ??
-        (largeTransferMode === "percent"
-          ? (parsed as { nativePercentThreshold?: string })
-              .nativePercentThreshold
-          : (parsed as { nativeAmountThreshold?: string })
-              .nativeAmountThreshold) ??
-        defaultRiskGuardConfig.largeTransferThreshold,
-    };
-  } catch {
-    return defaultRiskGuardConfig;
-  }
-}
 
 function telegramUnlinkMessage(walletAddress: string) {
   return [
@@ -186,6 +125,21 @@ function telegramReviewUrl(session: TelegramConnectSession | null) {
   return botUsername ? `https://t.me/${botUsername.replace(/^@/, "")}` : undefined;
 }
 
+function buildAgentReviewModal(
+  error: SomniaAgentReviewRequestedError,
+  publicChain: PublicChainMetadata | null,
+  telegramSession: TelegramConnectSession | null,
+): AgentReviewRequestModal {
+  const requestTxUrl = transactionUrl(publicChain, error.requestTxHash);
+  const telegramUrl = telegramReviewUrl(telegramSession);
+
+  return {
+    requestTxHash: error.requestTxHash,
+    ...(requestTxUrl ? { requestTxUrl } : {}),
+    ...(telegramUrl ? { telegramUrl } : {}),
+  };
+}
+
 export function useRiskGuardDashboard() {
   const thirdwebSmartAccount = useActiveAccount();
   const [activeSection, setActiveSection] =
@@ -208,9 +162,7 @@ export function useRiskGuardDashboard() {
     useState<string>();
   const [selectedAssetAccountScope, setSelectedAssetAccountScope] =
     useState<BlockscoutAccountScope>("all");
-  const [riskGuardConfig, setRiskGuardConfig] = useState<RiskGuardConfig>(
-    defaultRiskGuardConfig,
-  );
+  const [riskGuardConfig, persistRiskGuardConfig] = useStoredRiskGuardConfig();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [telegramSession, setTelegramSession] =
     useState<TelegramConnectSession | null>(null);
@@ -485,11 +437,11 @@ export function useRiskGuardDashboard() {
   }, [activeInheritanceSmartAccount, activeWalletAddress, wallet]);
 
   useEffect(() => {
-    setRiskGuardConfig(loadStoredRiskGuardConfig());
-  }, []);
-
-  useEffect(() => {
-    void loadData();
+    // Defer to a macrotask so the synchronous `setLoading(true)` inside
+    // loadData() runs outside the effect commit (avoids cascading renders) and
+    // coalesces the rapid dependency churn while the wallet/account resolve.
+    const id = window.setTimeout(() => void loadData(), 0);
+    return () => window.clearTimeout(id);
   }, [loadData]);
 
   useEffect(() => {
@@ -573,17 +525,21 @@ export function useRiskGuardDashboard() {
     [clearWalletScopedState],
   );
 
+  const telegramStatus = telegramSession?.status;
+  const telegramCode = telegramSession?.code;
+  const telegramWalletAddress = telegramSession?.walletAddress;
+
   useEffect(() => {
-    if (!telegramSession || telegramSession.status !== "waiting") {
+    if (telegramStatus !== "waiting" || !telegramWalletAddress) {
       return;
     }
 
     let stopped = false;
-    const sessionCode = telegramSession.code;
+    const sessionCode = telegramCode;
 
     const interval = setInterval(() => {
       void agentApi
-        .getTelegramConnectStatus(telegramSession.walletAddress)
+        .getTelegramConnectStatus(telegramWalletAddress)
         .then((session) => {
           if (stopped || session.code !== sessionCode) {
             return;
@@ -625,12 +581,7 @@ export function useRiskGuardDashboard() {
       clearInterval(interval);
       clearTimeout(timeout);
     };
-  }, [
-    loadData,
-    telegramSession?.code,
-    telegramSession?.status,
-    telegramSession?.walletAddress,
-  ]);
+  }, [loadData, telegramCode, telegramStatus, telegramWalletAddress]);
 
   async function handleConnectWallet() {
     setActionLoading("wallet");
@@ -819,13 +770,7 @@ export function useRiskGuardDashboard() {
       await loadData();
     } catch (error) {
       if (error instanceof SomniaAgentReviewRequestedError) {
-        const requestTxUrl = transactionUrl(publicChain, error.requestTxHash);
-        const telegramUrl = telegramReviewUrl(telegramSession);
-        setAgentReviewModal({
-          requestTxHash: error.requestTxHash,
-          ...(requestTxUrl ? { requestTxUrl } : {}),
-          ...(telegramUrl ? { telegramUrl } : {}),
-        });
+        setAgentReviewModal(buildAgentReviewModal(error, publicChain, telegramSession));
         return;
       }
 
@@ -948,13 +893,7 @@ export function useRiskGuardDashboard() {
       if (txHash) {
         openTransaction(publicChain, txHash);
       }
-      setRiskGuardConfig(nextConfig);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          riskGuardConfigStorageKey,
-          JSON.stringify(nextConfig),
-        );
-      }
+      persistRiskGuardConfig(nextConfig);
       const txAction = txHash ? transactionNoticeAction(publicChain, txHash) : undefined;
       setNotice({
         tone: "ok",
@@ -969,13 +908,7 @@ export function useRiskGuardDashboard() {
       return true;
     } catch (error) {
       if (error instanceof SomniaAgentReviewRequestedError) {
-        const requestTxUrl = transactionUrl(publicChain, error.requestTxHash);
-        const telegramUrl = telegramReviewUrl(telegramSession);
-        setAgentReviewModal({
-          requestTxHash: error.requestTxHash,
-          ...(requestTxUrl ? { requestTxUrl } : {}),
-          ...(telegramUrl ? { telegramUrl } : {}),
-        });
+        setAgentReviewModal(buildAgentReviewModal(error, publicChain, telegramSession));
         return false;
       }
 
@@ -1079,13 +1012,7 @@ export function useRiskGuardDashboard() {
       return true;
     } catch (error) {
       if (error instanceof SomniaAgentReviewRequestedError) {
-        const requestTxUrl = transactionUrl(publicChain, error.requestTxHash);
-        const telegramUrl = telegramReviewUrl(telegramSession);
-        setAgentReviewModal({
-          requestTxHash: error.requestTxHash,
-          ...(requestTxUrl ? { requestTxUrl } : {}),
-          ...(telegramUrl ? { telegramUrl } : {}),
-        });
+        setAgentReviewModal(buildAgentReviewModal(error, publicChain, telegramSession));
         return false;
       }
 
@@ -1184,13 +1111,7 @@ export function useRiskGuardDashboard() {
       await loadData();
     } catch (error) {
       if (error instanceof SomniaAgentReviewRequestedError) {
-        const requestTxUrl = transactionUrl(publicChain, error.requestTxHash);
-        const telegramUrl = telegramReviewUrl(telegramSession);
-        setAgentReviewModal({
-          requestTxHash: error.requestTxHash,
-          ...(requestTxUrl ? { requestTxUrl } : {}),
-          ...(telegramUrl ? { telegramUrl } : {}),
-        });
+        setAgentReviewModal(buildAgentReviewModal(error, publicChain, telegramSession));
         return;
       }
 

@@ -69,6 +69,7 @@ interface BlockscoutNftItem {
     name?: string;
   } | null;
   token?: BlockscoutTokenInfo | null;
+  token_contract_address_hash?: string | null;
   token_id?: string | null;
   token_instance?: {
     id?: string | number | null;
@@ -83,6 +84,7 @@ interface BlockscoutNftItem {
 
 interface BlockscoutList<T> {
   items?: T[];
+  next_page_params?: Record<string, string | number | boolean | null> | null;
 }
 
 const somniaLogoUrl =
@@ -102,6 +104,34 @@ async function fetchJson<T>(url: string): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+function withQueryParams(url: string, params?: Record<string, string | number | boolean | null> | null) {
+  if (!params) {
+    return url;
+  }
+
+  const nextUrl = new URL(url);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== null && value !== undefined) {
+      nextUrl.searchParams.set(key, String(value));
+    }
+  });
+
+  return nextUrl.toString();
+}
+
+async function fetchBlockscoutList<T>(url: string): Promise<T[]> {
+  const items: T[] = [];
+  let nextUrl: string | undefined = url;
+
+  while (nextUrl) {
+    const payload: BlockscoutList<T> = await fetchJson<BlockscoutList<T>>(nextUrl);
+    items.push(...(payload.items ?? []));
+    nextUrl = payload.next_page_params ? withQueryParams(url, payload.next_page_params) : undefined;
+  }
+
+  return items;
 }
 
 function normalizeIpfsUrl(url?: string | null) {
@@ -144,15 +174,11 @@ export async function fetchAccountAssets({
   const snapshots = await Promise.all(
     accounts.map(async (account) => {
       const encodedAddress = encodeURIComponent(account.address);
-      const [addressInfo, tokenPayload, nftPayload] = await Promise.all([
+      const [addressInfo, tokenItems, nftItems] = await Promise.all([
         fetchJson<BlockscoutAddressInfo>(`${baseUrl}/addresses/${encodedAddress}`),
-        fetchJson<BlockscoutTokenBalance[] | BlockscoutList<BlockscoutTokenBalance>>(
-          `${baseUrl}/addresses/${encodedAddress}/tokens?type=ERC-20`,
-        ).catch(() => fetchJson<BlockscoutTokenBalance[]>(`${baseUrl}/addresses/${encodedAddress}/token-balances`)),
-        fetchJson<BlockscoutList<BlockscoutNftItem>>(`${baseUrl}/addresses/${encodedAddress}/nft`).catch(() => ({ items: [] })),
+        fetchJson<BlockscoutTokenBalance[]>(`${baseUrl}/addresses/${encodedAddress}/token-balances`),
+        fetchBlockscoutList<BlockscoutNftItem>(`${baseUrl}/addresses/${encodedAddress}/nft`).catch(() => []),
       ]);
-      const tokenItems = Array.isArray(tokenPayload) ? tokenPayload : tokenPayload.items ?? [];
-      const nftItems = nftPayload.items ?? [];
 
       return {
         native: {
@@ -188,7 +214,7 @@ export async function fetchAccountAssets({
           return {
             accountLabel: account.label,
             address: account.address,
-            collectionAddress: item.token?.address_hash ?? "",
+            collectionAddress: item.token?.address_hash ?? item.token_contract_address_hash ?? "",
             collectionName: item.token?.name ?? "NFT Collection",
             id: String(instance?.id ?? item.id ?? item.token_id ?? "unknown"),
             name: metadata.name ?? item.token?.name ?? "NFT",

@@ -1,12 +1,10 @@
 "use client";
 
 import { createThirdwebClient, defineChain } from "thirdweb";
-import { createWallet, type Wallet } from "thirdweb/wallets";
+import { createWallet, type Wallet, type SmartWalletOptions } from "thirdweb/wallets";
 import { Config } from "thirdweb/wallets/smart";
 
 import publicChains from "../../../config/public-chains.json";
-
-import type { SmartWalletOptions } from "thirdweb/wallets";
 
 const publicChain = publicChains.chains[publicChains.defaultChain as keyof typeof publicChains.chains];
 

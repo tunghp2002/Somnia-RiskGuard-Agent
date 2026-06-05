@@ -400,6 +400,17 @@ export const agentApi = {
       method: "POST",
       body: JSON.stringify(body)
     }),
+  ensureRiskGuardReviewBudget: (body: { smartAccountAddress: string }) =>
+    request<{
+      funded: boolean;
+      sufficient: boolean;
+      budgetWei: string;
+      requiredWei: string;
+      fundingTxHash?: string;
+    }>("/api/riskguard/ensure-review-budget", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
   confirmTelegramConnect: (body: { code: string; chatId: string; telegramUserId?: string }) =>
     request<TelegramConnectSession>("/api/telegram/connect/confirm", {
       method: "POST",

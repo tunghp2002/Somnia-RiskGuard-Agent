@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import {
   Send,
   Shield,
@@ -7,6 +6,7 @@ import {
 } from "lucide-react";
 
 import type { DashboardSection } from "./types";
+import type { ReactNode } from "react";
 
 export const navItems: Array<{ id: DashboardSection; label: string; icon: ReactNode; primaryMobile?: boolean }> = [
   { id: "overview", label: "Overview", icon: <Shield size={17} />, primaryMobile: true },

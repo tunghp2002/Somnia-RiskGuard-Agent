@@ -1,6 +1,5 @@
 import { BrowserProvider, Contract } from "ethers";
 import { getContract, prepareContractCall } from "thirdweb";
-import type { Account } from "thirdweb/wallets";
 
 import { sendRiskGuardedSmartTransaction } from "@/lib/riskguard-smart-account";
 import {
@@ -9,6 +8,7 @@ import {
 } from "@/lib/thirdweb-client";
 
 import type { InheritancePlanStatus } from "@/lib/agent-api";
+import type { Account } from "thirdweb/wallets";
 
 export interface BeneficiaryInput {
   address: string;

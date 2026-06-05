@@ -48,6 +48,7 @@ import { RewardClaimService } from "./services/reward-claim.service.js";
 import { TelegramAlertService } from "./services/telegram-alert.service.js";
 import { RiskGuardApprovalService } from "./services/riskguard-approval.service.js";
 import { RiskGuardPendingUserOpService } from "./services/riskguard-pending-userop.service.js";
+import { RiskGuardReviewBudgetService } from "./services/riskguard-review-budget.service.js";
 import { TelegramCheckInService } from "./services/telegram-check-in.service.js";
 import { TelegramConnectService } from "./services/telegram-connect.service.js";
 import { SessionKeyService } from "./services/session-key.service.js";
@@ -126,6 +127,7 @@ export async function startAgentRuntime(
     audit,
   );
   const riskGuardApprovals = new RiskGuardApprovalService(config, audit, sessionKeys);
+  const riskGuardReviewBudget = new RiskGuardReviewBudgetService(config, audit, sessionKeys);
   const telegramAlerts = new TelegramAlertService(
     config,
     users,
@@ -212,6 +214,7 @@ export async function startAgentRuntime(
     heartbeats,
     rewards,
     riskGuardPendingUserOps,
+    riskGuardReviewBudget,
     publicChain: config.publicChain,
     health: async () => ({
       ok: true,
@@ -233,7 +236,10 @@ export async function startAgentRuntime(
     });
   }
 
-  const requestedPort = options.apiPort ?? 3001;
+  // Cloud hosts (Render/Railway/Fly/…) inject the port to bind via $PORT.
+  const envPort = process.env.PORT ? Number(process.env.PORT) : undefined;
+  const requestedPort =
+    options.apiPort ?? (envPort && Number.isFinite(envPort) ? envPort : 3001);
   await listen(apiServer, requestedPort);
   const address = apiServer.address();
   const apiPort =

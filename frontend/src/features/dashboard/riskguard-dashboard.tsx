@@ -70,7 +70,6 @@ export function RiskGuardDashboard() {
               actionLoading={state.actionLoading}
               onConnectTelegram={actions.handleTelegramConnect}
               onDisconnectTelegram={actions.handleTelegramUnlink}
-              onDisconnectWallet={actions.handleDisconnectWallet}
               onProfileSubmit={actions.handleProfileSubmit}
               telegramSession={state.telegramSession}
               userProfile={state.userProfile}

@@ -17,7 +17,6 @@ import {
     Users,
     WalletCards
 } from "lucide-react";
-import { Dialog as DialogPrimitive } from "radix-ui";
 import { useEffect, useRef, useState, type CSSProperties, type SyntheticEvent } from "react";
 import { useActiveAccount, useConnectedWallets, useConnect } from "thirdweb/react";
 import { EIP1193, smartWallet, type Wallet } from "thirdweb/wallets";
@@ -33,9 +32,9 @@ import {
     thirdwebClient
 } from "@/lib/thirdweb-client";
 
+import { CheckInAuthorizationModal } from "./check-in-authorization-modal";
 import { DurationField, Field, InfoHint } from "./inheritance-settings-controls";
 import {
-    clampNumber,
     formatAddressPreview,
     formatDurationPreview,
     formatPlanDate,
@@ -45,37 +44,11 @@ import {
     getBeneficiaryShareError,
     getRecipientColor,
 } from "./inheritance-settings.utils";
+import { readCachedSmartAccount, cacheSmartAccount } from "./smart-account-cache";
+import { TokenImportDialog } from "./token-import-dialog";
 import { useInheritanceSettingsForm } from "./use-inheritance-settings-form";
 
 import type { Notice } from "@/features/dashboard/types";
-const smartAccountCacheKey = "riskguard.smartAccounts.v2";
-
-function readCachedSmartAccount(ownerAddress?: string) {
-    if (typeof window === "undefined" || !ownerAddress) {
-        return undefined;
-    }
-
-    try {
-        const cache = JSON.parse(window.localStorage.getItem(smartAccountCacheKey) ?? "{}") as Record<string, string>;
-        return cache[ownerAddress.toLowerCase()];
-    } catch {
-        return undefined;
-    }
-}
-
-function cacheSmartAccount(ownerAddress: string | undefined, smartAccountAddress: string) {
-    if (typeof window === "undefined" || !ownerAddress) {
-        return;
-    }
-
-    try {
-        const cache = JSON.parse(window.localStorage.getItem(smartAccountCacheKey) ?? "{}") as Record<string, string>;
-        cache[ownerAddress.toLowerCase()] = smartAccountAddress;
-        window.localStorage.setItem(smartAccountCacheKey, JSON.stringify(cache));
-    } catch {
-        // Local storage is only a UI hydration hint; Thirdweb remains the source of truth.
-    }
-}
 
 export function InheritanceSettings({
     actionLoading,
@@ -819,90 +792,24 @@ export function InheritanceSettings({
             </section>
 
             {checkInAuthorization ? (
-                <div className="profile-modal-overlay" role="presentation">
-                    <div aria-modal="true" className="profile-modal" role="dialog">
-                        <h3>Authorize Telegram check-in</h3>
-                        <p>
-                            RiskGuard needs your signature so the agent can send heartbeat check-ins from Telegram when you use /checkin.
-                        </p>
-                        <p>
-                            This does not transfer funds and does not give the agent permission to send, swap, or manage your assets.
-                        </p>
-                        <div className="profile-modal-actions">
-                            <Button onClick={() => resolveCheckInAuthorization(false)} type="button" variant="secondary">
-                                Cancel
-                            </Button>
-                            <Button
-                                className="confirm-button"
-                                onClick={() => resolveCheckInAuthorization(true)}
-                                type="button"
-                                variant="primary"
-                            >
-                                Continue to wallet
-                            </Button>
-                        </div>
-                    </div>
-                </div>
+                <CheckInAuthorizationModal onResolve={resolveCheckInAuthorization} />
             ) : null}
 
-            <DialogPrimitive.Root open={tokenDialogOpen} onOpenChange={(open) => {
-                setTokenDialogOpen(open);
-                if (!open) {
-                    setTokenSubmitted(false);
-                }
-            }}>
-                <DialogPrimitive.Portal>
-                    <DialogPrimitive.Overlay className="token-dialog-overlay" />
-                    <DialogPrimitive.Content className="token-dialog-content">
-                        <DialogPrimitive.Title>Import token</DialogPrimitive.Title>
-                        <p className="token-dialog-description">
-                            Add an ERC-20 asset that the smart account should distribute with this plan.
-                        </p>
-                        <Field
-                            error={tokenSubmitted ? tokenAddressError || undefined : undefined}
-                            id="token-contract-address"
-                            label="Token contract address"
-                        >
-                            <Input
-                                id="token-contract-address"
-                                onChange={(event) => setTokenDraft((current) => ({ ...current, address: event.target.value }))}
-                                ref={tokenAddressRef}
-                                value={tokenDraft.address}
-                            />
-                        </Field>
-                        <Field
-                            error={tokenSubmitted ? tokenSymbolError || undefined : undefined}
-                            id="token-symbol"
-                            label="Token symbol"
-                        >
-                            <Input
-                                id="token-symbol"
-                                maxLength={11}
-                                onChange={(event) => setTokenDraft((current) => ({ ...current, symbol: event.target.value.toUpperCase() }))}
-                                ref={tokenSymbolRef}
-                                value={tokenDraft.symbol}
-                            />
-                        </Field>
-                        <Field
-                            error={tokenSubmitted ? tokenDecimalsError || undefined : undefined}
-                            id="token-decimals"
-                            label="Token decimal"
-                        >
-                            <Input
-                                id="token-decimals"
-                                inputMode="numeric"
-                                onChange={(event) => setTokenDraft((current) => ({ ...current, decimals: clampNumber(event.target.value, 0, 255) }))}
-                                ref={tokenDecimalsRef}
-                                value={tokenDraft.decimals}
-                            />
-                        </Field>
-                        <div className="token-dialog-actions">
-                            <Button onClick={() => setTokenDialogOpen(false)} type="button" variant="secondary">Cancel</Button>
-                            <Button onClick={addToken} type="button" variant="primary">Add token</Button>
-                        </div>
-                    </DialogPrimitive.Content>
-                </DialogPrimitive.Portal>
-            </DialogPrimitive.Root>
+            <TokenImportDialog
+                addToken={addToken}
+                open={tokenDialogOpen}
+                setOpen={setTokenDialogOpen}
+                setTokenDraft={setTokenDraft}
+                setTokenSubmitted={setTokenSubmitted}
+                tokenAddressError={tokenAddressError}
+                tokenAddressRef={tokenAddressRef}
+                tokenDecimalsError={tokenDecimalsError}
+                tokenDecimalsRef={tokenDecimalsRef}
+                tokenDraft={tokenDraft}
+                tokenSubmitted={tokenSubmitted}
+                tokenSymbolError={tokenSymbolError}
+                tokenSymbolRef={tokenSymbolRef}
+            />
         </form>
     );
 }

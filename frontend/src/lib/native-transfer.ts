@@ -6,6 +6,7 @@ import {
   parseUnits,
 } from "ethers";
 import { estimateGasCost, prepareTransaction } from "thirdweb";
+
 import { sendRiskGuardedSmartTransaction } from "@/lib/riskguard-smart-account";
 import { somniaThirdwebChain, thirdwebClient } from "@/lib/thirdweb-client";
 
@@ -91,7 +92,6 @@ function buildThirdwebTransferTransaction(recipient: string, amountWei: bigint) 
     value: amountWei
   });
 }
-
 
 export async function estimateNativeTransfer(
   input: NativeTransferInput,
