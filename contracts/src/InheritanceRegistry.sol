@@ -14,6 +14,10 @@ interface IERC20Transfer {
 }
 
 interface ISmartAccountExecutor {
+    function execute(bytes32 mode, bytes calldata executionCalldata)
+        external
+        returns (bytes[] memory results);
+
     function executeBatch(
         address[] calldata targets,
         uint256[] calldata values,
@@ -49,12 +53,14 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     uint256 public constant BENEFICIARY_TIMELOCK = 2 days;
     uint256 public constant MAX_DISTRIBUTION_RETRIES = 3;
     uint256 public constant AGENT_SUBCOMMITTEE_SIZE = 3;
-    uint256 public constant MIN_HEARTBEAT_DURATION = 1 days;
+    // TEST ONLY: keep the inheritance demo fast. Restore to 1 days before production.
+    uint256 public constant MIN_HEARTBEAT_DURATION = 10 minutes;
     uint256 public constant MAX_DURATION = 3650 days;
     address public constant SOMNIA_REACTIVITY_PRECOMPILE =
         address(0x0000000000000000000000000000000000000100);
     bytes32 public constant SOMNIA_SCHEDULE_EVENT_TOPIC = keccak256("Schedule(uint256)");
     address public constant NATIVE_ASSET = address(0);
+    bytes32 public constant ERC7579_SINGLE_EXECUTION_MODE = bytes32(0);
     uint256 public constant DEFAULT_REACTIVITY_PRIORITY_FEE_PER_GAS = 2 gwei;
     uint256 public constant DEFAULT_REACTIVITY_MAX_FEE_PER_GAS = 10 gwei;
     uint256 public constant DEFAULT_REACTIVITY_GAS_LIMIT = 2_000_000;
@@ -800,6 +806,16 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
             targets[0] = token;
             values[0] = 0;
             data[0] = abi.encodeCall(IERC20Transfer.transfer, (beneficiary, amount));
+        }
+
+        try ISmartAccountExecutor(smartAccount).execute(
+            ERC7579_SINGLE_EXECUTION_MODE,
+            abi.encodePacked(targets[0], values[0], data[0])
+        ) {
+            return true;
+        } catch {
+            // Older/local mocks may only expose executeBatch; production Thirdweb
+            // ERC-7579 accounts use execute(bytes32,bytes).
         }
 
         try ISmartAccountExecutor(smartAccount).executeBatch(targets, values, data) {

@@ -8,6 +8,7 @@ import {
   agentApi,
   AgentApiError,
   type ApprovalEntry,
+  type ApprovalScanMeta,
   type ScanChainSummary,
   type ScanStatus
 } from "@/lib/agent-api";
@@ -18,7 +19,7 @@ import {
 } from "@/lib/wallet";
 
 const SCAN_REQUESTED_TOPIC = keccakId("ScanRequested(uint256,address,uint256,uint256)");
-const MAX_ITEMS_PER_SCAN = 20;
+const MAX_ITEMS_PER_SCAN = 50;
 const HISTORY_LIMIT = 20;
 const STORAGE_PREFIX = "riskguard.approval-scans";
 
@@ -30,6 +31,7 @@ export interface ApprovalAnalysisRecord {
   chainIds: number[];
   chainNames: string[];
   approvals: ApprovalEntry[];
+  scanMeta?: ApprovalScanMeta | undefined;
   scanStatus: ScanStatus | null;
   status: "analyzing" | "complete" | "empty" | "timeout";
   limitApplied?: boolean;
@@ -206,6 +208,8 @@ export function useApprovalScanner(
       setApprovals(result.approvals);
       if (result.approvals.length === 0) {
         setNote("No active approvals found on the selected chains.");
+      } else if (result.scanMeta?.partial) {
+        setNote("Explorer rate limit hit. Showing the latest cached or partially indexed approvals.");
       }
     } catch (caught) {
       const message = messageFromError(caught);
@@ -292,6 +296,9 @@ export function useApprovalScanner(
       });
       setApprovals(prepared.approvals);
       setListLoading(false);
+      if (prepared.scanMeta?.partial) {
+        setNote("Explorer rate limit hit. Showing the latest cached or partially indexed approvals.");
+      }
 
       if (prepared.approvals.length === 0) {
         const now = new Date().toISOString();
@@ -305,12 +312,36 @@ export function useApprovalScanner(
             .filter((chain) => selectedChainIds.includes(chain.chainId))
             .map((chain) => chain.name),
           approvals: [],
+          scanMeta: prepared.scanMeta,
           scanStatus: null,
           status: "empty",
           note: "No active approvals found on the selected chains."
         };
         updateHistory((current) => [record, ...current]);
         setNote("No active approvals found on the selected chains.");
+        setAnalyzedAt(now);
+        return;
+      }
+
+      if (prepared.scanStatus) {
+        const now = new Date().toISOString();
+        const record: ApprovalAnalysisRecord = {
+          id: createRecordId(),
+          walletAddress,
+          createdAt: now,
+          updatedAt: now,
+          chainIds: selectedChainIds,
+          chainNames: chains
+            .filter((chain) => selectedChainIds.includes(chain.chainId))
+            .map((chain) => chain.name),
+          approvals: prepared.approvals,
+          scanMeta: prepared.scanMeta,
+          scanStatus: prepared.scanStatus,
+          status: "complete",
+          limitApplied: Boolean(prepared.limitApplied)
+        };
+        updateHistory((current) => [record, ...current]);
+        setScanStatus(prepared.scanStatus);
         setAnalyzedAt(now);
         return;
       }
@@ -352,6 +383,7 @@ export function useApprovalScanner(
           .filter((chain) => selectedChainIds.includes(chain.chainId))
           .map((chain) => chain.name),
         approvals: prepared.approvals,
+        scanMeta: prepared.scanMeta,
         scanStatus: null,
         status: "analyzing",
         limitApplied: prepared.approvals.length > MAX_ITEMS_PER_SCAN

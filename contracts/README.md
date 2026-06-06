@@ -37,15 +37,15 @@ The previous standalone locked vault contract has been removed from the active c
 
 Current Somnia Testnet deployment:
 
-- `RiskGuardInheritanceRegistry`: `0xBaa6f77B9ea4E1ecaeEE7c64526bbb51d59E0e14`
+- `RiskGuardInheritanceRegistry`: `0xbD65E9Acc43edA8c26B7c6aFA111BDACfED455EC`
 - deployer: `0x64769A00fB002b7ED192834443C9c819565Ab702`
-- transaction: `0x1849eeebcc88c2315d9573b8e251c76b44661a20e2fedf7c017556dd11fb097a`
-- deployed: `2026-06-02`
+- transaction: `0x7740e45fa9da1f3e2b50d79ec99d5b96f99e4b07a4041e6b63fa39e96ffcbc86`
+- deployed: `2026-06-06`
 - Somnia LLM Inference agent configured: `12847293847561029384`
-- Somnia agent configuration transaction: `0x0566d5fa292e53407cdacd7c3d8c002db6c72b7516e0c0427870d5b409dcb2b8`
+- Somnia agent configuration transaction: `0x985e8f804ae96c323b9b48efd683d646363a75da8b16f92838e245e3bb707569`
 - Somnia agent reward per call: `0.1 STT`
-- Somnia agent reward configuration transaction: `0xb0fa37e34589e583e7f32a23f694721b6da0f341f02eca236f5238fd457fcc98`
-- Reactivity funding transaction: `0x48849791032e4b4a782585daa67738560feb250d6f6e521236883c1e863f4297` (`32 STT`)
+- Somnia agent reward configuration transaction: `0x431c007f863c4c924a61ef6cb8840f227c62c5078455a2f6a584a30bf3fef4e9`
+- Reactivity funding transaction: `0x829d1dc13c0e134bcf4297822892ca411a9a0b8c6bb56ff1b91f2515123ce848` (`1 STT`)
 
 RiskGuard hook approval gate deployment on Somnia Testnet:
 
@@ -191,7 +191,7 @@ The registry itself does not move funds until each user's smart account has auth
 - creating one active plan per smart account
 - rejecting a second active plan until cancellation
 - updating beneficiaries and timing rules
-- allowing `heartbeat = 1 day`, `grace = 0`, and `timelock = 0` for testnet
+- allowing `heartbeat = 10 minutes`, `grace = 0`, and `timelock = 0` for the fast testnet demo
 - cancelling plans and clearing beneficiaries
 - rejecting bad shares, self-beneficiaries, and invalid duration bounds
 - refreshing heartbeat deadlines with `checkIn()`
@@ -206,10 +206,10 @@ approval → allowed-UserOp path.
 `contracts/test/ApprovalRiskScanner.t.sol` covers the revoke.cash-style
 `ApprovalRiskScanner` (`src/riskguard/ApprovalRiskScanner.sol`):
 
-- `quoteScan` deposit math (`itemCount × 3 × _agentDeposit`)
-- `requestScan` firing the JSON-API + Parse-Website agents in parallel, then the
-  LLM-Inference agent on fan-in, ending in an `ItemScored` event
-- failed/timed-out stage callbacks still reaching a fail-safe inference score
+- `quoteScan` batch deposit math (`3 × _agentDeposit` for any non-zero item count)
+- `requestScan` storing up to 50 approvals, firing one JSON-API batch call and
+  one Parse-Website batch call, then one LLM-Inference batch call on fan-in
+- failed/timed-out batch callbacks still reaching a fail-safe inference score
 - duplicate/replayed callbacks (no-op + `UnknownAgentRequest`)
 - insufficient deposit and `OnlyAgentPlatform` guards
 
@@ -218,3 +218,12 @@ ApprovalRiskScanner) with `pnpm --dir contracts configure:agents`. The scanner i
 read-only (no revoke action) and runs on Somnia; approval **discovery** is done
 off-chain by the agent backend via each chain's Blockscout `getLogs` indexer
 (raw RPC `eth_getLogs` is capped at 1000 blocks on Somnia).
+
+Current ApprovalRiskScanner deployment:
+
+- `ApprovalRiskScanner`: `0xC35634383b0489aC8A3DD0DD396AF5373231a446`
+- deploy transaction: `0xa4f8da92523cff1036cf487761e4237d0fdded9988191db1b568233a00c97acd`
+- Somnia agent reward per call: `0.01 STT`
+- Somnia agent configuration transaction: `0x465b28149bf7e146834b0401b606a4ab77ba44aea383f824ae9b192d279d8ea3`
+- Somnia agent reward configuration transaction: `0x5dd3eee780cfadc111914c96692d081ac22b641cbd34975668a9bd2ff215497f`
+- batch quote after deploy: `0.18 STT` for any non-zero batch up to 50 approvals

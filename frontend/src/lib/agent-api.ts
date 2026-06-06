@@ -182,6 +182,24 @@ export interface ApprovalEntry {
   explorerSpenderUrl: string;
 }
 
+export interface ApprovalScanChainProgress {
+  chainId: number;
+  chainName: string;
+  latestBlock: number;
+  scannedFromBlock: number;
+  scannedToBlock: number;
+  targetFromBlock: number;
+  partial: boolean;
+  fromCache: boolean;
+  lastError?: string;
+  updatedAt: string;
+}
+
+export interface ApprovalScanMeta {
+  partial: boolean;
+  chains: ApprovalScanChainProgress[];
+}
+
 export interface ApprovalScanPrepare {
   scannerAddress: string;
   calldata: string;
@@ -196,11 +214,15 @@ export interface ApprovalScanPrepare {
 }
 
 export interface ApprovalAnalysisPrepare {
+  analysisMode?: "local" | "onchain";
   approvals: ApprovalEntry[];
+  scanMeta?: ApprovalScanMeta;
   scannerAddress?: string;
   calldata?: string;
   value?: string;
   deposit?: string;
+  limitApplied?: boolean;
+  scanStatus?: ScanStatus;
   items: Array<{
     chainId: number;
     spender: string;
@@ -371,7 +393,7 @@ export const agentApi = {
     request<PortfolioSnapshot | null>(`/api/portfolios/latest${walletQuery(walletAddress)}`),
   getApprovalChains: () => request<ScanChainSummary[]>("/api/approvals/chains"),
   listApprovals: (walletAddress: string, chainIds: number[]) =>
-    request<{ approvals: ApprovalEntry[] }>(
+    request<{ approvals: ApprovalEntry[]; scanMeta?: ApprovalScanMeta }>(
       `/api/approvals/list?walletAddress=${encodeURIComponent(walletAddress)}&chainIds=${encodeURIComponent(
         chainIds.join(",")
       )}`

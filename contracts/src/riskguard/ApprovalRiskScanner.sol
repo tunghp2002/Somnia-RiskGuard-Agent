@@ -35,17 +35,13 @@ interface ILLMInferenceAgent {
 
 /**
  * @title ApprovalRiskScanner
- * @notice revoke.cash-style risk scoring for token approvals, powered by three Somnia base
- *         agents. A single signed `requestScan` transaction escrows the agent deposits and, per
- *         approval item, fans out to the JSON API Request agent and the LLM Parse Website agent in
- *         parallel; once both return, an LLM Inference agent combines their findings into a 0-100
- *         risk score plus a short verdict. All agent calls are asynchronous: the Somnia agent
- *         platform calls back into this contract once consensus is reached.
+ * @notice revoke.cash-style approval scanner. A scan stores many approval rows but sends exactly
+ *         three batched agent requests total: JSON API, Parse Website, and LLM Inference.
  */
 contract ApprovalRiskScanner is ReentrancyGuard {
     uint256 public constant AGENT_SUBCOMMITTEE_SIZE = 3;
-    uint256 public constant MAX_ITEMS_PER_SCAN = 20;
-    uint256 public constant STAGES_PER_ITEM = 3;
+    uint256 public constant MAX_ITEMS_PER_SCAN = 50;
+    uint256 public constant STAGES_PER_SCAN = 3;
 
     address public admin;
     IAgentRequester public agentPlatform;
@@ -100,6 +96,13 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         uint256 agentDeposit;
         uint256 itemCount;
         uint256 completedCount;
+        bool jsonReturned;
+        bool webReturned;
+        bool inferenceFired;
+        bool inferenceSucceeded;
+        string jsonFacts;
+        string webFindings;
+        string inferenceSummary;
         bool exists;
     }
 
@@ -204,16 +207,23 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         if (items.length > MAX_ITEMS_PER_SCAN) revert TooManyItems();
 
         uint256 deposit = _agentDeposit();
-        uint256 required = items.length * STAGES_PER_ITEM * deposit;
+        uint256 required = STAGES_PER_SCAN * deposit;
         if (msg.value < required) revert InsufficientDeposit(required, msg.value);
 
         scanId = nextScanId++;
         scans[scanId] = Scan({
             requester: msg.sender,
-            escrow: items.length * deposit,
+            escrow: deposit,
             agentDeposit: deposit,
             itemCount: items.length,
             completedCount: 0,
+            jsonReturned: false,
+            webReturned: false,
+            inferenceFired: false,
+            inferenceSucceeded: false,
+            jsonFacts: "",
+            webFindings: "",
+            inferenceSummary: "",
             exists: true
         });
 
@@ -225,13 +235,12 @@ contract ApprovalRiskScanner is ReentrancyGuard {
             state.token = item.token;
             state.context = item.context;
             state.status = ItemStatus.Pending;
-
-            _fireJsonApi(scanId, i, item, deposit);
-            _fireParseWebsite(scanId, i, item, deposit);
-            // One deposit per item stays escrowed for the deferred inference call.
         }
 
-        // Refund any overpayment immediately so retained escrow only covers deferred inference.
+        _fireBatchJsonApi(scanId, items[0], deposit);
+        _fireBatchParseWebsite(scanId, items[0], deposit);
+
+        // Refund any overpayment immediately.
         uint256 excess = msg.value - required;
         if (excess > 0) {
             (bool ok,) = payable(msg.sender).call{ value: excess }("");
@@ -271,28 +280,17 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         ResponseStatus status,
         Request memory
     ) external nonReentrant {
-        (uint256 scanId, uint256 itemIndex) = _takeRequest(requestId, Stage.Inference);
-        ItemState storage state = _items[scanId][itemIndex];
-        if (state.status == ItemStatus.Complete) return;
+        (uint256 scanId,) = _takeRequest(requestId, Stage.Inference);
+        Scan storage scan = scans[scanId];
+        if (scan.completedCount == scan.itemCount) return;
 
         (string memory decoded, bool ok) = _decodeString(responses, status);
-        uint8 score;
-        string memory verdict;
-        if (ok) {
-            (score, verdict) = _scoreVerdict(decoded);
-        } else {
-            score = 100;
-            verdict = "inference failed - treat as high risk";
-        }
+        scan.inferenceSucceeded = ok;
+        scan.inferenceSummary = ok && bytes(decoded).length > 0
+            ? decoded
+            : "Agent batch summary unavailable; deterministic risk level used.";
+        scan.completedCount = scan.itemCount;
 
-        state.riskScore = score;
-        state.verdict = verdict;
-        state.status = ItemStatus.Complete;
-
-        Scan storage scan = scans[scanId];
-        scan.completedCount += 1;
-
-        emit ItemScored(scanId, itemIndex, state.spender, score, verdict);
         if (scan.completedCount == scan.itemCount) {
             emit ScanCompleted(scanId, scan.itemCount);
         }
@@ -302,7 +300,7 @@ contract ApprovalRiskScanner is ReentrancyGuard {
 
     function getItem(uint256 scanId, uint256 itemIndex) external view returns (ItemState memory) {
         if (!scans[scanId].exists) revert ScanNotFound();
-        return _items[scanId][itemIndex];
+        return _viewItem(scanId, itemIndex);
     }
 
     function getScan(uint256 scanId) external view returns (Scan memory) {
@@ -319,7 +317,7 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         if (!scan.exists) revert ScanNotFound();
         items = new ItemState[](scan.itemCount);
         for (uint256 i; i < scan.itemCount; ++i) {
-            items[i] = _items[scanId][i];
+            items[i] = _viewItem(scanId, i);
         }
     }
 
@@ -337,7 +335,7 @@ contract ApprovalRiskScanner is ReentrancyGuard {
     }
 
     function quoteScan(uint256 itemCount) external view returns (uint256 requiredDeposit) {
-        return itemCount * STAGES_PER_ITEM * _agentDeposit();
+        return itemCount == 0 ? 0 : STAGES_PER_SCAN * _agentDeposit();
     }
 
     function claimRefund(uint256 scanId) external nonReentrant {
@@ -356,38 +354,36 @@ contract ApprovalRiskScanner is ReentrancyGuard {
 
     // --- internal: agent dispatch ------------------------------------------------------------
 
-    function _fireJsonApi(uint256 scanId, uint256 i, ApprovalItem calldata item, uint256 deposit)
-        private
-    {
+    function _fireBatchJsonApi(
+        uint256 scanId,
+        ApprovalItem calldata firstItem,
+        uint256 deposit
+    ) private {
         bytes memory payload = abi.encodeWithSelector(
-            IJsonApiAgent.fetchString.selector, item.explorerApiUrl, item.explorerApiSelector
+            IJsonApiAgent.fetchString.selector,
+            firstItem.explorerApiUrl,
+            firstItem.explorerApiSelector
         );
         uint256 requestId = agentPlatform.createRequest{ value: deposit }(
             jsonApiAgentId, address(this), this.handleJsonApiResponse.selector, payload
         );
-        _recordRequest(requestId, scanId, i, Stage.JsonApi);
-        emit ItemStageRequested(scanId, i, Stage.JsonApi, requestId);
+        _recordRequest(requestId, scanId, 0, Stage.JsonApi);
+        emit ItemStageRequested(scanId, 0, Stage.JsonApi, requestId);
     }
 
-    function _fireParseWebsite(
+    function _fireBatchParseWebsite(
         uint256 scanId,
-        uint256 i,
-        ApprovalItem calldata item,
+        ApprovalItem calldata firstItem,
         uint256 deposit
     ) private {
         string[] memory options = new string[](0);
         bytes memory payload = abi.encodeWithSelector(
             IParseWebsiteAgent.ExtractString.selector,
-            "risk",
-            "Security reputation of a smart contract a wallet has approved as a token spender.",
+            "batch-risk",
+            "Security reputation and red flags for a batch of token approval spender contracts.",
             options,
-            string.concat(
-                "Inspect this contract page and report any red flags (unverified source, proxy, ",
-                "known scam/phishing label, drainer reports). Spender: ",
-                Strings.toHexString(item.spender),
-                ". Reply with a short phrase."
-            ),
-            item.explorerPageUrl,
+            _batchParsePrompt(scanId, firstItem.spender),
+            firstItem.explorerPageUrl,
             false,
             uint8(1),
             uint8(50)
@@ -395,29 +391,20 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         uint256 requestId = agentPlatform.createRequest{ value: deposit }(
             parseWebsiteAgentId, address(this), this.handleParseWebsiteResponse.selector, payload
         );
-        _recordRequest(requestId, scanId, i, Stage.ParseWebsite);
-        emit ItemStageRequested(scanId, i, Stage.ParseWebsite, requestId);
+        _recordRequest(requestId, scanId, 0, Stage.ParseWebsite);
+        emit ItemStageRequested(scanId, 0, Stage.ParseWebsite, requestId);
     }
 
-    function _fireInference(uint256 scanId, uint256 i) private {
-        ItemState storage state = _items[scanId][i];
+    function _fireBatchInference(uint256 scanId) private {
         Scan storage scan = scans[scanId];
-
-        // CEI: flip guards and draw escrow before the external createRequest call.
-        state.inferenceFired = true;
-        state.status = ItemStatus.Inferring;
         uint256 deposit = scan.agentDeposit;
         scan.escrow -= deposit;
+        scan.inferenceFired = true;
 
-        string[] memory allowedValues = new string[](5);
-        allowedValues[0] = "TRUSTED_LOW";
-        allowedValues[1] = "LOW";
-        allowedValues[2] = "MEDIUM";
-        allowedValues[3] = "HIGH";
-        allowedValues[4] = "CRITICAL";
+        string[] memory allowedValues = new string[](0);
         bytes memory payload = abi.encodeWithSelector(
             ILLMInferenceAgent.inferString.selector,
-            _inferencePrompt(state),
+            _batchInferencePrompt(scanId),
             _inferenceSystemPrompt(),
             false,
             allowedValues
@@ -425,35 +412,35 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         uint256 requestId = agentPlatform.createRequest{ value: deposit }(
             llmInferenceAgentId, address(this), this.handleInferenceResponse.selector, payload
         );
-        _recordRequest(requestId, scanId, i, Stage.Inference);
-        emit ItemStageRequested(scanId, i, Stage.Inference, requestId);
+        _recordRequest(requestId, scanId, 0, Stage.Inference);
+        emit ItemStageRequested(scanId, 0, Stage.Inference, requestId);
     }
 
     function _onStageReturn(
         uint256 scanId,
-        uint256 i,
+        uint256,
         Stage stage,
         string memory decoded,
         bool ok
     ) private {
-        ItemState storage state = _items[scanId][i];
+        Scan storage scan = scans[scanId];
         if (stage == Stage.JsonApi) {
-            if (state.jsonReturned) return;
-            state.jsonReturned = true;
-            state.jsonFacts = ok && bytes(decoded).length > 0
+            if (scan.jsonReturned) return;
+            scan.jsonReturned = true;
+            scan.jsonFacts = ok && bytes(decoded).length > 0
                 ? decoded
                 : "source facts unavailable";
         } else {
-            if (state.webReturned) return;
-            state.webReturned = true;
-            state.webFindings = ok && bytes(decoded).length > 0
+            if (scan.webReturned) return;
+            scan.webReturned = true;
+            scan.webFindings = ok && bytes(decoded).length > 0
                 ? decoded
                 : "website findings unavailable";
         }
-        emit ItemStageReturned(scanId, i, stage, ok);
+        emit ItemStageReturned(scanId, 0, stage, ok);
 
-        if (state.jsonReturned && state.webReturned && !state.inferenceFired) {
-            _fireInference(scanId, i);
+        if (scan.jsonReturned && scan.webReturned && !scan.inferenceFired) {
+            _fireBatchInference(scanId);
         }
     }
 
@@ -526,37 +513,157 @@ contract ApprovalRiskScanner is ReentrancyGuard {
 
     function _inferenceSystemPrompt() internal pure returns (string memory) {
         return string.concat(
-            "You are Somnia RiskGuard scoring the risk of a token approval (spender contract). ",
-            "Reply with exactly one allowed value: TRUSTED_LOW, LOW, MEDIUM, HIGH, or CRITICAL. ",
-            "Score the spender's ability and likelihood to misuse the approval, not the token brand. ",
-            "A trusted stablecoin token does not make an unknown spender safe. ",
-            "Unlimited allowance alone is usually MEDIUM for a verified/known spender with no red flags; ",
-            "use HIGH only when the spender is unknown, unverified, proxy-risky, has weak facts, or has warnings. ",
-            "Use TRUSTED_LOW only for clearly reputable/verified spenders with no warning signs and limited exposure."
+            "You are Somnia RiskGuard reviewing a batch of token approval spender contracts. ",
+            "Use the supplied JSON API facts, parsed website findings, and approval rows. ",
+            "Summarize red flags in short, clear language. Mention verification status, proxy risk, ",
+            "creator/age/activity signals, warning labels, repeated spenders, unlimited allowances, ",
+            "and NFT operator approvals when present. Do not invent facts that are not in the prompt."
         );
     }
 
-    function _inferencePrompt(ItemState storage state) internal view returns (string memory) {
-        return string.concat(
-            "Score the risk of this token approval.\nChain id: ",
-            Strings.toString(state.chainId),
-            "\nToken: ",
-            Strings.toHexString(state.token),
-            "\nSpender: ",
-            Strings.toHexString(state.spender),
-            "\nContext: ",
-            state.context,
-            "\nOn-chain/explorer facts: ",
-            bytes(state.jsonFacts).length == 0 ? "none" : state.jsonFacts,
-            "\nWebsite findings: ",
-            bytes(state.webFindings).length == 0 ? "none" : state.webFindings,
-            "\nDecision guide: TRUSTED_LOW=reputable verified spender and no red flags; ",
-            "LOW=limited approval or low exposure with no red flags; ",
-            "MEDIUM=unlimited approval to verified/no-warning spender; ",
-            "HIGH=unknown/unverified/proxy/weak-facts spender or unusual approval pattern; ",
-            "CRITICAL=known scam/phishing/drainer or explicit malicious finding.",
-            "\nReturn exactly TRUSTED_LOW, LOW, MEDIUM, HIGH, or CRITICAL."
+    function _batchParsePrompt(uint256 scanId, address firstSpender)
+        internal
+        view
+        returns (string memory prompt)
+    {
+        Scan storage scan = scans[scanId];
+        prompt = string.concat(
+            "Analyze this smart contract page on Somnia explorer as representative context ",
+            "for this approval batch. Extract key information: contract name, verification status ",
+            "(Verified/Unverified), proxy status, creator address, creation date, transaction count, ",
+            "and any warnings or labels. Summarize red flags in short and clear language. ",
+            "Batch size: ",
+            Strings.toString(scan.itemCount),
+            ". Representative spender address: ",
+            Strings.toHexString(firstSpender),
+            "."
         );
+    }
+
+    function _batchInferencePrompt(uint256 scanId) internal view returns (string memory prompt) {
+        Scan storage scan = scans[scanId];
+        prompt = string.concat(
+            "Review this approval batch. There are ",
+            Strings.toString(scan.itemCount),
+            " active approvals. Summarize the main risks in one short paragraph.\n",
+            "JSON API batch facts: ",
+            bytes(scan.jsonFacts).length == 0 ? "none" : scan.jsonFacts,
+            "\nParse Website batch findings: ",
+            bytes(scan.webFindings).length == 0 ? "none" : scan.webFindings,
+            "\nApproval rows:\n"
+        );
+        for (uint256 i; i < scan.itemCount; ++i) {
+            ItemState storage state = _items[scanId][i];
+            prompt = string.concat(
+                prompt,
+                "#",
+                Strings.toString(i),
+                " chain=",
+                Strings.toString(state.chainId),
+                " token=",
+                Strings.toHexString(state.token),
+                " spender=",
+                Strings.toHexString(state.spender),
+                " ",
+                state.context,
+                "\n"
+            );
+        }
+    }
+
+    function _viewItem(uint256 scanId, uint256 itemIndex)
+        internal
+        view
+        returns (ItemState memory item)
+    {
+        Scan storage scan = scans[scanId];
+        ItemState storage storedItem = _items[scanId][itemIndex];
+        item = storedItem;
+        item.jsonReturned = scan.jsonReturned;
+        item.webReturned = scan.webReturned;
+        item.inferenceFired = scan.inferenceFired;
+        item.jsonFacts = _displayJsonFacts(storedItem, scan);
+        item.webFindings = scan.completedCount == scan.itemCount
+            ? scan.inferenceSummary
+            : _displayWebFindings(scan);
+
+        if (scan.completedCount == scan.itemCount) {
+            item.status = ItemStatus.Complete;
+            (item.riskScore, item.verdict) = _contextVerdict(scanId, itemIndex);
+        } else if (scan.inferenceFired) {
+            item.status = ItemStatus.Inferring;
+        } else {
+            item.status = ItemStatus.Pending;
+        }
+    }
+
+    function _displayJsonFacts(ItemState storage item, Scan storage scan)
+        internal
+        view
+        returns (string memory)
+    {
+        if (bytes(scan.jsonFacts).length > 0
+            && keccak256(bytes(scan.jsonFacts)) != keccak256(bytes("source facts unavailable"))) {
+            return scan.jsonFacts;
+        }
+        return string.concat("Active approval context: ", item.context);
+    }
+
+    function _displayWebFindings(Scan storage scan) internal view returns (string memory) {
+        if (bytes(scan.webFindings).length > 0
+            && keccak256(bytes(scan.webFindings)) != keccak256(bytes("website findings unavailable"))) {
+            return scan.webFindings;
+        }
+        return "Website findings unavailable; using active approval context.";
+    }
+
+    function _contextVerdict(uint256 scanId, uint256 itemIndex)
+        internal
+        view
+        returns (uint8 score, string memory verdict)
+    {
+        ItemState storage state = _items[scanId][itemIndex];
+        bool nftOperator = _contains(state.context, "standard=erc721")
+            || _contains(state.context, "standard=erc1155");
+        bool unlimited = _contains(state.context, "allowance=unlimited")
+            || _contains(state.context, "allowance=all");
+        uint256 repeated = _spenderExposure(scanId, state.spender);
+
+        if (nftOperator || (unlimited && repeated >= 3)) {
+            return (80, "HIGH");
+        }
+        if (unlimited) {
+            return (50, "MEDIUM");
+        }
+        return (20, "LOW");
+    }
+
+    function _spenderExposure(uint256 scanId, address spender) internal view returns (uint256 count) {
+        Scan storage scan = scans[scanId];
+        for (uint256 i; i < scan.itemCount; ++i) {
+            if (_items[scanId][i].spender == spender) {
+                count += 1;
+            }
+        }
+    }
+
+    function _contains(string memory haystack, string memory needle) internal pure returns (bool) {
+        bytes memory hay = bytes(haystack);
+        bytes memory ndl = bytes(needle);
+        if (ndl.length == 0) return true;
+        if (ndl.length > hay.length) return false;
+
+        for (uint256 i; i <= hay.length - ndl.length; ++i) {
+            bool matched = true;
+            for (uint256 j; j < ndl.length; ++j) {
+                if (hay[i + j] != ndl[j]) {
+                    matched = false;
+                    break;
+                }
+            }
+            if (matched) return true;
+        }
+        return false;
     }
 
     function _scoreVerdict(string memory raw) internal pure returns (uint8 score, string memory verdict) {

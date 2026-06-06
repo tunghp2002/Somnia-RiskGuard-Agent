@@ -530,7 +530,7 @@ export function InheritanceSettings({
                     <section className="timing-stack">
                         <DurationField
                             duration={intervalDuration}
-                            help="How often you must renew the heartbeat before the switch starts moving toward inheritance. (Minimum 1 day)"
+                            help="Test mode currently saves 10 minutes on-chain regardless of this field."
                             label="Heartbeat interval"
                             namePrefix="interval"
                             onChange={setIntervalDuration}

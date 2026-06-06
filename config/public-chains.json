@@ -13,13 +13,13 @@
         "decimals": 18
       },
       "contracts": {
-        "inheritanceRegistry": "0xBaa6f77B9ea4E1ecaeEE7c64526bbb51d59E0e14",
+        "inheritanceRegistry": "0xbD65E9Acc43edA8c26B7c6aFA111BDACfED455EC",
         "riskGuardApprovalStore": "0xaCdBb69cb283Cb0feDA1a0D1a3a657D74c35e1e3",
         "riskGuardHookModule": "0x296Dc049b35447Aaf9Ea8996667eFB289F257289",
         "riskGuardValidatorModule": "0x99eAD10e154693c137B61cEFEB5487db136A342F",
         "riskGuardModularAccountFactory": "0xE5B5897f84AfE449B2Afc962AD8164425C89AD8D",
         "riskGuardDefaultValidator": "0x60A206E8927d8e2e02c48e4CdD499fCe66eB82a5",
-        "approvalRiskScanner": "0x5605e197c5DF3075e44a0De502507998cf6B1eb6"
+        "approvalRiskScanner": "0xC35634383b0489aC8A3DD0DD396AF5373231a446"
       }
     }
   },
@@ -30,7 +30,7 @@
       "chainId": 5031,
       "rpcUrl": "https://api.infra.mainnet.somnia.network",
       "blockExplorerUrl": "https://explorer.somnia.network/",
-      "explorerApiBaseUrl": "https://explorer.somnia.network/api/",
+      "explorerApiBaseUrl": "https://explorer.somnia.network/api",
       "explorerApiUrlTemplate": "https://explorer.somnia.network/api?module=contract&action=getsourcecode&address={spender}",
       "explorerApiSelector": "result.0.ContractName",
       "explorerPageUrlTemplate": "https://explorer.somnia.network/address/{spender}",
@@ -44,7 +44,7 @@
       "chainId": 50312,
       "rpcUrl": "https://dream-rpc.somnia.network",
       "blockExplorerUrl": "https://shannon-explorer.somnia.network/",
-      "explorerApiBaseUrl": "https://shannon-explorer.somnia.network/api/",
+      "explorerApiBaseUrl": "https://shannon-explorer.somnia.network/api",
       "explorerApiUrlTemplate": "https://shannon-explorer.somnia.network/api?module=contract&action=getsourcecode&address={spender}",
       "explorerApiSelector": "result.0.ContractName",
       "explorerPageUrlTemplate": "https://shannon-explorer.somnia.network/address/{spender}",

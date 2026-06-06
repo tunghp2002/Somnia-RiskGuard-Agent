@@ -354,11 +354,11 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
           .map((value) => Number(value.trim()))
           .filter((value) => Number.isInteger(value) && value > 0);
         const parsed = approvalListRequestSchema.parse({ walletAddress, chainIds });
-        const approvals = await dependencies.approvalScanner.discoverApprovals(
+        const approvals = await dependencies.approvalScanner.discoverApprovalsWithMetadata(
           parsed.walletAddress,
           parsed.chainIds
         );
-        sendJson(response, 200, success({ approvals }, requestId));
+        sendJson(response, 200, success(approvals, requestId));
         return;
       }
 

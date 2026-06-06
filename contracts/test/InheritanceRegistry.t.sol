@@ -54,6 +54,44 @@ contract MockSmartAccount {
     }
 }
 
+contract MockERC7579SmartAccount {
+    mapping(address => bool) public authorizedExecutor;
+
+    receive() external payable { }
+
+    function setAuthorizedExecutor(address executor, bool authorized) external {
+        authorizedExecutor[executor] = authorized;
+    }
+
+    function execute(bytes32, bytes calldata executionCalldata)
+        external
+        returns (bytes[] memory results)
+    {
+        require(authorizedExecutor[msg.sender], "unauthorized executor");
+        require(executionCalldata.length >= 52, "bad calldata");
+
+        address target;
+        uint256 value;
+        assembly {
+            target := shr(96, calldataload(executionCalldata.offset))
+            value := calldataload(add(executionCalldata.offset, 20))
+        }
+
+        bytes calldata data = executionCalldata[52:];
+        (bool ok, bytes memory result) = target.call{ value: value }(data);
+        require(ok, "account call failed");
+
+        results = new bytes[](1);
+        results[0] = result;
+    }
+}
+
+contract ExecuteBatchOnlySmartAccount is MockSmartAccount {
+    fallback() external payable {
+        revert("no erc7579 execute");
+    }
+}
+
 contract MockAgentPlatform {
     uint256 public constant REQUEST_DEPOSIT = 0.02 ether;
     uint256 public nextRequestId = 41;
@@ -213,6 +251,16 @@ contract InheritanceRegistryTest {
         vm.expectRevert(RiskGuardInheritanceRegistry.NotSmartAccount.selector);
         vm.prank(AGENT);
         registry.createPlan(_singleBeneficiary(), _nativeAsset(), 1 days, 0, 0);
+    }
+
+    function testAllowsTenMinuteHeartbeatForFastDemo() public {
+        vm.prank(address(smartAccount));
+        registry.createPlan(_singleBeneficiary(), _nativeAsset(), 10 minutes, 0, 0);
+
+        (RiskGuardInheritanceRegistry.Plan memory plan,,) = registry.getPlan(address(smartAccount));
+
+        assert(plan.heartbeatInterval == 10 minutes);
+        assert(registry.timelockEndsAt(address(smartAccount)) == 1_000 days + 10 minutes);
     }
 
     function testRejectsSecondActivePlanUntilCancelled() public {
@@ -588,6 +636,41 @@ contract InheritanceRegistryTest {
         (RiskGuardInheritanceRegistry.Plan memory plan,,) = registry.getPlan(address(smartAccount));
         assert(plan.state == RiskGuardInheritanceRegistry.PlanState.Executed);
         assert(plan.executedAt == 1_001 days);
+    }
+
+    function testExecuteInheritanceUsesERC7579Execute() public {
+        MockERC7579SmartAccount erc7579Account = new MockERC7579SmartAccount();
+        erc7579Account.setAuthorizedExecutor(address(registry), true);
+        vm.deal(address(erc7579Account), 10 ether);
+        token.mint(address(erc7579Account), 1_000 ether);
+
+        vm.prank(address(erc7579Account));
+        registry.createPlan(_beneficiaries60_40(), _nativeAndTokenAssets(), 10 minutes, 0, 0);
+
+        vm.warp(block.timestamp + 10 minutes);
+        registry.executeInheritance(address(erc7579Account));
+
+        assert(address(erc7579Account).balance == 0);
+        assert(BENEFICIARY_A.balance == 6 ether);
+        assert(BENEFICIARY_B.balance == 4 ether);
+        assert(token.balanceOf(address(erc7579Account)) == 0);
+        assert(token.balanceOf(BENEFICIARY_A) == 600 ether);
+        assert(token.balanceOf(BENEFICIARY_B) == 400 ether);
+    }
+
+    function testExecuteInheritanceFallsBackToExecuteBatch() public {
+        ExecuteBatchOnlySmartAccount batchAccount = new ExecuteBatchOnlySmartAccount();
+        batchAccount.setAuthorizedExecutor(address(registry), true);
+        vm.deal(address(batchAccount), 1 ether);
+
+        vm.prank(address(batchAccount));
+        registry.createPlan(_singleBeneficiary(), _nativeAsset(), 10 minutes, 0, 0);
+
+        vm.warp(block.timestamp + 10 minutes);
+        registry.executeInheritance(address(batchAccount));
+
+        assert(address(batchAccount).balance == 0);
+        assert(BENEFICIARY_A.balance == 1 ether);
     }
 
     function testExecutionFailsClosedWhenSmartAccountHasNotAuthorizedRegistry() public {

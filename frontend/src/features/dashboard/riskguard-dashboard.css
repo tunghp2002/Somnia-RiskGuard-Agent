@@ -3378,6 +3378,14 @@ label {
   color: var(--muted);
 }
 
+.approval-block-meta {
+  color: var(--muted);
+  display: grid;
+  font-size: 0.78rem;
+  gap: 0.25rem;
+  margin-top: -0.35rem;
+}
+
 .approval-table-wrap {
   max-height: min(520px, calc(100vh - 240px));
   overflow: auto;

@@ -138,8 +138,6 @@ const rawEnvSchema = z
   RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS: optionalEthereumAddressSchema,
   RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS: optionalEthereumAddressSchema,
   APPROVAL_SCANNER_CONTRACT_ADDRESS: optionalEthereumAddressSchema,
-  BLOCKSCOUT_API_KEY: optionalNonEmptyString,
-  BLOCKSCOUT_PRO_API_BASE_URL: optionalNonEmptyString.pipe(z.string().url().optional()),
   SOMNIA_AGENT_REQUESTER_ADDRESS: optionalEthereumAddressSchema,
   AUTO_CLAIM_ENABLED: booleanFromString,
   MAX_CLAIM_GAS_USD: numberFromString("MAX_CLAIM_GAS_USD").pipe(
@@ -191,7 +189,6 @@ export const secretEnvKeys = [
   "THIRDWEB_SECRET_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "SESSION_KEY_ENCRYPTION_KEY",
-  "BLOCKSCOUT_API_KEY",
   "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_WEBHOOK_SECRET"
 ] as const;
@@ -239,8 +236,6 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
   },
   approvalScanner: {
     contractAddress: env.APPROVAL_SCANNER_CONTRACT_ADDRESS,
-    blockscoutApiKey: env.BLOCKSCOUT_API_KEY,
-    blockscoutProApiBaseUrl: env.BLOCKSCOUT_PRO_API_BASE_URL,
     agentRequesterAddress: env.SOMNIA_AGENT_REQUESTER_ADDRESS
   },
   riskScore: {

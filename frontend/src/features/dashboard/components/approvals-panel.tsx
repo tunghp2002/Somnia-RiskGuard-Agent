@@ -19,13 +19,20 @@ import type {
   ScanItemStatus
 } from "@/lib/agent-api";
 
+const MAX_ITEMS_PER_SCAN = 50;
+
 function normalizedRiskLevel(item: ScanItemStatus | undefined): string {
   return item?.verdict?.trim().toUpperCase() || "";
 }
 
 function riskTone(item: ScanItemStatus | undefined): "ok" | "warn" | "bad" | "neutral" {
   const level = normalizedRiskLevel(item);
-  if (level === "CRITICAL" || level === "HIGH" || level === "UNKNOWN") {
+  if (
+    level === "CRITICAL" ||
+    level === "HIGH" ||
+    level === "UNKNOWN" ||
+    level.includes("FAILED")
+  ) {
     return "bad";
   }
   if (level === "MEDIUM") {
@@ -45,6 +52,9 @@ function riskLabel(item: ScanItemStatus | undefined): string {
     return item.status === "inferring" ? "Scoring" : "Analyzing";
   }
   const level = normalizedRiskLevel(item);
+  if (level.includes("FAILED")) {
+    return "HIGH";
+  }
   return level === "TRUSTED_LOW" ? "LOW" : level || "UNKNOWN";
 }
 
@@ -101,12 +111,29 @@ function chainLabel(record: ApprovalAnalysisRecord): string {
   return record.chainNames.length > 0 ? record.chainNames.join(", ") : "selected chains";
 }
 
+function formatBlockNumber(value: number): string {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
+}
+
+function recordBlockSummary(record: ApprovalAnalysisRecord): string {
+  const chains = record.scanMeta?.chains ?? [];
+  if (chains.length === 0) {
+    return "";
+  }
+  const fromBlock = Math.min(...chains.map((chain) => chain.scannedFromBlock));
+  const toBlock = Math.max(...chains.map((chain) => chain.scannedToBlock));
+  const partial = record.scanMeta?.partial || chains.some((chain) => chain.partial);
+  const cache = chains.some((chain) => chain.fromCache);
+  const suffix = partial ? "partial" : cache ? "cached" : "complete";
+  return `Indexed blocks ${formatBlockNumber(fromBlock)}-${formatBlockNumber(toBlock)} (${suffix}).`;
+}
+
 function recordStats(record: ApprovalAnalysisRecord) {
   const items = record.scanStatus?.items ?? [];
   const completeItems = items.filter((item) => item.status === "complete");
   const high = completeItems.filter((item) => {
     const level = normalizedRiskLevel(item);
-    return level === "HIGH" || level === "CRITICAL" || level === "UNKNOWN";
+    return level === "HIGH" || level === "CRITICAL" || level === "UNKNOWN" || level.includes("FAILED");
   }).length;
   const low = completeItems.filter((item) => {
     const level = normalizedRiskLevel(item);
@@ -120,24 +147,26 @@ function recordStats(record: ApprovalAnalysisRecord) {
     low,
     medium,
     analyzed: completeItems.length,
-    total: items.length || Math.min(record.approvals.length, 20)
+    total: items.length || Math.min(record.approvals.length, MAX_ITEMS_PER_SCAN)
   };
 }
 
 function recordSummary(record: ApprovalAnalysisRecord): string {
   const stats = recordStats(record);
+  const blockSummary = recordBlockSummary(record);
+  const suffix = blockSummary ? ` ${blockSummary}` : "";
 
   if (record.status === "empty") {
-    return `Fetched 0 active approvals across ${chainLabel(record)}.`;
+    return `Fetched 0 active approvals across ${chainLabel(record)}.${suffix}`;
   }
   if (record.status === "analyzing") {
-    return `Analyzing ${stats.total} of ${stats.fetched} approval${stats.fetched === 1 ? "" : "s"} across ${chainLabel(record)}.`;
+    return `Analyzing ${stats.total} of ${stats.fetched} approval${stats.fetched === 1 ? "" : "s"} across ${chainLabel(record)}.${suffix}`;
   }
   if (record.status === "timeout") {
-    return `Fetched ${stats.fetched} approvals. Analysis is still running: ${stats.analyzed}/${stats.total} complete.`;
+    return `Fetched ${stats.fetched} approvals. Analysis is still running: ${stats.analyzed}/${stats.total} complete.${suffix}`;
   }
 
-  return `Fetched ${stats.fetched} approvals. ${stats.analyzed} analyzed: ${stats.high} high, ${stats.medium} medium, ${stats.low} low.`;
+  return `Fetched ${stats.fetched} approvals. ${stats.analyzed} analyzed: ${stats.high} high, ${stats.medium} medium, ${stats.low} low.${suffix}`;
 }
 
 function recordTitle(record: ApprovalAnalysisRecord): string {
@@ -315,6 +344,17 @@ function ApprovalDetailModal({
     <Modal className="approval-detail-modal" overlayClassName="approval-modal-overlay">
       <h3>{recordTitle(record)}</h3>
       <p>{recordSummary(record)}</p>
+      {record.scanMeta?.chains.length ? (
+        <div className="approval-block-meta">
+          {record.scanMeta.chains.map((chain) => (
+            <span key={chain.chainId}>
+              {chain.chainName}: blocks {formatBlockNumber(chain.scannedFromBlock)}-
+              {formatBlockNumber(chain.scannedToBlock)}
+              {chain.partial ? " (partial)" : chain.fromCache ? " (cached)" : ""}
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       <div className="approval-table-wrap">
         <table className="approval-detail-table">
@@ -326,8 +366,8 @@ function ApprovalDetailModal({
               <th>Spender</th>
               <th>Allowance</th>
               <th>Risk level</th>
-              <th>Explorer facts</th>
-              <th>Web findings</th>
+              <th>On-chain facts</th>
+              <th>Batch notes</th>
             </tr>
           </thead>
           <tbody>

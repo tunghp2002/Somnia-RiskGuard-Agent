@@ -50,7 +50,6 @@ import {
 } from "@/lib/wallet";
 
 import {
-  durationToSeconds,
   errorMessage,
   formatAddress,
   isSimulationEvent,
@@ -74,6 +73,8 @@ import type {
 } from "@/lib/blockscout-api";
 
 const telegramConnectTimeoutMs = 60_000;
+// TEST ONLY: force inheritance plans to expire after 10 minutes regardless of UI input.
+const inheritanceTestHeartbeatSeconds = 600;
 
 function telegramUnlinkMessage(walletAddress: string) {
   return [
@@ -253,6 +254,16 @@ export function useRiskGuardDashboard() {
       return null;
     }
   }, [thirdwebSmartAccount]);
+
+  const getSelectedInheritanceSetupAccount = useCallback(async (smartAccountAddress: string) => {
+    try {
+      const account = await connectUserPaidThirdwebSmartAccount(smartAccountAddress, "default");
+      setSelectedSmartAccountAddress(account.address);
+      return account;
+    } catch {
+      return getSelectedRiskGuardSmartAccount(smartAccountAddress);
+    }
+  }, [getSelectedRiskGuardSmartAccount]);
 
   const receipts = useMemo(() => {
     const fromAudit = events.map((event) => ({
@@ -661,16 +672,6 @@ export function useRiskGuardDashboard() {
       (total, beneficiary) => total + beneficiary.sharePercent,
       0,
     );
-    const intervalSeconds = Number(
-      form.get("intervalSeconds") ?? durationToSeconds(form, "interval", 30),
-    );
-    const graceSeconds = Number(
-      form.get("graceSeconds") ?? durationToSeconds(form, "grace", 0),
-    );
-    const timelockSeconds = Number(
-      form.get("timelockSeconds") ?? durationToSeconds(form, "timelock", 0),
-    );
-
     if (beneficiaries.length === 0) {
       setNotice({
         tone: "warn",
@@ -703,23 +704,16 @@ export function useRiskGuardDashboard() {
       return;
     }
 
-    if (intervalSeconds < 86_400) {
-      setNotice({
-        tone: "warn",
-        message: "Heartbeat renewal window must be at least 1 day.",
-      });
-      return;
-    }
-
     setActionLoading("inheritance-plan");
     try {
       const planInput = {
         smartAccountAddress,
         beneficiaries,
         protectedAssets,
-        heartbeatIntervalSeconds: intervalSeconds,
-        gracePeriodSeconds: graceSeconds,
-        timelockPeriodSeconds: timelockSeconds,
+        // TEST ONLY: ignore the form duration so missed check-in auto-distributes after 10 minutes.
+        heartbeatIntervalSeconds: inheritanceTestHeartbeatSeconds,
+        gracePeriodSeconds: 0,
+        timelockPeriodSeconds: 0,
       };
       const riskGuardOptions = {
         ...(publicChain?.contracts.riskGuardValidatorModule
@@ -727,7 +721,7 @@ export function useRiskGuardDashboard() {
           : {}),
         walletAddress: wallet.address,
       };
-      const selectedRiskGuardAccount = await getSelectedRiskGuardSmartAccount(smartAccountAddress);
+      const selectedRiskGuardAccount = await getSelectedInheritanceSetupAccount(smartAccountAddress);
       const txHash =
         selectedRiskGuardAccount
           ? await saveInheritancePlanWithThirdweb(

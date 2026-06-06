@@ -1,5 +1,9 @@
-import { BrowserProvider, Contract } from "ethers";
-import { getContract, prepareContractCall } from "thirdweb";
+import { BrowserProvider, Contract, getAddress } from "ethers";
+import {
+  getContract,
+  prepareContractCall,
+  readContract,
+} from "thirdweb";
 
 import { sendRiskGuardedSmartTransaction } from "@/lib/riskguard-smart-account";
 import {
@@ -30,17 +34,36 @@ export interface RiskGuardedInheritanceOptions {
 }
 
 const inheritanceRegistryAbi = [
+  "function AGENT_SUBCOMMITTEE_SIZE() view returns (uint256)",
+  "function agentBudgetOf(address smartAccount) view returns (uint256)",
+  "function agentPlatform() view returns (address)",
+  "function agentRewardPerCall() view returns (uint256)",
   "function createPlan((address addr,uint256 shareBps)[] beneficiaries,(address token)[] protectedAssets,uint256 heartbeatInterval,uint256 gracePeriod,uint256 timelockPeriod)",
   "function updatePlan((address addr,uint256 shareBps)[] beneficiaries,(address token)[] protectedAssets,uint256 heartbeatInterval,uint256 gracePeriod,uint256 timelockPeriod)",
-  "function cancelPlan()"
+  "function cancelPlan()",
+  "function fundAgentBudget(address smartAccount) payable"
+];
+const smartAccountRolesAbi = [
+  "function grantRoles(address user,uint256 roles)",
+  "function hasAnyRole(address user,uint256 roles) view returns (bool)"
+];
+const agentRequesterAbi = [
+  "function getRequestDeposit() view returns (uint256)"
 ];
 
 // `createPlan` / `updatePlan` schedules Somnia reactivity on-chain, so keep a
 // generous explicit UserOp call gas limit without asking the bundler to chase it.
 const planWriteGasLimit = 5_000_000n;
 const cancelPlanGasLimit = 1_000_000n;
+const smartAccountAdminRole = 1n;
+const inheritanceDistributionAgentCalls = 1n;
+const zeroAddress = "0x0000000000000000000000000000000000000000";
 
 type RegistryContract = Contract & {
+  AGENT_SUBCOMMITTEE_SIZE(): Promise<bigint>;
+  agentBudgetOf(smartAccount: string): Promise<bigint>;
+  agentPlatform(): Promise<string>;
+  agentRewardPerCall(): Promise<bigint>;
   createPlan(
     beneficiaries: Array<{ addr: string; shareBps: bigint }>,
     protectedAssets: Array<{ token: string }>,
@@ -56,6 +79,15 @@ type RegistryContract = Contract & {
     timelockPeriod: bigint
   ): Promise<{ wait: () => Promise<unknown>; hash: string }>;
   cancelPlan(): Promise<{ wait: () => Promise<unknown>; hash: string }>;
+  fundAgentBudget(
+    smartAccount: string,
+    overrides: { value: bigint }
+  ): Promise<{ wait: () => Promise<unknown>; hash: string }>;
+};
+
+type SmartAccountRolesContract = Contract & {
+  grantRoles(user: string, roles: bigint): Promise<{ wait: () => Promise<unknown>; hash: string }>;
+  hasAnyRole(user: string, roles: bigint): Promise<boolean>;
 };
 
 export interface SmartAccountCandidate {
@@ -83,6 +115,11 @@ async function getRegistryContract(registryAddress: string) {
   const signer = await provider.getSigner();
 
   return new Contract(registryAddress, inheritanceRegistryAbi, signer) as RegistryContract;
+}
+
+async function getBrowserSigner() {
+  const provider = new BrowserProvider(getEthereumProvider());
+  return provider.getSigner();
 }
 
 async function getConnectedSignerAddress() {
@@ -122,6 +159,113 @@ async function waitForPlanTx(txPromise: Promise<{ wait: () => Promise<unknown>; 
   return tx.hash;
 }
 
+async function ensureRegistryExecutorRole(
+  smartAccountAddress: string,
+  registryAddress: string
+) {
+  const signer = await getBrowserSigner();
+  const smartAccountRoles = new Contract(
+    smartAccountAddress,
+    smartAccountRolesAbi,
+    signer
+  ) as SmartAccountRolesContract;
+  const hasRegistryRole = await smartAccountRoles
+    .hasAnyRole(registryAddress, smartAccountAdminRole)
+    .catch(() => false);
+
+  if (hasRegistryRole) {
+    return;
+  }
+
+  await waitForPlanTx(smartAccountRoles.grantRoles(registryAddress, smartAccountAdminRole));
+}
+
+async function fundInheritanceAgentBudget(
+  registryAddress: string,
+  smartAccountAddress: string,
+  topUp: bigint
+) {
+  if (topUp <= 0n) {
+    return;
+  }
+
+  const signer = await getBrowserSigner();
+  const registry = new Contract(registryAddress, inheritanceRegistryAbi, signer) as RegistryContract;
+  await waitForPlanTx(registry.fundAgentBudget(smartAccountAddress, { value: topUp }));
+}
+
+async function quoteInheritanceAgentTopUpWithEthers(
+  registryAddress: string,
+  smartAccountAddress: string
+) {
+  const provider = new BrowserProvider(getEthereumProvider());
+  const registry = new Contract(registryAddress, inheritanceRegistryAbi, provider) as RegistryContract;
+  const agentPlatform = getAddress(await registry.agentPlatform());
+
+  if (agentPlatform === getAddress(zeroAddress)) {
+    throw new Error("Inheritance Registry agent platform is not configured.");
+  }
+
+  const platform = new Contract(agentPlatform, agentRequesterAbi, provider);
+  const [requestDeposit, rewardPerCall, subcommitteeSize, currentBudget] = await Promise.all([
+    platform.getFunction("getRequestDeposit").staticCall(),
+    registry.agentRewardPerCall(),
+    registry.AGENT_SUBCOMMITTEE_SIZE(),
+    registry.agentBudgetOf(smartAccountAddress)
+  ]) as [bigint, bigint, bigint, bigint];
+  const requiredBudget =
+    (requestDeposit + (rewardPerCall * subcommitteeSize)) * inheritanceDistributionAgentCalls;
+
+  return currentBudget < requiredBudget ? requiredBudget - currentBudget : 0n;
+}
+
+async function quoteInheritanceAgentTopUpWithThirdweb(
+  registry: ReturnType<typeof getContract>,
+  smartAccountAddress: string
+) {
+  const agentPlatform = getAddress(await readContract({
+    contract: registry,
+    method: "function agentPlatform() view returns (address)",
+    params: []
+  }));
+
+  if (agentPlatform === getAddress(zeroAddress)) {
+    throw new Error("Inheritance Registry agent platform is not configured.");
+  }
+
+  const platform = getContract({
+    address: agentPlatform,
+    chain: somniaThirdwebChain,
+    client: thirdwebClient!
+  });
+  const [requestDeposit, rewardPerCall, subcommitteeSize, currentBudget] = await Promise.all([
+    readContract({
+      contract: platform,
+      method: "function getRequestDeposit() view returns (uint256)",
+      params: []
+    }),
+    readContract({
+      contract: registry,
+      method: "function agentRewardPerCall() view returns (uint256)",
+      params: []
+    }),
+    readContract({
+      contract: registry,
+      method: "function AGENT_SUBCOMMITTEE_SIZE() view returns (uint256)",
+      params: []
+    }),
+    readContract({
+      contract: registry,
+      method: "function agentBudgetOf(address smartAccount) view returns (uint256)",
+      params: [smartAccountAddress]
+    })
+  ]);
+  const requiredBudget =
+    (requestDeposit + (rewardPerCall * subcommitteeSize)) * inheritanceDistributionAgentCalls;
+
+  return currentBudget < requiredBudget ? requiredBudget - currentBudget : 0n;
+}
+
 export async function saveInheritancePlan(
   registryAddress: string,
   input: InheritancePlanInput,
@@ -148,6 +292,11 @@ export async function saveInheritancePlan(
     BigInt(input.gracePeriodSeconds),
     BigInt(input.timelockPeriodSeconds)
   ] as const;
+
+  await ensureRegistryExecutorRole(smartAccountAddress, registryAddress);
+
+  const topUp = await quoteInheritanceAgentTopUpWithEthers(registryAddress, smartAccountAddress);
+  await fundInheritanceAgentBudget(registryAddress, smartAccountAddress, topUp);
 
   const planTxHash = currentPlan?.active
     ? await waitForPlanTx(registry.updatePlan(...args))
@@ -179,6 +328,11 @@ export async function saveInheritancePlanWithThirdweb(
   });
   const beneficiaries = toBeneficiaryArgs(input.beneficiaries);
   const protectedAssets = input.protectedAssets.map((token) => ({ token }));
+  await ensureRegistryExecutorRole(smartAccountAddress, registryAddress);
+
+  const topUp = await quoteInheritanceAgentTopUpWithThirdweb(registry, smartAccountAddress);
+  await fundInheritanceAgentBudget(registryAddress, smartAccountAddress, topUp);
+
   const method = currentPlan?.active
     ? "function updatePlan((address addr,uint256 shareBps)[] beneficiaries,(address token)[] protectedAssets,uint256 heartbeatInterval,uint256 gracePeriod,uint256 timelockPeriod)"
     : "function createPlan((address addr,uint256 shareBps)[] beneficiaries,(address token)[] protectedAssets,uint256 heartbeatInterval,uint256 gracePeriod,uint256 timelockPeriod)";
