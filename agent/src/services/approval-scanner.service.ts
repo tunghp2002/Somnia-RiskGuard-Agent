@@ -14,6 +14,7 @@ import { loadScanChains, type ScanChain } from "../config/public-chain.js";
 const APPROVAL_EVENT_TOPIC = keccakId("Approval(address,address,uint256)");
 const APPROVAL_FOR_ALL_TOPIC = keccakId("ApprovalForAll(address,address,bool)");
 const UNLIMITED_THRESHOLD = (1n << 255n); // anything at/above this is treated as "unlimited"
+const DEFAULT_BLOCKSCOUT_PRO_API_BASE_URL = "https://api.blockscout.com/v2/api";
 
 interface ExplorerLog {
   address: string;
@@ -32,8 +33,9 @@ const erc20Interface = new Interface([
 const scannerInterface = new Interface([
   "function quoteScan(uint256 itemCount) view returns (uint256)",
   "function requestScan(tuple(uint256 chainId, address spender, address token, string context, string explorerApiUrl, string explorerApiSelector, string explorerPageUrl)[] items) payable returns (uint256 scanId)",
-  "function getScan(uint256 scanId) view returns (tuple(address requester, uint256 escrow, uint256 itemCount, uint256 completedCount, bool exists))",
+  "function getScan(uint256 scanId) view returns (tuple(address requester, uint256 escrow, uint256 agentDeposit, uint256 itemCount, uint256 completedCount, bool exists))",
   "function getItem(uint256 scanId, uint256 itemIndex) view returns (tuple(uint256 chainId, address spender, address token, string context, bool jsonReturned, bool webReturned, bool inferenceFired, uint8 status, string jsonFacts, string webFindings, uint8 riskScore, string verdict))",
+  "function getScanResult(uint256 scanId) view returns (tuple(address requester, uint256 escrow, uint256 agentDeposit, uint256 itemCount, uint256 completedCount, bool exists) scan, tuple(uint256 chainId, address spender, address token, string context, bool jsonReturned, bool webReturned, bool inferenceFired, uint8 status, string jsonFacts, string webFindings, uint8 riskScore, string verdict)[] items)",
   "function isScanComplete(uint256 scanId) view returns (bool)",
   "event ScanRequested(uint256 indexed scanId, address indexed requester, uint256 itemCount, uint256 escrow)"
 ]);
@@ -51,6 +53,7 @@ export const approvalScanPrepareRequestSchema = z.object({
         chainId: z.number().int().positive(),
         token: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
         spender: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+        name: z.string().optional(),
         symbol: z.string().optional(),
         standard: z.enum(["erc20", "erc721", "erc1155"]).optional(),
         allowance: z.string().optional(),
@@ -59,6 +62,11 @@ export const approvalScanPrepareRequestSchema = z.object({
     )
     .min(1)
     .max(20)
+});
+
+export const approvalAnalyzePrepareRequestSchema = z.object({
+  walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  chainIds: z.array(z.number().int().positive()).min(1)
 });
 
 export interface ApprovalEntry {
@@ -108,6 +116,7 @@ export interface ScanStatus {
 interface ScanTuple {
   requester: string;
   escrow: bigint;
+  agentDeposit: bigint;
   itemCount: bigint;
   completedCount: bigint;
   exists: boolean;
@@ -167,6 +176,7 @@ export class ApprovalScannerService {
   ): Promise<ApprovalEntry[]> {
     const owner = getAddress(walletAddress);
     const results: ApprovalEntry[] = [];
+    const failures: string[] = [];
 
     for (const chainId of chainIds) {
       const chain = this.chainsByChainId.get(chainId);
@@ -177,10 +187,16 @@ export class ApprovalScannerService {
         const chainApprovals = await this.discoverChainApprovals(owner, chain);
         results.push(...chainApprovals);
       } catch (error) {
-        // A single unreachable RPC must not fail the whole multi-chain scan.
-        // The chain is simply skipped; the caller still gets other chains.
-        void error;
+        const reason = error instanceof Error ? error.message : "unknown scanner error";
+        failures.push(`${chain.name}: ${reason}`);
       }
+    }
+
+    if (results.length === 0 && failures.length > 0) {
+      throw new ApprovalScannerServiceError(
+        "approval_discovery_failed",
+        `Could not scan approvals. ${failures.join("; ")}`
+      );
     }
 
     return results;
@@ -325,9 +341,52 @@ export class ApprovalScannerService {
     topic0: string,
     topic1: string
   ): Promise<ExplorerLog[]> {
+    const urls = this.buildExplorerLogUrls(chain, topic0, topic1);
+    const failures: string[] = [];
+
+    for (const url of urls) {
+      try {
+        return await this.fetchExplorerLogUrl(url);
+      } catch (error) {
+        failures.push(error instanceof Error ? error.message : "unknown explorer error");
+      }
+    }
+
+    throw new Error(`explorer logs unavailable (${failures.join("; ")})`);
+  }
+
+  private buildExplorerLogUrls(
+    chain: ScanChain,
+    topic0: string,
+    topic1: string
+  ): URL[] {
+    const apiKey = this.config.approvalScanner.blockscoutApiKey;
+    const urls: URL[] = [];
+
+    if (apiKey?.startsWith("proapi_")) {
+      const proUrl = new URL(
+        this.config.approvalScanner.blockscoutProApiBaseUrl
+          ?? DEFAULT_BLOCKSCOUT_PRO_API_BASE_URL
+      );
+      proUrl.searchParams.set("chain_id", String(chain.chainId));
+      this.appendLogQuery(proUrl, topic0, topic1);
+      proUrl.searchParams.set("apikey", apiKey);
+      urls.push(proUrl);
+    }
+
     // Blockscout Etherscan-compatible logs endpoint. It is DB-indexed, so it
     // returns the full history without the RPC's 1000-block range limit.
     const url = new URL(chain.explorerApiBaseUrl);
+    this.appendLogQuery(url, topic0, topic1);
+    if (apiKey && !apiKey.startsWith("proapi_")) {
+      url.searchParams.set("apikey", apiKey);
+    }
+    urls.push(url);
+
+    return urls;
+  }
+
+  private appendLogQuery(url: URL, topic0: string, topic1: string): void {
     url.searchParams.set("module", "logs");
     url.searchParams.set("action", "getLogs");
     url.searchParams.set("fromBlock", "0");
@@ -335,30 +394,37 @@ export class ApprovalScannerService {
     url.searchParams.set("topic0", topic0);
     url.searchParams.set("topic1", topic1);
     url.searchParams.set("topic0_1_opr", "and");
+  }
 
-    try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
-      if (!response.ok) {
-        return [];
-      }
-      const body = (await response.json()) as { result?: unknown };
-      if (!Array.isArray(body.result)) {
-        return [];
-      }
-      return body.result
-        .map((entry) => entry as { address?: unknown; topics?: unknown })
-        .filter(
-          (entry): entry is ExplorerLog =>
-            typeof entry.address === "string" && Array.isArray(entry.topics)
-        )
-        .map((entry) => ({
-          address: entry.address,
-          topics: entry.topics.filter((topic): topic is string => typeof topic === "string"),
-          data: ""
-        }));
-    } catch {
-      return [];
+  private async fetchExplorerLogUrl(url: URL): Promise<ExplorerLog[]> {
+    const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
+    const body = (await response.json()) as {
+      message?: unknown;
+      result?: unknown;
+      status?: unknown;
+    };
+    if (!Array.isArray(body.result)) {
+      const message = typeof body.message === "string" ? body.message : "invalid response";
+      const result = typeof body.result === "string" ? body.result : "";
+      if (/no records found/i.test(message) || /no records found/i.test(result)) {
+        return [];
+      }
+      throw new Error(message);
+    }
+    return body.result
+      .map((entry) => entry as { address?: unknown; topics?: unknown })
+      .filter(
+        (entry): entry is ExplorerLog =>
+          typeof entry.address === "string" && Array.isArray(entry.topics)
+      )
+      .map((entry) => ({
+        address: entry.address,
+        topics: entry.topics.filter((topic): topic is string => typeof topic === "string"),
+        data: ""
+      }));
   }
 
   public async prepareScan(
@@ -418,14 +484,57 @@ export class ApprovalScannerService {
     };
   }
 
+  public async prepareDiscoveredScan(
+    walletAddress: string,
+    chainIds: number[]
+  ): Promise<{
+    approvals: ApprovalEntry[];
+    scannerAddress?: string;
+    calldata?: string;
+    value?: string;
+    deposit?: string;
+    items: Array<{
+      chainId: number;
+      spender: string;
+      token: string;
+      context: string;
+    }>;
+  }> {
+    const approvals = await this.discoverApprovals(walletAddress, chainIds);
+    const selected = approvals.slice(0, 20);
+
+    if (selected.length === 0) {
+      return { approvals, items: [] };
+    }
+
+    const prepared = await this.prepareScan(
+      selected.map((entry) => ({
+        chainId: entry.chainId,
+        token: entry.token,
+        spender: entry.spender,
+        name: entry.name,
+        symbol: entry.symbol,
+        standard: entry.standard,
+        allowance: entry.allowance,
+        isUnlimited: entry.isUnlimited
+      }))
+    );
+
+    return { approvals, ...prepared };
+  }
+
   public async getScanStatus(scanId: number): Promise<ScanStatus> {
     const scannerAddress = this.requireScannerAddress();
     const provider = this.somniaProvider();
     const scanner = new Contract(scannerAddress, scannerInterface, provider);
 
     let scan: ScanTuple;
+    let itemTuples: ItemTuple[];
     try {
-      scan = (await scanner.getFunction("getScan")(scanId)) as unknown as ScanTuple;
+      [scan, itemTuples] = (await scanner.getFunction("getScanResult")(scanId)) as unknown as [
+        ScanTuple,
+        ItemTuple[]
+      ];
     } catch (error) {
       throw new ApprovalScannerServiceError(
         "scan_not_found",
@@ -437,8 +546,7 @@ export class ApprovalScannerService {
 
     const itemCount = Number(scan.itemCount);
     const items: ScanItemStatus[] = [];
-    for (let i = 0; i < itemCount; i += 1) {
-      const item = (await scanner.getFunction("getItem")(scanId, i)) as unknown as ItemTuple;
+    for (const [i, item] of itemTuples.entries()) {
       items.push({
         itemIndex: i,
         chainId: Number(item.chainId),
@@ -486,9 +594,12 @@ export class ApprovalScannerService {
     const allowanceLabel = approval.isUnlimited
       ? "unlimited"
       : approval.allowance ?? "unknown";
-    const context = `token=${approval.symbol ?? "TOKEN"} (${token}); standard=${
+    const tokenLabel = `${approval.symbol ?? "TOKEN"}${
+      approval.name ? ` / ${approval.name}` : ""
+    }`;
+    const context = `token=${tokenLabel} (${token}); standard=${
       approval.standard ?? "erc20"
-    }; allowance=${allowanceLabel}; chainId=${approval.chainId}`;
+    }; allowance=${allowanceLabel}; chainId=${approval.chainId}; riskTarget=spender contract; tokenReputationDoesNotMakeUnknownSpenderSafe=true`;
 
     return {
       chainId: approval.chainId,

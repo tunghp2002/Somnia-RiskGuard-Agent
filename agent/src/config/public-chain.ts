@@ -22,6 +22,7 @@ const publicChainSchema = z.object({
   chainId: z.number().int().positive(),
   rpcUrl: z.string().url(),
   blockExplorerUrl: z.string().url(),
+  blockscoutUrl: z.string().url().optional(),
   nativeCurrency: z.object({
     name: z.string().trim().min(1),
     symbol: z.string().trim().min(1),

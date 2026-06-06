@@ -87,13 +87,12 @@ interface BlockscoutList<T> {
   next_page_params?: Record<string, string | number | boolean | null> | null;
 }
 
-const somniaLogoUrl =
-  "https://cdn.discordapp.com/attachments/1306948682137993287/1509106005529854053/somnia.png?ex=6a1b43bd&is=6a19f23d&hm=3c42e4b1f65e61c501cd63663991efdfba31b582ea07c3a21f32ed29eb62bf05";
+const somniaLogoUrl = "/somnia-logo.png";
 
 export { somniaLogoUrl };
 
-function apiBase(blockExplorerUrl: string) {
-  return `${blockExplorerUrl.replace(/\/$/, "")}/api/v2`;
+function apiBase(blockscoutUrl: string) {
+  return `${blockscoutUrl.replace(/\/$/, "")}/api/v2`;
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -161,16 +160,16 @@ function formatUnits(value: string, decimals: number) {
 
 export async function fetchAccountAssets({
   accounts,
-  blockExplorerUrl,
+  blockscoutUrl,
   nativeDecimals,
   nativeSymbol,
 }: {
   accounts: Array<{ label: string; address: string }>;
-  blockExplorerUrl: string;
+  blockscoutUrl: string;
   nativeDecimals: number;
   nativeSymbol: string;
 }): Promise<AccountAssetSnapshot> {
-  const baseUrl = apiBase(blockExplorerUrl);
+  const baseUrl = apiBase(blockscoutUrl);
   const snapshots = await Promise.all(
     accounts.map(async (account) => {
       const encodedAddress = encodeURIComponent(account.address);

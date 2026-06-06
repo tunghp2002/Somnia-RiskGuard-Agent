@@ -18,7 +18,6 @@ import {
   type PortfolioSnapshot,
   type PublicChainMetadata,
   type Readiness,
-  type RiskSnapshot,
   type TelegramConnectSession,
   type UserRecord,
 } from "@/lib/agent-api";
@@ -154,7 +153,6 @@ export function useRiskGuardDashboard() {
   );
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
-  const [risk, setRisk] = useState<RiskSnapshot | null>(null);
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [inheritancePlan, setInheritancePlan] =
     useState<InheritancePlanStatus | null>(null);
@@ -270,7 +268,6 @@ export function useRiskGuardDashboard() {
 
   const clearWalletScopedState = useCallback(() => {
     setPortfolio(null);
-    setRisk(null);
     setInheritancePlan(null);
     setEvents([]);
     setTelegramSession(null);
@@ -291,7 +288,6 @@ export function useRiskGuardDashboard() {
         publicChainResult,
         readinessResult,
         portfolioResult,
-        riskResult,
         healthResult,
         inheritancePlanResult,
         eventsResult,
@@ -303,7 +299,6 @@ export function useRiskGuardDashboard() {
         walletAddress
           ? agentApi.getPortfolio(walletAddress)
           : Promise.resolve(null),
-        walletAddress ? agentApi.getRisk(walletAddress) : Promise.resolve(null),
         agentApi.getHealth(),
         activeInheritanceSmartAccount
           ? agentApi.getInheritancePlan(activeInheritanceSmartAccount)
@@ -340,12 +335,6 @@ export function useRiskGuardDashboard() {
       } else {
         failedReads.push("portfolio");
         setPortfolio(null);
-      }
-      if (riskResult.status === "fulfilled") {
-        setRisk(riskResult.value);
-      } else {
-        failedReads.push("risk");
-        setRisk(null);
       }
       if (healthResult.status === "fulfilled") {
         setHealth(healthResult.value);
@@ -1138,7 +1127,6 @@ export function useRiskGuardDashboard() {
       publicChain,
       readiness,
       receipts,
-      risk,
       accountOptions,
       selectedAssetAccountScope,
       riskGuardConfig,

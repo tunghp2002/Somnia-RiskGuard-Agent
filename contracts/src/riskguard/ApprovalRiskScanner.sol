@@ -97,21 +97,15 @@ contract ApprovalRiskScanner is ReentrancyGuard {
     struct Scan {
         address requester;
         uint256 escrow;
+        uint256 agentDeposit;
         uint256 itemCount;
         uint256 completedCount;
         bool exists;
     }
 
-    struct RequestRef {
-        uint256 scanId;
-        uint256 itemIndex;
-        Stage stage;
-        bool exists;
-    }
-
     mapping(uint256 => Scan) public scans;
     mapping(uint256 => mapping(uint256 => ItemState)) internal _items;
-    mapping(uint256 => RequestRef) public requestRef;
+    mapping(uint256 => uint256) private _requestRefs;
 
     error NotAdmin();
     error ZeroAddress();
@@ -216,7 +210,8 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         scanId = nextScanId++;
         scans[scanId] = Scan({
             requester: msg.sender,
-            escrow: required,
+            escrow: items.length * deposit,
+            agentDeposit: deposit,
             itemCount: items.length,
             completedCount: 0,
             exists: true
@@ -236,7 +231,7 @@ contract ApprovalRiskScanner is ReentrancyGuard {
             // One deposit per item stays escrowed for the deferred inference call.
         }
 
-        // Refund any overpayment immediately so escrow exactly matches reserved agent calls.
+        // Refund any overpayment immediately so retained escrow only covers deferred inference.
         uint256 excess = msg.value - required;
         if (excess > 0) {
             (bool ok,) = payable(msg.sender).call{ value: excess }("");
@@ -254,7 +249,7 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         ResponseStatus status,
         Request memory
     ) external nonReentrant {
-        (uint256 scanId, uint256 itemIndex) = _consumeRequest(requestId, Stage.JsonApi);
+        (uint256 scanId, uint256 itemIndex) = _takeRequest(requestId, Stage.JsonApi);
         (string memory decoded, bool ok) = _decodeString(responses, status);
         _onStageReturn(scanId, itemIndex, Stage.JsonApi, decoded, ok);
     }
@@ -265,7 +260,7 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         ResponseStatus status,
         Request memory
     ) external nonReentrant {
-        (uint256 scanId, uint256 itemIndex) = _consumeRequest(requestId, Stage.ParseWebsite);
+        (uint256 scanId, uint256 itemIndex) = _takeRequest(requestId, Stage.ParseWebsite);
         (string memory decoded, bool ok) = _decodeString(responses, status);
         _onStageReturn(scanId, itemIndex, Stage.ParseWebsite, decoded, ok);
     }
@@ -276,7 +271,7 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         ResponseStatus status,
         Request memory
     ) external nonReentrant {
-        (uint256 scanId, uint256 itemIndex) = _consumeRequest(requestId, Stage.Inference);
+        (uint256 scanId, uint256 itemIndex) = _takeRequest(requestId, Stage.Inference);
         ItemState storage state = _items[scanId][itemIndex];
         if (state.status == ItemStatus.Complete) return;
 
@@ -284,7 +279,7 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         uint8 score;
         string memory verdict;
         if (ok) {
-            (score, verdict) = _parseScore(decoded);
+            (score, verdict) = _scoreVerdict(decoded);
         } else {
             score = 100;
             verdict = "inference failed - treat as high risk";
@@ -315,6 +310,27 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         return scans[scanId];
     }
 
+    function getScanResult(uint256 scanId)
+        external
+        view
+        returns (Scan memory scan, ItemState[] memory items)
+    {
+        scan = scans[scanId];
+        if (!scan.exists) revert ScanNotFound();
+        items = new ItemState[](scan.itemCount);
+        for (uint256 i; i < scan.itemCount; ++i) {
+            items[i] = _items[scanId][i];
+        }
+    }
+
+    function getRequestRef(uint256 requestId)
+        external
+        view
+        returns (uint256 scanId, uint256 itemIndex, Stage stage, bool exists)
+    {
+        return _unpackRequestRef(_requestRefs[requestId]);
+    }
+
     function isScanComplete(uint256 scanId) external view returns (bool) {
         Scan memory scan = scans[scanId];
         return scan.exists && scan.completedCount == scan.itemCount;
@@ -343,15 +359,13 @@ contract ApprovalRiskScanner is ReentrancyGuard {
     function _fireJsonApi(uint256 scanId, uint256 i, ApprovalItem calldata item, uint256 deposit)
         private
     {
-        Scan storage scan = scans[scanId];
-        scan.escrow -= deposit;
         bytes memory payload = abi.encodeWithSelector(
             IJsonApiAgent.fetchString.selector, item.explorerApiUrl, item.explorerApiSelector
         );
         uint256 requestId = agentPlatform.createRequest{ value: deposit }(
             jsonApiAgentId, address(this), this.handleJsonApiResponse.selector, payload
         );
-        requestRef[requestId] = RequestRef(scanId, i, Stage.JsonApi, true);
+        _recordRequest(requestId, scanId, i, Stage.JsonApi);
         emit ItemStageRequested(scanId, i, Stage.JsonApi, requestId);
     }
 
@@ -361,8 +375,6 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         ApprovalItem calldata item,
         uint256 deposit
     ) private {
-        Scan storage scan = scans[scanId];
-        scan.escrow -= deposit;
         string[] memory options = new string[](0);
         bytes memory payload = abi.encodeWithSelector(
             IParseWebsiteAgent.ExtractString.selector,
@@ -383,7 +395,7 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         uint256 requestId = agentPlatform.createRequest{ value: deposit }(
             parseWebsiteAgentId, address(this), this.handleParseWebsiteResponse.selector, payload
         );
-        requestRef[requestId] = RequestRef(scanId, i, Stage.ParseWebsite, true);
+        _recordRequest(requestId, scanId, i, Stage.ParseWebsite);
         emit ItemStageRequested(scanId, i, Stage.ParseWebsite, requestId);
     }
 
@@ -394,10 +406,15 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         // CEI: flip guards and draw escrow before the external createRequest call.
         state.inferenceFired = true;
         state.status = ItemStatus.Inferring;
-        uint256 deposit = _agentDeposit();
+        uint256 deposit = scan.agentDeposit;
         scan.escrow -= deposit;
 
-        string[] memory allowedValues = new string[](0);
+        string[] memory allowedValues = new string[](5);
+        allowedValues[0] = "TRUSTED_LOW";
+        allowedValues[1] = "LOW";
+        allowedValues[2] = "MEDIUM";
+        allowedValues[3] = "HIGH";
+        allowedValues[4] = "CRITICAL";
         bytes memory payload = abi.encodeWithSelector(
             ILLMInferenceAgent.inferString.selector,
             _inferencePrompt(state),
@@ -408,7 +425,7 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         uint256 requestId = agentPlatform.createRequest{ value: deposit }(
             llmInferenceAgentId, address(this), this.handleInferenceResponse.selector, payload
         );
-        requestRef[requestId] = RequestRef(scanId, i, Stage.Inference, true);
+        _recordRequest(requestId, scanId, i, Stage.Inference);
         emit ItemStageRequested(scanId, i, Stage.Inference, requestId);
     }
 
@@ -423,11 +440,15 @@ contract ApprovalRiskScanner is ReentrancyGuard {
         if (stage == Stage.JsonApi) {
             if (state.jsonReturned) return;
             state.jsonReturned = true;
-            state.jsonFacts = decoded;
+            state.jsonFacts = ok && bytes(decoded).length > 0
+                ? decoded
+                : "source facts unavailable";
         } else {
             if (state.webReturned) return;
             state.webReturned = true;
-            state.webFindings = decoded;
+            state.webFindings = ok && bytes(decoded).length > 0
+                ? decoded
+                : "website findings unavailable";
         }
         emit ItemStageReturned(scanId, i, stage, ok);
 
@@ -438,15 +459,42 @@ contract ApprovalRiskScanner is ReentrancyGuard {
 
     // --- internal: helpers -------------------------------------------------------------------
 
-    function _consumeRequest(uint256 requestId, Stage expected)
+    function _recordRequest(uint256 requestId, uint256 scanId, uint256 itemIndex, Stage stage)
+        private
+    {
+        _requestRefs[requestId] = _packRequestRef(scanId, itemIndex, stage);
+    }
+
+    function _takeRequest(uint256 requestId, Stage expected)
         private
         returns (uint256 scanId, uint256 itemIndex)
     {
         if (msg.sender != address(agentPlatform)) revert OnlyAgentPlatform();
-        RequestRef memory ref = requestRef[requestId];
-        if (!ref.exists || ref.stage != expected) revert UnknownAgentRequest();
-        delete requestRef[requestId];
-        return (ref.scanId, ref.itemIndex);
+        Stage stage;
+        bool exists;
+        (scanId, itemIndex, stage, exists) = _unpackRequestRef(_requestRefs[requestId]);
+        if (!exists || stage != expected) revert UnknownAgentRequest();
+        delete _requestRefs[requestId];
+    }
+
+    function _packRequestRef(uint256 scanId, uint256 itemIndex, Stage stage)
+        private
+        pure
+        returns (uint256)
+    {
+        return (scanId << 40) | (itemIndex << 8) | uint8(stage);
+    }
+
+    function _unpackRequestRef(uint256 packed)
+        private
+        pure
+        returns (uint256 scanId, uint256 itemIndex, Stage stage, bool exists)
+    {
+        if (packed == 0) return (0, 0, Stage.None, false);
+        stage = Stage(uint8(packed));
+        itemIndex = (packed >> 8) & type(uint32).max;
+        scanId = packed >> 40;
+        exists = true;
     }
 
     function _decodeString(Response[] memory responses, ResponseStatus status)
@@ -479,9 +527,12 @@ contract ApprovalRiskScanner is ReentrancyGuard {
     function _inferenceSystemPrompt() internal pure returns (string memory) {
         return string.concat(
             "You are Somnia RiskGuard scoring the risk of a token approval (spender contract). ",
-            "Reply with exactly one line in the form NN|verdict where NN is an integer 0-100 ",
-            "(0 safest, 100 most dangerous) and verdict is a short phrase. ",
-            "Treat unlimited allowances, unverified contracts, proxies and scam reports as higher risk."
+            "Reply with exactly one allowed value: TRUSTED_LOW, LOW, MEDIUM, HIGH, or CRITICAL. ",
+            "Score the spender's ability and likelihood to misuse the approval, not the token brand. ",
+            "A trusted stablecoin token does not make an unknown spender safe. ",
+            "Unlimited allowance alone is usually MEDIUM for a verified/known spender with no red flags; ",
+            "use HIGH only when the spender is unknown, unverified, proxy-risky, has weak facts, or has warnings. ",
+            "Use TRUSTED_LOW only for clearly reputable/verified spenders with no warning signs and limited exposure."
         );
     }
 
@@ -499,45 +550,22 @@ contract ApprovalRiskScanner is ReentrancyGuard {
             bytes(state.jsonFacts).length == 0 ? "none" : state.jsonFacts,
             "\nWebsite findings: ",
             bytes(state.webFindings).length == 0 ? "none" : state.webFindings,
-            "\nReturn NN|verdict."
+            "\nDecision guide: TRUSTED_LOW=reputable verified spender and no red flags; ",
+            "LOW=limited approval or low exposure with no red flags; ",
+            "MEDIUM=unlimited approval to verified/no-warning spender; ",
+            "HIGH=unknown/unverified/proxy/weak-facts spender or unusual approval pattern; ",
+            "CRITICAL=known scam/phishing/drainer or explicit malicious finding.",
+            "\nReturn exactly TRUSTED_LOW, LOW, MEDIUM, HIGH, or CRITICAL."
         );
     }
 
-    function _parseScore(string memory raw) internal pure returns (uint8 score, string memory verdict) {
-        bytes memory data = bytes(raw);
-        uint256 i;
-        uint256 value;
-        bool sawDigit;
-        // Skip leading non-digits, then read the first integer.
-        while (i < data.length && (data[i] < 0x30 || data[i] > 0x39)) {
-            i++;
-        }
-        while (i < data.length && data[i] >= 0x30 && data[i] <= 0x39) {
-            sawDigit = true;
-            value = value * 10 + (uint8(data[i]) - 0x30);
-            if (value > 100) {
-                value = 100;
-            }
-            i++;
-        }
-        score = sawDigit ? uint8(value) : 50;
-
-        // Use the text after a '|' separator as the verdict, else the whole string.
-        uint256 sep = data.length;
-        for (uint256 j; j < data.length; ++j) {
-            if (data[j] == 0x7C) {
-                sep = j + 1;
-                break;
-            }
-        }
-        if (sep < data.length) {
-            bytes memory out = new bytes(data.length - sep);
-            for (uint256 k; k < out.length; ++k) {
-                out[k] = data[sep + k];
-            }
-            verdict = string(out);
-        } else {
-            verdict = raw;
-        }
+    function _scoreVerdict(string memory raw) internal pure returns (uint8 score, string memory verdict) {
+        bytes32 hash = keccak256(bytes(raw));
+        if (hash == keccak256(bytes("TRUSTED_LOW"))) return (10, "TRUSTED_LOW");
+        if (hash == keccak256(bytes("LOW"))) return (25, "LOW");
+        if (hash == keccak256(bytes("MEDIUM"))) return (50, "MEDIUM");
+        if (hash == keccak256(bytes("HIGH"))) return (75, "HIGH");
+        if (hash == keccak256(bytes("CRITICAL"))) return (95, "CRITICAL");
+        return (100, "UNKNOWN");
     }
 }

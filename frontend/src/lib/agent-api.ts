@@ -49,6 +49,7 @@ export interface PublicChainMetadata {
   chainId: number;
   rpcUrl: string;
   blockExplorerUrl: string;
+  blockscoutUrl?: string;
   nativeCurrency: {
     name: string;
     symbol: string;
@@ -159,20 +160,6 @@ export interface PortfolioSnapshot {
   createdAt: string;
 }
 
-export interface RiskSnapshot {
-  walletAddress: string;
-  status: "succeeded" | "failed";
-  score: number;
-  explanation: string;
-  provider: "demo" | "none";
-  threshold: {
-    alertThreshold: number;
-    exceeded: boolean;
-  };
-  safeNextSteps: string[];
-  createdAt: string;
-}
-
 export interface ScanChainSummary {
   id: string;
   name: string;
@@ -200,6 +187,20 @@ export interface ApprovalScanPrepare {
   calldata: string;
   value: string;
   deposit: string;
+  items: Array<{
+    chainId: number;
+    spender: string;
+    token: string;
+    context: string;
+  }>;
+}
+
+export interface ApprovalAnalysisPrepare {
+  approvals: ApprovalEntry[];
+  scannerAddress?: string;
+  calldata?: string;
+  value?: string;
+  deposit?: string;
   items: Array<{
     chainId: number;
     spender: string;
@@ -368,8 +369,6 @@ export const agentApi = {
     }),
   getPortfolio: (walletAddress?: string) =>
     request<PortfolioSnapshot | null>(`/api/portfolios/latest${walletQuery(walletAddress)}`),
-  getRisk: (walletAddress?: string) =>
-    request<RiskSnapshot | null>(`/api/risk-snapshots/latest${walletQuery(walletAddress)}`),
   getApprovalChains: () => request<ScanChainSummary[]>("/api/approvals/chains"),
   listApprovals: (walletAddress: string, chainIds: number[]) =>
     request<{ approvals: ApprovalEntry[] }>(
@@ -383,6 +382,7 @@ export const agentApi = {
       chainId: number;
       token: string;
       spender: string;
+      name?: string;
       symbol?: string;
       standard?: "erc20" | "erc721" | "erc1155";
       allowance?: string;
@@ -393,13 +393,13 @@ export const agentApi = {
       method: "POST",
       body: JSON.stringify(body)
     }),
-  getApprovalScanStatus: (scanId: number) =>
-    request<ScanStatus>(`/api/approvals/scan/status?scanId=${encodeURIComponent(String(scanId))}`),
-  analyzeRisk: (body: { walletAddress?: string }) =>
-    request<RiskSnapshot>("/api/risk-snapshots/analyze", {
+  prepareApprovalAnalysis: (body: { walletAddress: string; chainIds: number[] }) =>
+    request<ApprovalAnalysisPrepare>("/api/approvals/analyze/prepare", {
       method: "POST",
       body: JSON.stringify(body)
     }),
+  getApprovalScanStatus: (scanId: number) =>
+    request<ScanStatus>(`/api/approvals/scan/status?scanId=${encodeURIComponent(String(scanId))}`),
   getHeartbeat: (walletAddress: string) =>
     request<HeartbeatStatus | null>(`/api/heartbeats/status${walletQuery(walletAddress)}`),
   configureHeartbeat: (body: {

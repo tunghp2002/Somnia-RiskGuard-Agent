@@ -105,6 +105,7 @@ const rawEnvSchema = z
   PUBLIC_CHAIN_KEY: requiredNonEmptyString("PUBLIC_CHAIN_KEY"),
   PUBLIC_CHAIN_NAME: requiredNonEmptyString("PUBLIC_CHAIN_NAME"),
   PUBLIC_CHAIN_EXPLORER_URL: z.string().url("Must be a valid URL"),
+  PUBLIC_CHAIN_BLOCKSCOUT_URL: optionalNonEmptyString.pipe(z.string().url().optional()),
   PUBLIC_CHAIN_NATIVE_CURRENCY_NAME: requiredNonEmptyString("PUBLIC_CHAIN_NATIVE_CURRENCY_NAME"),
   PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL: requiredNonEmptyString("PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL"),
   PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS: integerFromString("PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS").pipe(
@@ -137,6 +138,8 @@ const rawEnvSchema = z
   RISK_GUARD_MODULAR_ACCOUNT_FACTORY_ADDRESS: optionalEthereumAddressSchema,
   RISK_GUARD_DEFAULT_VALIDATOR_ADDRESS: optionalEthereumAddressSchema,
   APPROVAL_SCANNER_CONTRACT_ADDRESS: optionalEthereumAddressSchema,
+  BLOCKSCOUT_API_KEY: optionalNonEmptyString,
+  BLOCKSCOUT_PRO_API_BASE_URL: optionalNonEmptyString.pipe(z.string().url().optional()),
   SOMNIA_AGENT_REQUESTER_ADDRESS: optionalEthereumAddressSchema,
   AUTO_CLAIM_ENABLED: booleanFromString,
   MAX_CLAIM_GAS_USD: numberFromString("MAX_CLAIM_GAS_USD").pipe(
@@ -188,6 +191,7 @@ export const secretEnvKeys = [
   "THIRDWEB_SECRET_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "SESSION_KEY_ENCRYPTION_KEY",
+  "BLOCKSCOUT_API_KEY",
   "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_WEBHOOK_SECRET"
 ] as const;
@@ -217,6 +221,7 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
     rpcUrl: env.SOMNIA_RPC_URL,
     chainId: Number(env.SOMNIA_CHAIN_ID),
     blockExplorerUrl: env.PUBLIC_CHAIN_EXPLORER_URL,
+    blockscoutUrl: env.PUBLIC_CHAIN_BLOCKSCOUT_URL,
     nativeCurrency: {
       name: env.PUBLIC_CHAIN_NATIVE_CURRENCY_NAME,
       symbol: env.PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL,
@@ -234,6 +239,8 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
   },
   approvalScanner: {
     contractAddress: env.APPROVAL_SCANNER_CONTRACT_ADDRESS,
+    blockscoutApiKey: env.BLOCKSCOUT_API_KEY,
+    blockscoutProApiBaseUrl: env.BLOCKSCOUT_PRO_API_BASE_URL,
     agentRequesterAddress: env.SOMNIA_AGENT_REQUESTER_ADDRESS
   },
   riskScore: {
@@ -312,6 +319,7 @@ export function validateConfig(
     PUBLIC_CHAIN_KEY: publicChain.key,
     PUBLIC_CHAIN_NAME: publicChain.name,
     PUBLIC_CHAIN_EXPLORER_URL: publicChain.blockExplorerUrl,
+    PUBLIC_CHAIN_BLOCKSCOUT_URL: publicChain.blockscoutUrl,
     PUBLIC_CHAIN_NATIVE_CURRENCY_NAME: publicChain.nativeCurrency.name,
     PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL: publicChain.nativeCurrency.symbol,
     PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS: String(publicChain.nativeCurrency.decimals)

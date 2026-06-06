@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApprovalScannerService,
@@ -39,6 +39,10 @@ const chains: ScanChain[] = [
 ];
 
 describe("approval scanner service", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("returns supported chains sorted by priority (Somnia first)", () => {
     const service = new ApprovalScannerService(createTestConfig(), chains);
     const supported = service.getSupportedChains();
@@ -55,6 +59,32 @@ describe("approval scanner service", () => {
       [999999]
     );
     expect(result).toEqual([]);
+  });
+
+  it("does not report an empty approval list when the explorer is rate limited", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          message: "Too many requests. Increase limits now at https://dev.blockscout.com",
+          result: null,
+          status: "0"
+        })
+      })) as unknown as typeof fetch
+    );
+
+    const service = new ApprovalScannerService(createTestConfig(), chains);
+
+    await expect(
+      service.discoverApprovals(
+        "0x1111111111111111111111111111111111111111",
+        [50312]
+      )
+    ).rejects.toMatchObject({
+      code: "approval_discovery_failed",
+      message: expect.stringContaining("explorer logs unavailable")
+    });
   });
 
   it("rejects prepareScan when the scanner contract is not configured", async () => {

@@ -139,28 +139,36 @@ contract ApprovalRiskScannerTest {
 
         uint256 deposit = scanner.quoteScan(1);
         uint256 scanId = scanner.requestScan{ value: deposit }(items);
+        uint256 perCallDeposit = deposit / 3;
+        ApprovalRiskScanner.Scan memory scan0 = scanner.getScan(scanId);
+        require(scan0.escrow == perCallDeposit, "deferred escrow mismatch");
 
         // Stages 1 & 2 fired now (request ids 1000, 1001); inference reserved.
-        (,,, bool exists0) = scanner.requestRef(1000);
-        (,,, bool exists1) = scanner.requestRef(1001);
+        (,,, bool exists0) = scanner.getRequestRef(1000);
+        (,,, bool exists1) = scanner.getRequestRef(1001);
         require(exists0 && exists1, "two stages not fired");
 
         // Return JSON first: no inference yet.
         platform.respond(scanner, 1000, "verified=true,age=400d", true);
         ApprovalRiskScanner.ItemState memory s1 = scanner.getItem(scanId, 0);
         require(s1.jsonReturned && !s1.webReturned && !s1.inferenceFired, "premature inference");
+        ApprovalRiskScanner.Scan memory scan1 = scanner.getScan(scanId);
+        require(scan1.escrow == perCallDeposit, "json return changed escrow");
 
         // Return website: fan-in fires inference (request id 1002).
         platform.respond(scanner, 1001, "no scam reports", true);
         ApprovalRiskScanner.ItemState memory s2 = scanner.getItem(scanId, 0);
         require(s2.inferenceFired, "inference not fired");
-        (, , ApprovalRiskScanner.Stage stage,) = scanner.requestRef(1002);
+        ApprovalRiskScanner.Scan memory scan2 = scanner.getScan(scanId);
+        require(scan2.escrow == 0, "inference escrow not spent");
+        (, , ApprovalRiskScanner.Stage stage,) = scanner.getRequestRef(1002);
         require(stage == ApprovalRiskScanner.Stage.Inference, "inference ref missing");
 
         // Inference returns score.
-        platform.respond(scanner, 1002, "18|low risk verified token router", true);
+        platform.respond(scanner, 1002, "TRUSTED_LOW", true);
         ApprovalRiskScanner.ItemState memory s3 = scanner.getItem(scanId, 0);
-        require(s3.riskScore == 18, "score parse failed");
+        require(s3.riskScore == 10, "score map failed");
+        require(keccak256(bytes(s3.verdict)) == keccak256(bytes("TRUSTED_LOW")), "verdict map failed");
         require(s3.status == ApprovalRiskScanner.ItemStatus.Complete, "not complete");
         require(scanner.isScanComplete(scanId), "scan not complete");
     }
@@ -176,6 +184,8 @@ contract ApprovalRiskScannerTest {
 
         ApprovalRiskScanner.ItemState memory s = scanner.getItem(scanId, 0);
         require(s.riskScore == 100, "fail-safe score wrong");
+        require(bytes(s.jsonFacts).length != 0, "json fallback missing");
+        require(bytes(s.webFindings).length != 0, "web fallback missing");
         require(s.status == ApprovalRiskScanner.ItemStatus.Complete, "not complete");
     }
 

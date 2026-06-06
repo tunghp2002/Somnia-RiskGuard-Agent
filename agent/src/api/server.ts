@@ -54,6 +54,7 @@ import {
 } from "../services/reward-claim.service.js";
 import { InheritanceRegistryClient } from "../integrations/somnia/inheritance-registry.client.js";
 import {
+  approvalAnalyzePrepareRequestSchema,
   approvalListRequestSchema,
   approvalScanPrepareRequestSchema,
   ApprovalScannerServiceError,
@@ -367,6 +368,19 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         }
         const body = approvalScanPrepareRequestSchema.parse(await readJsonBody(request));
         const prepared = await dependencies.approvalScanner.prepareScan(body.approvals);
+        sendJson(response, 200, success(prepared, requestId));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/approvals/analyze/prepare") {
+        if (!dependencies.approvalScanner) {
+          throw new ServerDependencyError("Approval scanner service is not configured");
+        }
+        const body = approvalAnalyzePrepareRequestSchema.parse(await readJsonBody(request));
+        const prepared = await dependencies.approvalScanner.prepareDiscoveredScan(
+          body.walletAddress,
+          body.chainIds
+        );
         sendJson(response, 200, success(prepared, requestId));
         return;
       }

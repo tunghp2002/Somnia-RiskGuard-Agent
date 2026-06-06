@@ -76,7 +76,7 @@ export function useAccountAssets({
           label: account.label,
           address: account.address ?? "",
         })),
-        blockExplorerUrl: publicChain.blockExplorerUrl,
+        blockscoutUrl: publicChain.blockscoutUrl ?? publicChain.blockExplorerUrl,
         nativeDecimals: publicChain.nativeCurrency.decimals,
         nativeSymbol: publicChain.nativeCurrency.symbol,
       })
