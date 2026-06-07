@@ -9,6 +9,8 @@ import { formatAddress } from "../utils";
 import type { DashboardSection } from "../types";
 import type { PublicChainMetadata } from "@/lib/agent-api";
 import type { BrowserWalletState } from "@/lib/wallet";
+import { somguardLogoUrl } from "@/lib/blockscout-api";
+import { AssetImage } from "./common";
 
 type NavigationProps = {
   activeSection: DashboardSection;
@@ -24,7 +26,10 @@ export function DashboardSidebar({
 }) {
   return (
     <aside className="rg-sidebar" aria-label="Primary sections">
-      <div className="sidebar-brand"><Shield size={18} /> RiskGuard</div>
+      <div className="sidebar-brand">
+        <AssetImage alt="SomGuard logo" src={somguardLogoUrl} />
+        <span>SomGuard</span>
+      </div>
       <nav className="sidebar-nav">
         {navItems.map((item) => (
           <Button
@@ -40,10 +45,6 @@ export function DashboardSidebar({
           </Button>
         ))}
       </nav>
-      <div className="sidebar-meta">
-        <span>{publicChain?.name ?? "Public chain loading"}</span>
-        <Badge>Somnia Testnet</Badge>
-      </div>
     </aside>
   );
 }
@@ -138,13 +139,5 @@ export function MobileDashboardNav({
         </section>
       ) : null}
     </>
-  );
-}
-
-export function FloatingRefreshButton({ onRefresh }: { onRefresh: () => void }) {
-  return (
-    <Button className="floating-refresh" onClick={onRefresh} type="button" variant="secondary">
-      <RefreshCw size={16} /> Refresh
-    </Button>
   );
 }

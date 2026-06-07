@@ -23,16 +23,33 @@
 }
 
 .sidebar-brand {
-  grid-template-columns: auto 1fr;
-  gap: 10px;
+  display: flex;
   align-items: center;
-  min-height: 40px;
+  justify-content: center;
+  gap: 6px;
+  min-height: 92px;
   border-bottom: 1px solid rgb(148 163 255 / 12%);
   color: rgb(248 250 252 / 96%);
-  font-weight: 800;
-  letter-spacing: 0;
   margin-bottom: 18px;
-  padding: 0 8px 14px;
+  padding: 0 8px 18px;
+}
+
+.sidebar-brand img {
+  width: 78px;
+  height: 78px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.sidebar-brand span {
+  color: rgb(248 250 252 / 94%);
+  font-family:
+    "Inter", "Geist", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+    sans-serif;
+  font-size: 1.42rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
 }
 
 .sidebar-nav {
@@ -1659,6 +1676,13 @@ label {
   padding: 22px;
 }
 
+.inheritance-current-screen {
+  display: grid;
+  place-items: center;
+  min-height: min(560px, calc(100vh - 190px));
+  padding: 22px;
+}
+
 .inheritance-main,
 .beneficiary-list {
   display: grid;
@@ -1770,7 +1794,7 @@ label {
 
 .account-budget-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(190px, 220px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   align-items: stretch;
 }
@@ -2125,6 +2149,15 @@ label {
   gap: 14px;
 }
 
+.current-plan-card-centered {
+  width: min(100%, 620px);
+  padding: 18px;
+}
+
+.current-plan-head {
+  margin-bottom: 4px;
+}
+
 .current-plan-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2154,6 +2187,36 @@ label {
   font-size: 0.8rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.current-plan-actions,
+.inheritance-edit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.current-plan-actions {
+  margin-top: 4px;
+}
+
+.current-plan-edit-button {
+  min-width: 120px;
+}
+
+.inheritance-edit-toolbar {
+  justify-content: flex-start;
+}
+
+.inheritance-back-button {
+  border-color: rgb(192 38 211 / 34%);
+  color: var(--soft);
+}
+
+.inheritance-back-button:hover:not(:disabled) {
+  border-color: rgb(192 38 211 / 58%);
+  background: rgb(192 38 211 / 14%);
 }
 
 .wallet-session-actions {

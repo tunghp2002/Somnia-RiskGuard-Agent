@@ -88,8 +88,9 @@ interface BlockscoutList<T> {
 }
 
 const somniaLogoUrl = "/somnia-logo.png";
+const somguardLogoUrl = "/somguard-logo.png";
 
-export { somniaLogoUrl };
+export { somniaLogoUrl, somguardLogoUrl };
 
 function apiBase(blockscoutUrl: string) {
   return `${blockscoutUrl.replace(/\/$/, "")}/api/v2`;

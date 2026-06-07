@@ -1,10 +1,12 @@
 import {
     Activity,
+    ArrowLeft,
     CalendarClock,
     Check,
     ChevronDown,
     Coins,
     Copy,
+    Edit3,
     Fingerprint,
     Lock,
     LockKeyhole,
@@ -144,6 +146,8 @@ export function InheritanceSettings({
         walletAddress
     });
     const hasActivePlan = Boolean(inheritancePlan?.active);
+    const [isEditingPlan, setIsEditingPlan] = useState(false);
+    const showingCurrentPlan = hasActivePlan && !isEditingPlan;
     const connectingForCancel = false;
     const connectingForSubmit = false;
     const planActionBusy = actionLoading === "inheritance-plan" || actionLoading === "inheritance-cancel";
@@ -384,6 +388,15 @@ export function InheritanceSettings({
         onInheritanceCancel();
     }
 
+    function handleEditPlan() {
+        setIsEditingPlan(true);
+    }
+
+    function handleBackToCurrentPlan() {
+        setSubmitAttempted(false);
+        setIsEditingPlan(false);
+    }
+
     async function handlePlanSubmit(event: SyntheticEvent<HTMLFormElement, SubmitEvent>) {
         onInheritanceSubmit(event);
     }
@@ -403,127 +416,155 @@ export function InheritanceSettings({
         }
     }
 
+    if (showingCurrentPlan) {
+        return (
+            <section className="inheritance-screen inheritance-current-screen">
+                <section className="inheritance-card current-plan-card current-plan-card-centered">
+                    <div className="inheritance-section-head current-plan-head">
+                        <div>
+                            <Radar size={19} />
+                            <h3>Current Smart Account Will</h3>
+                        </div>
+                        <strong className="contract-pill">Active</strong>
+                    </div>
+                    <div className="current-plan-grid">
+                        <span><small>Smart account</small><strong>{formatAddressPreview(inheritancePlan?.smartAccount)}</strong></span>
+                        <span><small>Registry</small><strong>{formatAddressPreview(inheritancePlan?.registryAddress)}</strong></span>
+                        <span><small>Protected assets</small><strong>{formatProtectedAssets(inheritancePlan)}</strong></span>
+                        <span><small>Next heartbeat deadline</small><strong>{formatPlanDate(inheritancePlan?.nextDeadlineAt)}</strong></span>
+                        <span><small>Executable after</small><strong>{formatPlanDate(inheritancePlan?.timelockEndsAt)}</strong></span>
+                    </div>
+                    <div className="current-plan-actions">
+                        <Button
+                            className="current-plan-edit-button"
+                            onClick={handleEditPlan}
+                            type="button"
+                            variant="primary"
+                        >
+                            <Edit3 size={16} />
+                            Edit
+                        </Button>
+                        <Button
+                            className="cancel-plan-button"
+                            disabled={actionLoading === "inheritance-cancel" || connectingForCancel}
+                            onClick={() => void handleCancelPlan()}
+                            type="button"
+                            variant="secondary"
+                        >
+                            {actionLoading === "inheritance-cancel" || connectingForCancel ? <Loader2 className="spin" size={16} /> : <Trash2 size={16} />}
+                            {connectingForCancel ? "Connecting account" : "Cancel"}
+                        </Button>
+                    </div>
+                </section>
+            </section>
+        );
+    }
+
     return (
         <form className="inheritance-screen" onSubmit={(event) => void handlePlanSubmit(event)}>
             <section className="inheritance-layout">
                 <div className="inheritance-main">
+                    {hasActivePlan ? (
+                        <div className="inheritance-edit-toolbar">
+                            <Button
+                                className="inheritance-back-button"
+                                onClick={handleBackToCurrentPlan}
+                                type="button"
+                                variant="secondary"
+                            >
+                                <ArrowLeft size={16} />
+                                Back
+                            </Button>
+                        </div>
+                    ) : null}
                     <section className="account-budget-row">
-                        {hasActivePlan ? (
-                            <section className="inheritance-card current-plan-card">
-                                <div className="inheritance-section-head">
-                                    <div>
-                                        <Radar size={19} />
-                                        <h3>Current Smart Account Will</h3>
-                                    </div>
-                                    <strong className="contract-pill">Active</strong>
+                        <section className="inheritance-card smart-account-card">
+                            <div className="inheritance-section-head">
+                                <div>
+                                    <WalletCards size={19} />
+                                    <h3>Smart Account</h3>
+                                    <InfoHint help="Choose the smart account that will hold and manage the inheritance plan." />
                                 </div>
-                                <div className="current-plan-grid">
-                                    <span><small>Smart account</small><strong>{formatAddressPreview(inheritancePlan?.smartAccount)}</strong></span>
-                                    <span><small>Registry</small><strong>{formatAddressPreview(inheritancePlan?.registryAddress)}</strong></span>
-                                    <span><small>Protected assets</small><strong>{formatProtectedAssets(inheritancePlan)}</strong></span>
-                                    <span><small>Next heartbeat deadline</small><strong>{formatPlanDate(inheritancePlan?.nextDeadlineAt)}</strong></span>
-                                    <span><small>Executable after</small><strong>{formatPlanDate(inheritancePlan?.timelockEndsAt)}</strong></span>
-                                </div>
-                                <Button
-                                    className="cancel-plan-button"
-                                    disabled={actionLoading === "inheritance-cancel" || connectingForCancel}
-                                    onClick={() => void handleCancelPlan()}
-                                    type="button"
-                                    variant="secondary"
-                                >
-                                    {actionLoading === "inheritance-cancel" || connectingForCancel ? <Loader2 className="spin" size={16} /> : <Trash2 size={16} />}
-                                    {connectingForCancel ? "Connecting account" : "Cancel"}
-                                </Button>
-                            </section>
-                        ) : (
-                            <section className="inheritance-card smart-account-card">
-                                <div className="inheritance-section-head">
-                                    <div>
-                                        <WalletCards size={19} />
-                                        <h3>Smart Account</h3>
-                                        <InfoHint help="Choose the smart account that will hold and manage the inheritance plan." />
-                                    </div>
-                                </div>
-                                <input name="smartAccountAddress" type="hidden" value={smartAccountAddress} />
-                                <div className="smart-account-selector">
-                                    <div className="smart-account-trigger-row">
-                                        <button
-                                            aria-expanded={smartAccountDropdownOpen}
-                                            className="smart-account-select-trigger"
-                                            onClick={toggleSmartAccountDropdown}
+                            </div>
+                            <input name="smartAccountAddress" type="hidden" value={smartAccountAddress} />
+                            <div className="smart-account-selector">
+                                <div className="smart-account-trigger-row">
+                                    <button
+                                        aria-expanded={smartAccountDropdownOpen}
+                                        className="smart-account-select-trigger"
+                                        onClick={toggleSmartAccountDropdown}
+                                        type="button"
+                                    >
+                                        <span>
+                                            {smartAccountAddress
+                                                ? formatAddressPreview(smartAccountAddress)
+                                                : autoConnectingSmartAccount ? "Connecting smart account" : "Select smart account"}
+                                        </span>
+                                        {discoveringSmartAccounts || (autoConnectingSmartAccount && !smartAccountAddress) ? <Loader2 className="spin" size={16} /> : <ChevronDown size={16} />}
+                                    </button>
+                                    {smartAccountAddress ? (
+                                        <Button
+                                            aria-label="Copy smart account address"
+                                            className="smart-account-copy-button"
+                                            onClick={() => void handleCopySmartAccount()}
                                             type="button"
+                                            variant="secondary"
                                         >
-                                            <span>
-                                                {smartAccountAddress
-                                                    ? formatAddressPreview(smartAccountAddress)
-                                                    : autoConnectingSmartAccount ? "Connecting smart account" : "Select smart account"}
-                                            </span>
-                                            {discoveringSmartAccounts || (autoConnectingSmartAccount && !smartAccountAddress) ? <Loader2 className="spin" size={16} /> : <ChevronDown size={16} />}
-                                        </button>
-                                        {smartAccountAddress ? (
-                                            <Button
-                                                aria-label="Copy smart account address"
-                                                className="smart-account-copy-button"
-                                                onClick={() => void handleCopySmartAccount()}
-                                                type="button"
-                                                variant="secondary"
-                                            >
-                                                {copiedSmartAccount ? <Check size={15} /> : <Copy size={15} />}
-                                            </Button>
-                                        ) : null}
-                                    </div>
-                                    {smartAccountDropdownOpen ? (
-                                        <div className="smart-account-select-content">
-                                            {discoveringSmartAccounts ? (
-                                                <div aria-label="Loading smart accounts" className="smart-account-select-loading">
-                                                    <Loader2 className="spin" size={16} />
-                                                </div>
-                                            ) : smartAccountDiscoveryError ? (
-                                                <div className="smart-account-select-empty">
-                                                    {smartAccountDiscoveryError}
-                                                </div>
-                                            ) : smartAccountCandidates.length === 0 ? (
-                                                <div className="smart-account-select-empty">
-                                                    <span>
-                                                        No smart account connected.{" "}
-                                                        <button
-                                                            className="smart-account-create-button"
-                                                            disabled={creatingSmartAccount}
-                                                            onClick={() => void handleCreateSmartAccount()}
-                                                            type="button"
-                                                        >
-                                                            {creatingSmartAccount ? "creating" : "Create a smart account"}
-                                                        </button>{" "}
-                                                        or{" "}
-                                                        <button
-                                                            onClick={() => void findSmartAccounts()}
-                                                            type="button"
-                                                        >
-                                                            reload
-                                                        </button>{" "}
-                                                        the wallet list.
-                                                    </span>
-                                                </div>
-                                            ) : smartAccountCandidates.map((candidate) => (
-                                                <button
-                                                    className="smart-account-select-item"
-                                                    key={candidate.address}
-                                                    onClick={() => {
-                                                        updateSmartAccountSelection(candidate.address);
-                                                        setSmartAccountDropdownOpen(false);
-                                                    }}
-                                                    type="button"
-                                                >
-                                                    <WalletCards size={15} />
-                                                    <span>{formatAddressPreview(candidate.address)}</span>
-                                                </button>
-                                            ))}
-                                        </div>
+                                            {copiedSmartAccount ? <Check size={15} /> : <Copy size={15} />}
+                                        </Button>
                                     ) : null}
                                 </div>
-                                {submitAttempted && smartAccountError ? <p className="field-error">{smartAccountError}</p> : null}
-                            </section>
-                        )}
+                                {smartAccountDropdownOpen ? (
+                                    <div className="smart-account-select-content">
+                                        {discoveringSmartAccounts ? (
+                                            <div aria-label="Loading smart accounts" className="smart-account-select-loading">
+                                                <Loader2 className="spin" size={16} />
+                                            </div>
+                                        ) : smartAccountDiscoveryError ? (
+                                            <div className="smart-account-select-empty">
+                                                {smartAccountDiscoveryError}
+                                            </div>
+                                        ) : smartAccountCandidates.length === 0 ? (
+                                            <div className="smart-account-select-empty">
+                                                <span>
+                                                    No smart account connected.{" "}
+                                                    <button
+                                                        className="smart-account-create-button"
+                                                        disabled={creatingSmartAccount}
+                                                        onClick={() => void handleCreateSmartAccount()}
+                                                        type="button"
+                                                    >
+                                                        {creatingSmartAccount ? "creating" : "Create a smart account"}
+                                                    </button>{" "}
+                                                    or{" "}
+                                                    <button
+                                                        onClick={() => void findSmartAccounts()}
+                                                        type="button"
+                                                    >
+                                                        reload
+                                                    </button>{" "}
+                                                    the wallet list.
+                                                </span>
+                                            </div>
+                                        ) : smartAccountCandidates.map((candidate) => (
+                                            <button
+                                                className="smart-account-select-item"
+                                                key={candidate.address}
+                                                onClick={() => {
+                                                    updateSmartAccountSelection(candidate.address);
+                                                    setSmartAccountDropdownOpen(false);
+                                                }}
+                                                type="button"
+                                            >
+                                                <WalletCards size={15} />
+                                                <span>{formatAddressPreview(candidate.address)}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : null}
+                            </div>
+                            {submitAttempted && smartAccountError ? <p className="field-error">{smartAccountError}</p> : null}
+                        </section>
 
                     </section>
 

@@ -8,7 +8,6 @@ import { ApprovalsPanel } from "./components/approvals-panel";
 import {
   DashboardHeader,
   DashboardSidebar,
-  FloatingRefreshButton,
   MobileDashboardNav
 } from "./components/dashboard-navigation";
 import { DashboardNoticeToast } from "./components/dashboard-notice-toast";
@@ -120,8 +119,6 @@ export function RiskGuardDashboard() {
           onMobileMoreChange={actions.setMobileMoreOpen}
           onSectionChange={actions.setActiveSection}
         />
-
-        <FloatingRefreshButton onRefresh={() => void actions.loadData()} />
       </div>
     </main>
   );
