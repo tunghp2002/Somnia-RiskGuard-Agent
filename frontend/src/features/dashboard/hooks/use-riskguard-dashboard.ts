@@ -12,6 +12,7 @@ import { useActiveAccount } from "thirdweb/react";
 
 import {
   agentApi,
+  bundledPublicChain,
   type AuditEvent,
   type InheritancePlanStatus,
   type Mode,
@@ -150,7 +151,7 @@ export function useRiskGuardDashboard() {
   const [wallet, setWallet] = useState<BrowserWalletState | null>(null);
   const mode: Mode = "testnet";
   const [publicChain, setPublicChain] = useState<PublicChainMetadata | null>(
-    null,
+    bundledPublicChain,
   );
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);

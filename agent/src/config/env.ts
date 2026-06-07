@@ -331,7 +331,7 @@ export function validateConfig(
 
 export function loadConfig(options: LoadConfigOptions = {}): AgentConfig {
   if (options.loadDotenv !== false) {
-    loadDotenvFile({ path: options.dotenvPath ?? defaultDotenvPath });
+    loadDotenvFile({ path: options.dotenvPath ?? defaultDotenvPath, quiet: true });
   }
 
   return validateConfig(options.env ?? process.env);

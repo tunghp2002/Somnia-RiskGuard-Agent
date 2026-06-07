@@ -10,6 +10,7 @@ const riskGuardValidatorAbi = [
   "event RiskAgentReviewCompleted(uint256 indexed requestId,address indexed smartAccount,bytes32 indexed txHash,bool approved,string reason)"
 ] as const;
 const riskGuardValidatorInterface = new Interface(riskGuardValidatorAbi);
+const maxLogBlockRange = 900;
 
 export class RiskGuardAgentReviewJob {
   private readonly provider: JsonRpcProvider;
@@ -43,7 +44,11 @@ export class RiskGuardAgentReviewJob {
 
     const contract = new Contract(validatorAddress, riskGuardValidatorAbi, this.provider);
     const event = contract.getEvent("RiskAgentReviewCompleted");
-    const logs = await contract.queryFilter(event, fromBlock, latestBlock);
+    const logs = [];
+    for (let start = fromBlock; start <= latestBlock; start += maxLogBlockRange) {
+      const end = Math.min(latestBlock, start + maxLogBlockRange - 1);
+      logs.push(...await contract.queryFilter(event, start, end));
+    }
     let notified = 0;
 
     for (const log of logs) {

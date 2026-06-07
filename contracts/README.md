@@ -37,10 +37,10 @@ The previous standalone locked vault contract has been removed from the active c
 
 Current Somnia Testnet deployment:
 
-- `RiskGuardInheritanceRegistry`: `0xbD65E9Acc43edA8c26B7c6aFA111BDACfED455EC`
+- `RiskGuardInheritanceRegistry`: `0xB2fc91F8677d2b3375b63f66d8744eFf27712420`
 - deployer: `0x64769A00fB002b7ED192834443C9c819565Ab702`
-- transaction: `0x7740e45fa9da1f3e2b50d79ec99d5b96f99e4b07a4041e6b63fa39e96ffcbc86`
-- deployed: `2026-06-06`
+- transaction: `0xd39b35d744d0c3415e156620372760953a44bb63d0f0c5e2c82338f5405481a6`
+- deployed: `2026-06-07`
 - Somnia LLM Inference agent configured: `12847293847561029384`
 - Somnia agent configuration transaction: `0x985e8f804ae96c323b9b48efd683d646363a75da8b16f92838e245e3bb707569`
 - Somnia agent reward per call: `0.1 STT`

@@ -14,6 +14,10 @@ interface IERC20Transfer {
 }
 
 interface ISmartAccountExecutor {
+    function executeFromExecutor(bytes32 mode, bytes calldata executionCalldata)
+        external
+        returns (bytes[] memory results);
+
     function execute(bytes32 mode, bytes calldata executionCalldata)
         external
         returns (bytes[] memory results);
@@ -27,6 +31,26 @@ interface ISmartAccountExecutor {
 
 interface ISomniaEventHandler {
     function onEvent(address emitter, bytes32[] calldata eventTopics, bytes calldata data) external;
+}
+
+interface ISomniaReactivityPrecompile {
+    struct SubscriptionData {
+        bytes32[4] eventTopics;
+        address origin;
+        address caller;
+        address emitter;
+        address handlerContractAddress;
+        bytes4 handlerFunctionSelector;
+        uint64 priorityFeePerGas;
+        uint64 maxFeePerGas;
+        uint64 gasLimit;
+        bool isGuaranteed;
+        bool isCoalesced;
+    }
+
+    function subscribe(SubscriptionData calldata subscriptionData)
+        external
+        returns (uint256 subscriptionId);
 }
 
 interface ILLMInferenceAgent {
@@ -52,9 +76,11 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     uint256 public constant MAX_PROTECTED_ASSETS = 20;
     uint256 public constant BENEFICIARY_TIMELOCK = 2 days;
     uint256 public constant MAX_DISTRIBUTION_RETRIES = 3;
+    uint256 public constant REACTIVITY_SCHEDULE_DRIFT_TOLERANCE_SECONDS = 300;
     uint256 public constant AGENT_SUBCOMMITTEE_SIZE = 3;
+    uint256 public constant MODULE_TYPE_EXECUTOR = 2;
     // TEST ONLY: keep the inheritance demo fast. Restore to 1 days before production.
-    uint256 public constant MIN_HEARTBEAT_DURATION = 10 minutes;
+    uint256 public constant MIN_HEARTBEAT_DURATION = 5 seconds;
     uint256 public constant MAX_DURATION = 3650 days;
     address public constant SOMNIA_REACTIVITY_PRECOMPILE =
         address(0x0000000000000000000000000000000000000100);
@@ -62,8 +88,8 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     address public constant NATIVE_ASSET = address(0);
     bytes32 public constant ERC7579_SINGLE_EXECUTION_MODE = bytes32(0);
     uint256 public constant DEFAULT_REACTIVITY_PRIORITY_FEE_PER_GAS = 2 gwei;
-    uint256 public constant DEFAULT_REACTIVITY_MAX_FEE_PER_GAS = 10 gwei;
-    uint256 public constant DEFAULT_REACTIVITY_GAS_LIMIT = 2_000_000;
+    uint256 public constant DEFAULT_REACTIVITY_MAX_FEE_PER_GAS = 0;
+    uint256 public constant DEFAULT_REACTIVITY_GAS_LIMIT = 31_000_000;
     address private constant LOCAL_REACTIVITY_PRECOMPILE_MOCK =
         address(0x0000000000000000000000000000000000010100);
 
@@ -122,6 +148,7 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     error DistributionNotReady();
     error MaxRetriesReached();
     error InvalidReactivityGasConfig();
+    error WithdrawFailed();
 
     mapping(address => Plan) public plans;
     mapping(address => Beneficiary[]) private _beneficiaries;
@@ -129,6 +156,7 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     mapping(address => uint256) public pendingBeneficiariesAt;
     mapping(address => ProtectedAsset[]) private _protectedAssets;
     mapping(address => mapping(address => mapping(address => bool))) public assetSettled;
+    mapping(address => bool) public executorInstalledFor;
     mapping(address => mapping(address => uint256)) public assetSnapshot;
     mapping(address => mapping(address => bool)) public assetSnapshotSet;
     mapping(address => bool) public distributionComplete;
@@ -202,6 +230,7 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     );
     event DistributionComplete(address indexed smartAccount);
     event ReactivityBudgetFunded(address indexed funder, uint256 amount, uint256 totalBalance);
+    event ReactivityBudgetWithdrawn(address indexed to, uint256 amount, uint256 remainingBalance);
     event ReactivityGasConfigUpdated(
         uint256 priorityFeePerGas, uint256 maxFeePerGas, uint256 gasLimit
     );
@@ -231,7 +260,13 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     }
 
     modifier onlyReactivityPrecompile() {
-        if (msg.sender != somniaReactivityPrecompile) revert OnlyReactivityPrecompile();
+        // Somnia's on-chain Reactivity currently dispatches Solidity handler
+        // calls as a transaction from the subscription owner contract to itself.
+        // Keep the documented precompile caller path too so this remains
+        // compatible if the runtime changes to direct precompile calls.
+        if (msg.sender != somniaReactivityPrecompile && msg.sender != address(this)) {
+            revert OnlyReactivityPrecompile();
+        }
         _;
     }
 
@@ -246,6 +281,26 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         emit ReactivityBudgetFunded(msg.sender, msg.value, address(this).balance);
     }
 
+    function onInstall(bytes calldata) external {
+        executorInstalledFor[msg.sender] = true;
+    }
+
+    function onUninstall(bytes calldata) external {
+        delete executorInstalledFor[msg.sender];
+    }
+
+    function moduleTypeId() external pure returns (uint256) {
+        return MODULE_TYPE_EXECUTOR;
+    }
+
+    function isModuleType(uint256 moduleType) external pure returns (bool) {
+        return moduleType == MODULE_TYPE_EXECUTOR;
+    }
+
+    function isInitialized(address smartAccount) external view returns (bool) {
+        return executorInstalledFor[smartAccount];
+    }
+
     function createPlan(
         Beneficiary[] calldata beneficiaries,
         ProtectedAsset[] calldata protectedAssets,
@@ -253,7 +308,28 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         uint256 gracePeriod,
         uint256 timelockPeriod
     ) external {
-        address smartAccount = msg.sender;
+        _createPlan(msg.sender, beneficiaries, protectedAssets, heartbeatInterval, gracePeriod, timelockPeriod);
+    }
+
+    function createPlanFor(
+        address smartAccount,
+        Beneficiary[] calldata beneficiaries,
+        ProtectedAsset[] calldata protectedAssets,
+        uint256 heartbeatInterval,
+        uint256 gracePeriod,
+        uint256 timelockPeriod
+    ) external onlyAdmin {
+        _createPlan(smartAccount, beneficiaries, protectedAssets, heartbeatInterval, gracePeriod, timelockPeriod);
+    }
+
+    function _createPlan(
+        address smartAccount,
+        Beneficiary[] calldata beneficiaries,
+        ProtectedAsset[] calldata protectedAssets,
+        uint256 heartbeatInterval,
+        uint256 gracePeriod,
+        uint256 timelockPeriod
+    ) private {
         _requireSmartAccount(smartAccount);
         if (plans[smartAccount].state == PlanState.Active) revert ActivePlanExists();
 
@@ -361,6 +437,17 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         emit AgentBudgetFunded(msg.value, agentBudgetOf[smartAccount]);
     }
 
+    function withdrawReactivityBudget(address payable to, uint256 amount)
+        external
+        onlyAdmin
+        nonReentrant
+    {
+        if (to == address(0)) revert ZeroAddress();
+        (bool ok,) = to.call{ value: amount }("");
+        if (!ok) revert WithdrawFailed();
+        emit ReactivityBudgetWithdrawn(to, amount, address(this).balance);
+    }
+
     function setAgentRewardPerCall(uint256 newReward) external onlyAdmin {
         agentRewardPerCall = newReward;
         emit AgentRewardPerCallUpdated(newReward);
@@ -371,7 +458,13 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
         uint256 maxFeePerGas,
         uint256 gasLimit
     ) external onlyAdmin {
-        if (priorityFeePerGas == 0 || maxFeePerGas < priorityFeePerGas || gasLimit == 0) {
+        if (
+            priorityFeePerGas == 0
+                || (maxFeePerGas != 0 && maxFeePerGas < priorityFeePerGas)
+                || gasLimit == 0
+                || priorityFeePerGas > type(uint64).max || maxFeePerGas > type(uint64).max
+                || gasLimit > type(uint64).max
+        ) {
             revert InvalidReactivityGasConfig();
         }
 
@@ -561,7 +654,7 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
             return;
         }
 
-        uint256 timestampMs = uint256(eventTopics[1]);
+        uint256 timestampMs = _resolveScheduleTimestampMs(uint256(eventTopics[1]));
         address[] storage smartAccounts = _scheduledSmartAccounts[timestampMs];
         if (smartAccounts.length == 0) {
             emit ReactiveDistributionSkipped(address(0), "unknown schedule");
@@ -580,10 +673,11 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
                 continue;
             }
 
-            (bool requested, uint256 requestId) =
-                _requestDistributionAgentFromReactivity(smartAccount);
-            if (requested) {
-                emit ReactiveDistributionAgentRequested(smartAccount, requestId);
+            uint256 settled = _executeDistribution(smartAccount, true);
+            if (settled == 0) {
+                emit ReactiveDistributionSkipped(smartAccount, "no assets settled");
+            } else {
+                emit ReactiveDistributionSucceeded(smartAccount, settled);
             }
         }
     }
@@ -808,14 +902,22 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
             data[0] = abi.encodeCall(IERC20Transfer.transfer, (beneficiary, amount));
         }
 
+        try ISmartAccountExecutor(smartAccount).executeFromExecutor(
+            ERC7579_SINGLE_EXECUTION_MODE,
+            abi.encodePacked(targets[0], values[0], data[0])
+        ) {
+            return true;
+        } catch {
+            // Production ERC-7579 executor modules use executeFromExecutor.
+        }
+
         try ISmartAccountExecutor(smartAccount).execute(
             ERC7579_SINGLE_EXECUTION_MODE,
             abi.encodePacked(targets[0], values[0], data[0])
         ) {
             return true;
         } catch {
-            // Older/local mocks may only expose executeBatch; production Thirdweb
-            // ERC-7579 accounts use execute(bytes32,bytes).
+            // Older/local mocks may only expose executeBatch.
         }
 
         try ISmartAccountExecutor(smartAccount).executeBatch(targets, values, data) {
@@ -961,32 +1063,48 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
 
         bytes32[4] memory eventTopics =
             [SOMNIA_SCHEDULE_EVENT_TOPIC, bytes32(timestampMs), bytes32(0), bytes32(0)];
-        bytes memory payload = abi.encodeWithSelector(
-            bytes4(
-                keccak256(
-                    "subscribe((bytes32[4],address,address,address,address,bytes4,uint256,uint256,uint256,bool,bool))"
-                )
-            ),
-            eventTopics,
-            address(0),
-            address(0),
-            somniaReactivityPrecompile,
-            address(this),
-            ISomniaEventHandler.onEvent.selector,
-            reactivityPriorityFeePerGas,
-            reactivityMaxFeePerGas,
-            reactivityGasLimit,
-            true,
-            false
-        );
+        ISomniaReactivityPrecompile.SubscriptionData memory subscriptionData =
+            ISomniaReactivityPrecompile.SubscriptionData({
+                eventTopics: eventTopics,
+                origin: address(0),
+                caller: address(0),
+                emitter: somniaReactivityPrecompile,
+                handlerContractAddress: address(this),
+                handlerFunctionSelector: ISomniaEventHandler.onEvent.selector,
+                priorityFeePerGas: uint64(reactivityPriorityFeePerGas),
+                maxFeePerGas: uint64(reactivityMaxFeePerGas),
+                gasLimit: uint64(reactivityGasLimit),
+                isGuaranteed: false,
+                isCoalesced: false
+            });
 
-        (bool ok, bytes memory result) = somniaReactivityPrecompile.call(payload);
-        if (!ok || result.length < 32) {
+        try ISomniaReactivityPrecompile(somniaReactivityPrecompile).subscribe(subscriptionData)
+            returns (uint256 subscriptionId)
+        {
+            emit DistributionScheduled(smartAccount, timestampMs, uint64(subscriptionId));
+        } catch {
             emit DistributionScheduleFailed(smartAccount, timestampMs);
-            return;
+        }
+    }
+
+    function _resolveScheduleTimestampMs(uint256 rawTimestampMs)
+        private
+        view
+        returns (uint256)
+    {
+        uint256 normalizedTimestampMs = (rawTimestampMs / 1000) * 1000;
+
+        for (uint256 offset; offset <= REACTIVITY_SCHEDULE_DRIFT_TOLERANCE_SECONDS; ++offset) {
+            uint256 driftMs = offset * 1000;
+            if (driftMs > normalizedTimestampMs) break;
+
+            uint256 candidateTimestampMs = normalizedTimestampMs - driftMs;
+            if (_scheduledSmartAccounts[candidateTimestampMs].length > 0) {
+                return candidateTimestampMs;
+            }
         }
 
-        emit DistributionScheduled(smartAccount, timestampMs, uint64(uint256(bytes32(result))));
+        return normalizedTimestampMs;
     }
 
     function _validateDuration(uint256 duration, bool heartbeat) private pure {

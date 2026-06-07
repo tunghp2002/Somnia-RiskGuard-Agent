@@ -7,6 +7,10 @@
     "test": "node scripts/foundry.mjs test",
     "format": "node scripts/foundry.mjs fmt",
     "clean": "node scripts/foundry.mjs clean",
+    "deploy:inheritance": "node scripts/deploy-inheritance-registry.mjs",
+    "inheritance:reactivity-balance": "node scripts/manage-inheritance-reactivity-budget.mjs balance",
+    "inheritance:reactivity-fund": "node scripts/manage-inheritance-reactivity-budget.mjs fund",
+    "inheritance:reactivity-withdraw": "node scripts/manage-inheritance-reactivity-budget.mjs withdraw",
     "configure:agents": "node scripts/configure-agents.mjs"
   },
   "dependencies": {

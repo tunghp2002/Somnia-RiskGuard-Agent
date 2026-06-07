@@ -26,6 +26,7 @@ import { EIP1193, smartWallet, type Wallet } from "thirdweb/wallets";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import publicChains from "../../../../config/public-chains.json";
 import { agentApi, type InheritancePlanStatus, type SessionKeyActionPermission } from "@/lib/agent-api";
 import {
     createThirdwebAccountAbstraction,
@@ -151,7 +152,11 @@ export function InheritanceSettings({
     const connectingForCancel = false;
     const connectingForSubmit = false;
     const planActionBusy = actionLoading === "inheritance-plan" || actionLoading === "inheritance-cancel";
-    const canSaveInheritancePlan = Boolean(registryAddress) && !planActionBusy && !connectingForSubmit;
+    const bundledRegistryAddress =
+        publicChains.chains[publicChains.defaultChain as keyof typeof publicChains.chains]
+            .contracts.inheritanceRegistry;
+    const effectiveRegistryAddress = registryAddress ?? bundledRegistryAddress;
+    const canSaveInheritancePlan = Boolean(effectiveRegistryAddress) && !planActionBusy && !connectingForSubmit;
 
     useEffect(() => {
         const cachedSmartAccount = readCachedSmartAccount(walletAddress);
@@ -167,6 +172,14 @@ export function InheritanceSettings({
 
         cacheSmartAccount(walletAddress, thirdwebSmartAccountAddress);
     }, [thirdwebSmartAccountAddress, walletAddress]);
+
+    useEffect(() => {
+        if (!walletAddress || !selectedSmartAccountAddress) {
+            return;
+        }
+
+        cacheSmartAccount(walletAddress, selectedSmartAccountAddress);
+    }, [selectedSmartAccountAddress, walletAddress]);
 
     function requestCheckInAuthorization(permission: SessionKeyActionPermission) {
         setCheckInAuthorization(permission);
@@ -222,6 +235,7 @@ export function InheritanceSettings({
                 return undefined;
             }
 
+            let connectedSmartAccountAddress: string | undefined;
             const connectedWallet = await connectThirdwebWallet(async (): Promise<Wallet> => {
                 const personalWallet = EIP1193.fromProvider({
                     provider: provider as Parameters<typeof EIP1193.fromProvider>[0]["provider"],
@@ -248,26 +262,19 @@ export function InheritanceSettings({
                         overrides: { accountSalt: riskGuardAccountSalt }
                     }));
 
-                await accountWallet.connect({
+                const connectedAccount = await accountWallet.connect({
                     client,
                     personalAccount
                 });
+                connectedSmartAccountAddress = connectedAccount.address;
 
                 return accountWallet as unknown as Wallet;
             });
-            if (!connectedWallet) {
+            const smartAccount = connectedWallet?.getAccount()?.address ?? connectedSmartAccountAddress ?? thirdwebSmartAccountAddress;
+            if (!smartAccount) {
                 const message = "Smart account connection was cancelled.";
                 if (!options.silent) {
                     onNotice?.({ tone: "warn", message });
-                }
-                return undefined;
-            }
-            const smartAccount = connectedWallet.getAccount()?.address ?? thirdwebSmartAccountAddress;
-
-            if (!smartAccount) {
-                const message = "Smart account was not returned by the wallet.";
-                if (!options.silent) {
-                    onNotice?.({ tone: "bad", message });
                 }
                 return undefined;
             }
@@ -806,7 +813,7 @@ export function InheritanceSettings({
                             <p className="preview-note status-bad">{submitBlockReason}</p>
                         ) : null}
 
-                        {!registryAddress ? (
+                        {!effectiveRegistryAddress ? (
                             <p className="preview-note status-warn">Deploy and configure the Inheritance Registry before saving on testnet.</p>
                         ) : null}
 

@@ -106,13 +106,16 @@ export class SupabaseJsonStore<T> implements RepositoryStore<T> {
   private async runExclusive<R>(operation: () => Promise<R>): Promise<R> {
     const previous = SupabaseJsonStore.writeQueues.get(this.collection) ?? Promise.resolve();
     const next = previous.then(operation, operation);
-    SupabaseJsonStore.writeQueues.set(
-      this.collection,
-      next.finally(() => {
-        if (SupabaseJsonStore.writeQueues.get(this.collection) === next) {
+    const queued = next
+      .catch(() => undefined)
+      .finally(() => {
+        if (SupabaseJsonStore.writeQueues.get(this.collection) === queued) {
           SupabaseJsonStore.writeQueues.delete(this.collection);
         }
-      })
+      });
+    SupabaseJsonStore.writeQueues.set(
+      this.collection,
+      queued
     );
     return next;
   }

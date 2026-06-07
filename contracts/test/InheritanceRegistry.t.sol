@@ -189,6 +189,36 @@ contract RevertingReceiver {
 }
 
 contract MockReactivityPrecompile {
+    event SubscriptionCreated(uint64 indexed subscriptionId, address indexed owner);
+
+    struct SubscriptionData {
+        bytes32[4] eventTopics;
+        address origin;
+        address caller;
+        address emitter;
+        address handlerContractAddress;
+        bytes4 handlerFunctionSelector;
+        uint64 priorityFeePerGas;
+        uint64 maxFeePerGas;
+        uint64 gasLimit;
+        bool isGuaranteed;
+        bool isCoalesced;
+    }
+
+    uint256 public nextSubscriptionId;
+    SubscriptionData public lastSubscription;
+
+    function subscribe(SubscriptionData calldata subscriptionData)
+        external
+        returns (uint256 subscriptionId)
+    {
+        require(subscriptionData.handlerContractAddress != address(0), "missing handler");
+        require(subscriptionData.gasLimit > 0, "missing gas");
+        lastSubscription = subscriptionData;
+        subscriptionId = nextSubscriptionId++;
+        emit SubscriptionCreated(uint64(subscriptionId), tx.origin);
+    }
+
     function invoke(
         RiskGuardInheritanceRegistry registry,
         address emitter,
@@ -222,6 +252,7 @@ contract InheritanceRegistryTest {
     }
 
     function testCreatePlanStoresActivePlanTimingBeneficiariesAndAssets() public {
+        uint256 timestampMs = (1_000 days + 30 days + 7 days + 2 days) * 1000;
         vm.prank(address(smartAccount));
         registry.createPlan(_beneficiaries60_40(), _nativeAndTokenAssets(), 30 days, 7 days, 2 days);
 
@@ -245,6 +276,8 @@ contract InheritanceRegistryTest {
         assert(assets.length == 2);
         assert(assets[0].token == address(0));
         assert(assets[1].token == address(token));
+        assert(registry.currentDistributionScheduleMs(address(smartAccount)) == timestampMs);
+        assert(MockReactivityPrecompile(registry.somniaReactivityPrecompile()).nextSubscriptionId() == 1);
     }
 
     function testRejectsEOAPlanCreation() public {
@@ -366,8 +399,6 @@ contract InheritanceRegistryTest {
 
         vm.prank(address(smartAccount));
         registry.createPlan(_singleBeneficiary(), _nativeAsset(), 1 days, 0, 0);
-        registry.configureAgent(address(platform), 7, 8);
-        registry.fundAgentBudget{ value: 1 ether }(address(smartAccount));
 
         uint256 timestampMs = registry.timelockEndsAt(address(smartAccount)) * 1000;
         assert(registry.currentDistributionScheduleMs(address(smartAccount)) == timestampMs);
@@ -378,13 +409,24 @@ contract InheritanceRegistryTest {
                 registry, registry.somniaReactivityPrecompile(), _scheduleTopics(timestampMs), ""
             );
 
-        uint256 requestId = platform.lastRequestId();
-        assert(registry.pendingDistributionSmartAccount(requestId) == address(smartAccount));
-        assert(registry.pendingDistributionRequestId(address(smartAccount)) == requestId);
-        assert(BENEFICIARY_A.balance == 0);
-        assert(!registry.distributionComplete(address(smartAccount)));
+        assert(BENEFICIARY_A.balance == 10 ether);
+        assert(registry.distributionComplete(address(smartAccount)));
+    }
 
-        platform.respondDistribution(registry, requestId, ResponseStatus.Success);
+    function testReactivitySelfCallbackTransfersWithMillisecondDrift() public {
+        vm.deal(address(smartAccount), 10 ether);
+
+        vm.prank(address(smartAccount));
+        registry.createPlan(_singleBeneficiary(), _nativeAsset(), 1 days, 0, 0);
+
+        uint256 timestampMs = registry.timelockEndsAt(address(smartAccount)) * 1000;
+        bytes32[] memory topics = _scheduleTopics(timestampMs);
+        topics[1] = bytes32(timestampMs + 94);
+        address emitter = registry.somniaReactivityPrecompile();
+
+        vm.warp(1_001 days);
+        vm.prank(address(registry));
+        registry.onEvent(emitter, topics, "");
 
         assert(BENEFICIARY_A.balance == 10 ether);
         assert(registry.distributionComplete(address(smartAccount)));
@@ -395,8 +437,6 @@ contract InheritanceRegistryTest {
 
         vm.prank(address(smartAccount));
         registry.createPlan(_singleBeneficiary(), _nativeAsset(), 1 days, 0, 0);
-        registry.configureAgent(address(platform), 7, 8);
-        registry.fundAgentBudget{ value: 1 ether }(address(smartAccount));
         uint256 staleTimestampMs = registry.currentDistributionScheduleMs(address(smartAccount));
 
         vm.warp(1_000 days + 12 hours);
@@ -426,12 +466,6 @@ contract InheritanceRegistryTest {
                 _scheduleTopics(currentTimestampMs),
                 ""
             );
-
-        uint256 requestId = platform.lastRequestId();
-        assert(registry.pendingDistributionSmartAccount(requestId) == address(smartAccount));
-        assert(BENEFICIARY_A.balance == 0);
-
-        platform.respondDistribution(registry, requestId, ResponseStatus.Success);
 
         assert(BENEFICIARY_A.balance == 10 ether);
         assert(registry.distributionComplete(address(smartAccount)));
@@ -671,6 +705,30 @@ contract InheritanceRegistryTest {
 
         assert(address(batchAccount).balance == 0);
         assert(BENEFICIARY_A.balance == 1 ether);
+    }
+
+    function testAdminCanWithdrawReactivityBudget() public {
+        address payable recipient = payable(address(0xDAD));
+        vm.deal(address(this), 40 ether);
+        (bool funded,) = address(registry).call{ value: 33 ether }("");
+        assert(funded);
+
+        uint256 beforeBalance = recipient.balance;
+        registry.withdrawReactivityBudget(recipient, 32 ether);
+
+        assert(recipient.balance == beforeBalance + 32 ether);
+        assert(address(registry).balance == 1 ether);
+    }
+
+    function testNonAdminCannotWithdrawReactivityBudget() public {
+        vm.expectRevert(RiskGuardInheritanceRegistry.NotAdmin.selector);
+        vm.prank(AGENT);
+        registry.withdrawReactivityBudget(payable(AGENT), 1 ether);
+    }
+
+    function testRejectsZeroReactivityBudgetWithdrawRecipient() public {
+        vm.expectRevert(RiskGuardInheritanceRegistry.ZeroAddress.selector);
+        registry.withdrawReactivityBudget(payable(address(0)), 1 ether);
     }
 
     function testExecutionFailsClosedWhenSmartAccountHasNotAuthorizedRegistry() public {

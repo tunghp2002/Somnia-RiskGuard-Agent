@@ -49,9 +49,9 @@ export function TokenImportDialog({
         <DialogPrimitive.Overlay className="token-dialog-overlay" />
         <DialogPrimitive.Content className="token-dialog-content">
           <DialogPrimitive.Title>Import token</DialogPrimitive.Title>
-          <p className="token-dialog-description">
+          <DialogPrimitive.Description className="token-dialog-description">
             Add an ERC-20 asset that the smart account should distribute with this plan.
-          </p>
+          </DialogPrimitive.Description>
           <Field
             error={tokenSubmitted ? tokenAddressError || undefined : undefined}
             id="token-contract-address"

@@ -1,3 +1,5 @@
+import publicChains from "../../../config/public-chains.json";
+
 export interface AgentEnvelope<T> {
   data: T;
   meta?: {
@@ -320,6 +322,26 @@ export interface RiskGuardPendingApprovalResult {
   telegramMessageId?: string;
 }
 
+export const bundledPublicChain = {
+  key: publicChains.defaultChain,
+  ...publicChains.chains[publicChains.defaultChain as keyof typeof publicChains.chains]
+} as PublicChainMetadata;
+
+function mergeWithBundledPublicChain(remote: PublicChainMetadata): PublicChainMetadata {
+  return {
+    ...bundledPublicChain,
+    ...remote,
+    nativeCurrency: {
+      ...bundledPublicChain.nativeCurrency,
+      ...remote.nativeCurrency
+    },
+    contracts: {
+      ...remote.contracts,
+      ...bundledPublicChain.contracts
+    }
+  };
+}
+
 function getAgentApiBaseUrl() {
   const configured =
     process.env.NEXT_PUBLIC_AGENT_API_BASE_URL ??
@@ -363,7 +385,13 @@ function walletQuery(walletAddress?: string) {
 
 export const agentApi = {
   getReadiness: () => request<Readiness>("/api/setup/readiness"),
-  getPublicChain: () => request<PublicChainMetadata>("/api/public-chain"),
+  getPublicChain: async () => {
+    try {
+      return mergeWithBundledPublicChain(await request<PublicChainMetadata>("/api/public-chain"));
+    } catch {
+      return bundledPublicChain;
+    }
+  },
   ensureSessionKeyAction: (body: {
     walletAddress: string;
     smartAccountAddress?: string;

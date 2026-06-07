@@ -366,7 +366,7 @@ function startRuntimeJobs({
 
     const tick = async () => {
       if (running) {
-        logger.warn(
+        logger.debug(
           { job: name },
           "agent job skipped because previous run is still active",
         );
