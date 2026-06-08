@@ -1,11 +1,15 @@
-import { BrowserProvider, Contract, getAddress } from "ethers";
+import { BrowserProvider, Contract, Interface, getAddress } from "ethers";
 import {
   getContract,
   prepareContractCall,
   readContract,
 } from "thirdweb";
 
-import { sendRiskGuardedSmartTransaction } from "@/lib/riskguard-smart-account";
+import {
+  sendRiskGuardedSmartBatch,
+  sendRiskGuardedSmartTransaction,
+  type SmartCall,
+} from "@/lib/riskguard-smart-account";
 import {
   somniaThirdwebChain,
   thirdwebClient
@@ -43,19 +47,23 @@ const inheritanceRegistryAbi = [
   "function cancelPlan()",
   "function fundAgentBudget(address smartAccount) payable"
 ];
-const smartAccountRolesAbi = [
-  "function grantRoles(address user,uint256 roles)",
-  "function hasAnyRole(address user,uint256 roles) view returns (bool)"
+// The registry is authorized on the smart account as an ERC-7579 executor module
+// (type 2) via `installModule`. We deliberately do NOT use Solady `grantRoles`:
+// `grantRoles` is `onlyOwner`, so a self-call from inside an execute-batch (msg.sender
+// = the account) reverts with `Unauthorized()` (0x82b42900). `installModule` is
+// `onlyEntryPointOrSelf`, so the same self-call succeeds — which is what lets the
+// whole create-plan flow be signed once.
+const smartAccountModuleAbi = [
+  "function installModule(uint256 moduleTypeId,address module,bytes initData)",
+  "function isModuleInstalled(uint256 moduleTypeId,address module,bytes additionalContext) view returns (bool)"
 ];
 const agentRequesterAbi = [
   "function getRequestDeposit() view returns (uint256)"
 ];
 
-// `createPlan` / `updatePlan` schedules Somnia reactivity on-chain, so keep a
-// generous explicit UserOp call gas limit without asking the bundler to chase it.
-const planWriteGasLimit = 5_000_000n;
 const cancelPlanGasLimit = 1_000_000n;
-const smartAccountAdminRole = 1n;
+// ERC-7579 module type id for executor modules (matches RiskGuardInheritanceRegistry.moduleTypeId()).
+const executorModuleTypeId = 2n;
 const inheritanceDistributionAgentCalls = 1n;
 const zeroAddress = "0x0000000000000000000000000000000000000000";
 
@@ -85,9 +93,17 @@ type RegistryContract = Contract & {
   ): Promise<{ wait: () => Promise<unknown>; hash: string }>;
 };
 
-type SmartAccountRolesContract = Contract & {
-  grantRoles(user: string, roles: bigint): Promise<{ wait: () => Promise<unknown>; hash: string }>;
-  hasAnyRole(user: string, roles: bigint): Promise<boolean>;
+type SmartAccountModuleContract = Contract & {
+  installModule(
+    moduleTypeId: bigint,
+    module: string,
+    initData: string
+  ): Promise<{ wait: () => Promise<unknown>; hash: string }>;
+  isModuleInstalled(
+    moduleTypeId: bigint,
+    module: string,
+    additionalContext: string
+  ): Promise<boolean>;
 };
 
 export interface SmartAccountCandidate {
@@ -164,20 +180,46 @@ async function ensureRegistryExecutorRole(
   registryAddress: string
 ) {
   const signer = await getBrowserSigner();
-  const smartAccountRoles = new Contract(
+  const smartAccountModule = new Contract(
     smartAccountAddress,
-    smartAccountRolesAbi,
+    smartAccountModuleAbi,
     signer
-  ) as SmartAccountRolesContract;
-  const hasRegistryRole = await smartAccountRoles
-    .hasAnyRole(registryAddress, smartAccountAdminRole)
+  ) as SmartAccountModuleContract;
+  const installed = await smartAccountModule
+    .isModuleInstalled(executorModuleTypeId, registryAddress, "0x")
     .catch(() => false);
 
-  if (hasRegistryRole) {
+  if (installed) {
     return;
   }
 
-  await waitForPlanTx(smartAccountRoles.grantRoles(registryAddress, smartAccountAdminRole));
+  await waitForPlanTx(
+    smartAccountModule.installModule(executorModuleTypeId, registryAddress, "0x")
+  );
+}
+
+async function isRegistryExecutorInstalled(
+  smartAccountAddress: string,
+  registryAddress: string
+) {
+  if (!thirdwebClient) {
+    return false;
+  }
+
+  try {
+    return await readContract({
+      contract: getContract({
+        address: smartAccountAddress,
+        chain: somniaThirdwebChain,
+        client: thirdwebClient
+      }),
+      method:
+        "function isModuleInstalled(uint256 moduleTypeId,address module,bytes additionalContext) view returns (bool)",
+      params: [executorModuleTypeId, getAddress(registryAddress), "0x"]
+    });
+  } catch {
+    return false;
+  }
 }
 
 async function fundInheritanceAgentBudget(
@@ -328,30 +370,53 @@ export async function saveInheritancePlanWithThirdweb(
   });
   const beneficiaries = toBeneficiaryArgs(input.beneficiaries);
   const protectedAssets = input.protectedAssets.map((token) => ({ token }));
-  await ensureRegistryExecutorRole(smartAccountAddress, registryAddress);
+
+  // Collect every smart-account call into one ERC-7579 batch so the user signs
+  // exactly once: install the registry as an executor module (self-call, allowed
+  // by installModule's onlyEntryPointOrSelf), top up the agent budget, and create
+  // the plan — all in a single signed UserOp.
+  const registryInterface = new Interface(inheritanceRegistryAbi);
+  const moduleInterface = new Interface(smartAccountModuleAbi);
+  const calls: SmartCall[] = [];
+
+  if (!(await isRegistryExecutorInstalled(smartAccountAddress, registryAddress))) {
+    calls.push({
+      to: smartAccountAddress,
+      data: moduleInterface.encodeFunctionData("installModule", [
+        executorModuleTypeId,
+        getAddress(registryAddress),
+        "0x"
+      ]) as `0x${string}`
+    });
+  }
 
   const topUp = await quoteInheritanceAgentTopUpWithThirdweb(registry, smartAccountAddress);
-  await fundInheritanceAgentBudget(registryAddress, smartAccountAddress, topUp);
+  if (topUp > 0n) {
+    calls.push({
+      to: registryAddress,
+      value: topUp,
+      data: registryInterface.encodeFunctionData("fundAgentBudget", [
+        getAddress(smartAccountAddress)
+      ]) as `0x${string}`
+    });
+  }
 
-  const method = currentPlan?.active
-    ? "function updatePlan((address addr,uint256 shareBps)[] beneficiaries,(address token)[] protectedAssets,uint256 heartbeatInterval,uint256 gracePeriod,uint256 timelockPeriod)"
-    : "function createPlan((address addr,uint256 shareBps)[] beneficiaries,(address token)[] protectedAssets,uint256 heartbeatInterval,uint256 gracePeriod,uint256 timelockPeriod)";
-  const planTransaction = prepareContractCall({
-    contract: registry,
-    method,
-    gas: planWriteGasLimit,
-    params: [
+  const planFn = currentPlan?.active ? "updatePlan" : "createPlan";
+  calls.push({
+    to: registryAddress,
+    data: registryInterface.encodeFunctionData(planFn, [
       beneficiaries,
       protectedAssets,
       BigInt(input.heartbeatIntervalSeconds),
       BigInt(input.gracePeriodSeconds),
       BigInt(input.timelockPeriodSeconds)
-    ]
+    ]) as `0x${string}`
   });
-  return sendRiskGuardedSmartTransaction({
+
+  return sendRiskGuardedSmartBatch({
     account,
+    calls,
     ...(options.riskGuardValidatorAddress ? { riskGuardValidatorAddress: options.riskGuardValidatorAddress } : {}),
-    transaction: planTransaction,
     ...(options.walletAddress ? { walletAddress: options.walletAddress } : {})
   });
 }

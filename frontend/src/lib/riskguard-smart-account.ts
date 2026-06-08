@@ -1,4 +1,5 @@
 import {
+  AbiCoder,
   BrowserProvider,
   Contract,
   Interface,
@@ -131,6 +132,35 @@ async function buildAccountExecuteParams(transaction: PreparedTransaction) {
   };
 }
 
+interface ExecuteParams {
+  mode: `0x${string}`;
+  executionCalldata: `0x${string}`;
+}
+
+export interface SmartCall {
+  to: string;
+  value?: bigint;
+  data: `0x${string}`;
+}
+
+// ERC-7579 CALLTYPE_BATCH mode (first byte 0x01, padded right to 32 bytes), matching
+// thirdweb's own batch encoding so a single signed UserOp performs every call.
+const erc7579BatchMode = `0x01${"00".repeat(31)}` as `0x${string}`;
+
+function buildBatchExecuteParams(calls: SmartCall[]): ExecuteParams {
+  const executions = calls.map((call) => [
+    getAddress(call.to),
+    call.value ?? 0n,
+    call.data,
+  ]);
+  const executionCalldata = AbiCoder.defaultAbiCoder().encode(
+    ["tuple(address,uint256,bytes)[]"],
+    [executions]
+  ) as `0x${string}`;
+
+  return { mode: erc7579BatchMode, executionCalldata };
+}
+
 function hexJson(value: unknown): unknown {
   if (typeof value === "bigint") {
     return `0x${value.toString(16)}`;
@@ -151,7 +181,7 @@ function hexJson(value: unknown): unknown {
 
 async function createSignedReplayUserOp(options: {
   account: Account;
-  transaction: PreparedTransaction;
+  executeParams: ExecuteParams;
 }) {
   if (!thirdwebClient) {
     throw new Error("Set NEXT_PUBLIC_THIRDWEB_CLIENT_ID before signing the pending UserOp.");
@@ -195,12 +225,11 @@ async function createSignedReplayUserOp(options: {
     chain: somniaThirdwebChain,
     client: thirdwebClient,
   });
-  const executeParams = await buildAccountExecuteParams(options.transaction);
   const executeTransaction = prepareContractCall({
     contract: accountContract,
     method: "function execute(bytes32 mode, bytes executionCalldata)",
     gas: smartAccountExecuteGasLimit,
-    params: [executeParams.mode, executeParams.executionCalldata],
+    params: [options.executeParams.mode, options.executeParams.executionCalldata],
   });
   const unsignedUserOp = await createUnsignedUserOp({
     accountContract,
@@ -234,7 +263,7 @@ async function createSignedReplayUserOp(options: {
 async function requestSomniaAgentReview(options: {
   riskGuardValidatorAddress: string;
   smartAccountAddress: string;
-  transaction: PreparedTransaction;
+  executeParams: ExecuteParams;
 }) {
   const provider = new BrowserProvider(getEthereumProvider());
   const signer = await provider.getSigner();
@@ -266,9 +295,8 @@ async function requestSomniaAgentReview(options: {
     await fundTx.wait();
   }
 
-  const executeParams = await buildAccountExecuteParams(options.transaction);
   const callData = new Interface(["function execute(bytes32 mode, bytes executionCalldata)"])
-    .encodeFunctionData("execute", [executeParams.mode, executeParams.executionCalldata]);
+    .encodeFunctionData("execute", [options.executeParams.mode, options.executeParams.executionCalldata]);
   const requestTx = await validator.getFunction("requestAgentReview")(
     options.smartAccountAddress,
     callData
@@ -278,10 +306,10 @@ async function requestSomniaAgentReview(options: {
   return receipt?.hash ?? requestTx.hash;
 }
 
-export async function sendRiskGuardedSmartTransaction(options: {
+async function sendGuardedExecute(options: {
   account: Account;
+  executeParams: ExecuteParams;
   riskGuardValidatorAddress?: string;
-  transaction: PreparedTransaction;
   walletAddress?: string;
 }) {
   if (!thirdwebClient) {
@@ -293,7 +321,7 @@ export async function sendRiskGuardedSmartTransaction(options: {
   try {
     pendingUserOp = await createSignedReplayUserOp({
       account: options.account,
-      transaction: options.transaction,
+      executeParams: options.executeParams,
     });
     const userOpHash = await bundleUserOp({
       userOp: pendingUserOp.userOp,
@@ -332,7 +360,7 @@ export async function sendRiskGuardedSmartTransaction(options: {
     const reviewTxHash = await requestSomniaAgentReview({
       riskGuardValidatorAddress: options.riskGuardValidatorAddress,
       smartAccountAddress: pendingApproval.smartAccountAddress,
-      transaction: options.transaction,
+      executeParams: options.executeParams,
     }).catch((reviewError: unknown) => {
       const riskGuardError = extractRiskGuardErrorName(reviewError);
       const message =
@@ -368,4 +396,44 @@ export async function sendRiskGuardedSmartTransaction(options: {
 
     throw new SomniaAgentReviewRequestedError(reviewTxHash);
   }
+}
+
+export async function sendRiskGuardedSmartTransaction(options: {
+  account: Account;
+  riskGuardValidatorAddress?: string;
+  transaction: PreparedTransaction;
+  walletAddress?: string;
+}) {
+  const executeParams = await buildAccountExecuteParams(options.transaction);
+
+  return sendGuardedExecute({
+    account: options.account,
+    executeParams,
+    ...(options.riskGuardValidatorAddress
+      ? { riskGuardValidatorAddress: options.riskGuardValidatorAddress }
+      : {}),
+    ...(options.walletAddress ? { walletAddress: options.walletAddress } : {}),
+  });
+}
+
+// Execute several smart-account calls in a single signed UserOp (ERC-7579 batch).
+// The whole batch is signed once, so flows that previously needed one signature
+// per call (e.g. grantRoles + fundAgentBudget + createPlan) now ask the user to
+// sign exactly once.
+export async function sendRiskGuardedSmartBatch(options: {
+  account: Account;
+  calls: SmartCall[];
+  riskGuardValidatorAddress?: string;
+  walletAddress?: string;
+}) {
+  const executeParams = buildBatchExecuteParams(options.calls);
+
+  return sendGuardedExecute({
+    account: options.account,
+    executeParams,
+    ...(options.riskGuardValidatorAddress
+      ? { riskGuardValidatorAddress: options.riskGuardValidatorAddress }
+      : {}),
+    ...(options.walletAddress ? { walletAddress: options.walletAddress } : {}),
+  });
 }

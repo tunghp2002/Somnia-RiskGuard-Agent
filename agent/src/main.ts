@@ -1,3 +1,5 @@
+import "./config/network.js";
+
 import { pathToFileURL } from "node:url";
 import type { Server } from "node:http";
 

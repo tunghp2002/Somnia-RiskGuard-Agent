@@ -13,7 +13,7 @@
         "decimals": 18
       },
       "contracts": {
-        "inheritanceRegistry": "0xB2fc91F8677d2b3375b63f66d8744eFf27712420",
+        "inheritanceRegistry": "0x355D81e993Bc423C81b8fe348fEEe659E738710E",
         "riskGuardApprovalStore": "0xaCdBb69cb283Cb0feDA1a0D1a3a657D74c35e1e3",
         "riskGuardHookModule": "0x296Dc049b35447Aaf9Ea8996667eFB289F257289",
         "riskGuardValidatorModule": "0x99eAD10e154693c137B61cEFEB5487db136A342F",

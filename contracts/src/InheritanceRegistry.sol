@@ -79,8 +79,7 @@ contract RiskGuardInheritanceRegistry is ReentrancyGuard {
     uint256 public constant REACTIVITY_SCHEDULE_DRIFT_TOLERANCE_SECONDS = 300;
     uint256 public constant AGENT_SUBCOMMITTEE_SIZE = 3;
     uint256 public constant MODULE_TYPE_EXECUTOR = 2;
-    // TEST ONLY: keep the inheritance demo fast. Restore to 1 days before production.
-    uint256 public constant MIN_HEARTBEAT_DURATION = 5 seconds;
+    uint256 public constant MIN_HEARTBEAT_DURATION = 1 days;
     uint256 public constant MAX_DURATION = 3650 days;
     address public constant SOMNIA_REACTIVITY_PRECOMPILE =
         address(0x0000000000000000000000000000000000000100);

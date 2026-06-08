@@ -51,6 +51,7 @@ import {
 } from "@/lib/wallet";
 
 import {
+  durationToSeconds,
   errorMessage,
   formatAddress,
   isSimulationEvent,
@@ -74,8 +75,6 @@ import type {
 } from "@/lib/blockscout-api";
 
 const telegramConnectTimeoutMs = 60_000;
-// TEST ONLY: force inheritance plans to expire after 10 minutes regardless of UI input.
-const inheritanceTestHeartbeatSeconds = 600;
 
 function telegramUnlinkMessage(walletAddress: string) {
   return [
@@ -631,6 +630,15 @@ export function useRiskGuardDashboard() {
       return;
     }
 
+    if (!telegramSession?.connected) {
+      setNotice({
+        tone: "warn",
+        message:
+          "Connect Telegram first — your inheritance plan needs it for heartbeat check-ins and alerts.",
+      });
+      return;
+    }
+
     const registryAddress = publicChain?.contracts.inheritanceRegistry;
     if (!registryAddress) {
       setNotice({
@@ -711,10 +719,9 @@ export function useRiskGuardDashboard() {
         smartAccountAddress,
         beneficiaries,
         protectedAssets,
-        // TEST ONLY: ignore the form duration so missed check-in auto-distributes after 10 minutes.
-        heartbeatIntervalSeconds: inheritanceTestHeartbeatSeconds,
-        gracePeriodSeconds: 0,
-        timelockPeriodSeconds: 0,
+        heartbeatIntervalSeconds: durationToSeconds(form, "interval", 1),
+        gracePeriodSeconds: durationToSeconds(form, "grace", 0),
+        timelockPeriodSeconds: durationToSeconds(form, "timelock", 0),
       };
       const riskGuardOptions = {
         ...(publicChain?.contracts.riskGuardValidatorModule
@@ -774,8 +781,22 @@ export function useRiskGuardDashboard() {
       return;
     }
 
+    // Open the tab synchronously inside the click gesture, otherwise the browser's
+    // popup blocker silently kills a window.open() that runs after an await. We hold
+    // the handle and redirect it once the deep link is ready. (No "noopener" here —
+    // it makes window.open return null, so we couldn't redirect the tab.)
+    const botTab =
+      typeof window !== "undefined" ? window.open("about:blank", "_blank") : null;
+    const openBot = (url: string) => {
+      if (botTab && !botTab.closed) {
+        botTab.location.href = url;
+      } else if (typeof window !== "undefined") {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    };
+
     if (telegramSession?.status === "waiting") {
-      window.open(telegramSession.botDeepLink, "_blank", "noopener,noreferrer");
+      openBot(telegramSession.botDeepLink);
       return;
     }
 
@@ -796,13 +817,16 @@ export function useRiskGuardDashboard() {
           : {}),
       });
       setTelegramSession(session);
-      window.open(session.botDeepLink, "_blank", "noopener,noreferrer");
+      openBot(session.botDeepLink);
       setNotice({
         tone: "ok",
         message: "Telegram bot opened. Press Start in Telegram to connect.",
       });
       await loadData();
     } catch (error) {
+      if (botTab && !botTab.closed) {
+        botTab.close();
+      }
       setNotice({ tone: "bad", message: errorMessage(error) });
     } finally {
       setActionLoading(null);
@@ -835,6 +859,15 @@ export function useRiskGuardDashboard() {
   }
 
   async function handleConfigureRiskPolicy(nextConfig: RiskGuardConfig) {
+    if (nextConfig.enabled && !telegramSession?.connected) {
+      setNotice({
+        tone: "warn",
+        message:
+          "Connect Telegram first so RiskGuard can alert you about risky transactions, then enable the guard.",
+      });
+      return false;
+    }
+
     const approvalStoreAddress = publicChain?.contracts.riskGuardApprovalStore;
     const guardModuleAddress =
       publicChain?.contracts.riskGuardValidatorModule ?? publicChain?.contracts.riskGuardHookModule;

@@ -17,8 +17,12 @@ export default function RootLayout({
   children: ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>
+
+    // suppressHydrationWarning: browser extensions inject inline styles/attributes
+    // (e.g. --color-tl-* CSS vars) onto <html>/<body> before React hydrates. Those
+    // aren't produced by our render, so silence the one-level attribute mismatch.
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning>
         <TooltipProvider>{children}</TooltipProvider>
         <Toaster closeButton duration={10000} position="top-center" richColors />
       </body>
