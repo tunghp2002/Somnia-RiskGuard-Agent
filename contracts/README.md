@@ -29,7 +29,7 @@ pnpm --dir contracts configure:agents
 - last heartbeat/check-in time
 - active/cancelled plan state
 
-This keeps assets in the user's Somnia/Thirdweb smart account so the user can continue day-to-day native-token and ERC-20 usage. A separate smart-account executor/module must be granted bounded authority by that smart account before it can transfer assets after missed heartbeat conditions.
+This keeps assets in the user's Somnia/Thirdweb smart account so the user can continue day-to-day native-token and ERC-20 usage. The registry must first be installed as an ERC-7579 executor module on that smart account (`installModule(2, registry)`) before it can transfer assets after missed heartbeat conditions; the dashboard does this in the same signed batch as `createPlan`.
 
 The previous standalone locked vault contract has been removed from the active code path because it required users to deposit funds they could no longer use normally.
 
@@ -37,7 +37,7 @@ The previous standalone locked vault contract has been removed from the active c
 
 Current Somnia Testnet deployment:
 
-- `RiskGuardInheritanceRegistry`: `0xB2fc91F8677d2b3375b63f66d8744eFf27712420`
+- `RiskGuardInheritanceRegistry`: `0x355D81e993Bc423C81b8fe348fEEe659E738710E`
 - deployer: `0x64769A00fB002b7ED192834443C9c819565Ab702`
 - transaction: `0xd39b35d744d0c3415e156620372760953a44bb63d0f0c5e2c82338f5405481a6`
 - deployed: `2026-06-07`
@@ -170,12 +170,12 @@ After deployment, set the address in:
 - `config/public-chains.json` under `chains.somnia-testnet.contracts.inheritanceRegistry`
 - `.env` as `INHERITANCE_REGISTRY_CONTRACT_ADDRESS`
 
-The registry itself does not move funds until each user's smart account has authorized the registry as an executor/module/session key. Users should keep day-to-day native tokens and ERC-20s in the smart account, not in this registry.
+The registry itself does not move funds until each user's smart account has installed the registry as an ERC-7579 executor module (`installModule(2, registry)`). Users should keep day-to-day native tokens and ERC-20s in the smart account, not in this registry.
 
 ## Runtime Flow
 
-1. A smart account calls `createPlan(...)` with beneficiaries, protected assets, heartbeat, grace, and timelock.
-2. The registry rejects normal EOAs because they cannot execute `executeBatch(...)` later.
+1. A smart account calls `createPlan(...)` with beneficiaries, protected assets, heartbeat, grace, and timelock. From the dashboard this is a single signed ERC-7579 batch (one UserOp) that also installs the registry as the account's executor module (`installModule(2, registry)`) and funds the per-account agent budget — so the registry can later transfer assets via `executeFromExecutor(...)`. (Authorization uses `installModule`, not Solady `grantRoles`: `grantRoles` is `onlyOwner` and reverts `Unauthorized()` on a self-call inside a batch, whereas `installModule` is `onlyEntryPointOrSelf`.)
+2. The registry rejects normal EOAs because they cannot execute `executeFromExecutor(...)`/`executeBatch(...)` later.
 3. The smart account keeps holding and using native tokens/ERC-20s normally.
 4. The user refreshes liveness through `checkIn()` or a successful agent heartbeat callback before grace ends.
 5. After `lastHeartbeatAt + heartbeatInterval + gracePeriod + timelockPeriod`, the Reactivity schedule calls `onEvent(...)`.
@@ -216,8 +216,11 @@ approval → allowed-UserOp path.
 Post-deploy, configure all three agent integrations (RiskGuard, Inheritance,
 ApprovalRiskScanner) with `pnpm --dir contracts configure:agents`. The scanner is
 read-only (no revoke action) and runs on Somnia; approval **discovery** is done
-off-chain by the agent backend via each chain's Blockscout `getLogs` indexer
-(raw RPC `eth_getLogs` is capped at 1000 blocks on Somnia).
+off-chain by the agent backend via each chain's Blockscout-compatible explorer
+API (`module=logs&action=getLogs`), which supports full-range queries. Raw RPC is
+used only for live `allowance()` / `isApprovedForAll()` verification (where Somnia
+`eth_getLogs` is capped at 1000 blocks, which is why discovery uses the explorer
+API instead).
 
 Current ApprovalRiskScanner deployment:
 

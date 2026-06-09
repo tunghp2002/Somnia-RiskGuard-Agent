@@ -20,18 +20,24 @@ Agentathon.
   APPROVE/REJECT decision. There is no off-chain LLM; the agent's decision never
   directly authorizes a transaction — the validator + a signature do.
 - **Approval Risk Scanner (revoke.cash-style)** — the **Allowances** tab lists
-  every contract a wallet approved as a token spender (discovered from the
-  chain's Blockscout indexer), then scores each spender 0–100 with **all three
-  Somnia base agents**: JSON API Request (explorer facts) + LLM Parse Website
-  (explorer-page red flags) → LLM Inference (combined verdict). Read-only; one
-  signed `requestScan` tx on Somnia pays the agent deposits. Multi-chain select,
-  Somnia prioritized.
+  every contract a wallet approved as a token spender (discovered off-chain from
+  the chain's Blockscout-compatible explorer API — indexed `getLogs`), then a
+  single signed `requestScan` tx on Somnia rates each approval (token + spender) as
+  **LOW / MEDIUM / HIGH** risk using **all three Somnia base agents**: JSON API
+  Request (explorer facts) + LLM Parse Website (explorer-page red flags) → LLM
+  Inference (combined verdict). The dashboard shows the risk **level** per approval.
+  Read-only discovery; the `requestScan` tx pays the agent deposits (unused escrow
+  is refundable). Multi-chain select, Somnia prioritized.
 - **Smart-account inheritance** — one non-custodial plan per smart account
-  (beneficiaries by share, protected assets, heartbeat/grace/timelock);
-  distribution is scheduled on-chain via Reactivity and approved by a Somnia
-  agent, with a manual fallback.
+  (beneficiaries by share, protected assets, heartbeat/grace/timelock). Creating a
+  plan takes a **single wallet signature**: one ERC-7579 batch installs the
+  registry as the account's executor module, funds the agent budget, and writes the
+  plan in one UserOp. Distribution is scheduled on-chain via Reactivity and approved
+  by a Somnia agent, with a manual fallback.
 - **Telegram alerts + signed quick actions** — risk alerts and approve/refresh
-  buttons with HMAC-signed, nonce-protected callbacks.
+  buttons with HMAC-signed, nonce-protected callbacks. Enabling RiskGuard and
+  creating an inheritance plan require a linked Telegram first, so alerts and
+  heartbeat reminders always have a delivery channel.
 - **Bounded auto-claim** — small staking/LP reward claims under configured
   value/gas policies.
 - **Dashboard** — wallet connect, RiskGuard policy config, native transfers,

@@ -213,6 +213,13 @@ User resubmits → validator finds a valid approval → execution allowed
 
 ### Inheritance / dead-man's-switch data flow
 
+From the dashboard, plan creation is a **single signed ERC-7579 batch** (one
+UserOp): `installModule(2, registry)` (so the registry can later transfer via
+`executeFromExecutor` — `installModule` is `onlyEntryPointOrSelf`, unlike Solady
+`grantRoles` which reverts `Unauthorized()` on a self-call) + `fundAgentBudget` +
+`createPlan`. The registry must hold ≥32 STT when `createPlan` runs, or the
+Reactivity `subscribe()` is caught and emits `DistributionScheduleFailed`.
+
 ```
 Smart account createPlan(beneficiaries, assets, heartbeat, grace, timelock)
   │  registry schedules distribution via Somnia Reactivity at timelockEndsAt
@@ -249,13 +256,18 @@ Scoring (on-chain, ApprovalRiskScanner.sol on Somnia):
   POST /api/approvals/scan/prepare → ABI-encoded requestScan(items[]) + msg.value
     │  user signs ONE tx
     ▼
-  requestScan escrows deposits; per item fires in parallel:
+  requestScan escrows 3 deposits (STAGES_PER_SCAN); two agents fire for the
+  representative item items[0] (one batch, not one per item):
     JSON API Request agent (fetchString  → explorer getsourcecode facts)
     LLM Parse Website agent (ExtractString → explorer address-page red flags)
     │  both callbacks return → fan-in
     ▼
-  LLM Inference agent (inferString) combines facts+findings+context → "NN|verdict"
-    │  → ItemScored event; ScanCompleted when all items done
+  LLM Inference agent (inferString) combines facts+findings+all item contexts
+  → batch inferenceSummary. Each item gets a 0–100 riskScore + LOW/MEDIUM/HIGH
+  verdict (context-derived: unlimited / NFT-operator / repeated spender), with the
+  inference summary attached → ItemScored per item; ScanCompleted at itemCount.
+  (The dashboard renders only the LOW/MEDIUM/HIGH verdict as a "Risk level" pill;
+  the numeric riskScore is carried in the API type but not shown.)
     ▼
   GET /api/approvals/scan/status?scanId  reads getScan()/getItem() views → score/verdict
 ```
@@ -321,7 +333,7 @@ Somnia Testnet (addresses in `config/public-chains.json`).
 | `RiskGuardValidator` (`src/riskguard/RiskGuardValidator.sol`) | ERC-7579 validator (module type 1) | Enforces risk policy in `validateUserOp` (ERC-4337). Allows safe sub-threshold native transfers; blocks batches, calldata, contract recipients, and over-threshold value via `PendingApprovalRequired` revert; consumes ApprovalStore approvals or Somnia agent approvals; `requestAgentReview` + `handleRiskAssessmentResponse`. |
 | `RiskGuardHookModule` (`src/riskguard/RiskGuardHookModule.sol`) | ERC-7579 hook (module type 4) | Same policy via `preCheck`/`postCheck`; experimental — Thirdweb's ModularAccount does not run hooks on its primary execute path, so the validator is the active guard. |
 | `RiskGuardApprovalStore` (`src/riskguard/RiskGuardApprovalStore.sol`) | Registry | Bridges agent/Telegram approvals on-chain: `registerAgentAndHook`, `submitApproval`, `consumeApproval`, 10-minute TTL, one-time use. |
-| `ApprovalRiskScanner` (`src/riskguard/ApprovalRiskScanner.sol`) | App contract (`ReentrancyGuard`) | revoke.cash-style approval risk scoring. `requestScan(items[])` escrows deposits and per item fans out to the **JSON API Request + LLM Parse Website** agents, then on fan-in fires the **LLM Inference** agent for a `0–100\|verdict`. Three callbacks dispatched by `requestId→stage`; escrow draw-down + `claimRefund`; `quoteScan`/`getScan`/`getItem` views. Configured via `configureAgents(platform, jsonApiId, parseWebsiteId, llmInferenceId)`. |
+| `ApprovalRiskScanner` (`src/riskguard/ApprovalRiskScanner.sol`) | App contract (`ReentrancyGuard`) | revoke.cash-style approval risk scoring. `requestScan(items[])` escrows 3 deposits and fans out the **JSON API Request + LLM Parse Website** agents on the representative item `items[0]`, then on fan-in fires the **LLM Inference** agent for a batch `inferenceSummary`. Each item is stored with a `uint8 riskScore` (0–100) + `verdict` (LOW/MEDIUM/HIGH, context-derived) → `ItemScored`. Three callbacks dispatched by `requestId→stage`; escrow draw-down + `claimRefund`; `quoteScan`/`getScan`/`getItem` views. `MAX_ITEMS_PER_SCAN = 50`. Configured via `configureAgents(platform, jsonApiId, parseWebsiteId, llmInferenceId)`. |
 | `SomniaAgentInterfaces.sol` | Interfaces | `IAgentRequester` / `IAgentRequesterHandler`, `Request`/`Response`/`ResponseStatus`/`ConsensusType` for Somnia agent invocation + callbacks. |
 
 ERC-7579 modules are installed on a **Thirdweb ModularAccount** (factory +
@@ -349,7 +361,7 @@ Client-rich, no SSR data path. Five dashboard sections via
 status), **transfer** (native STT send from EOA or smart account with gas
 estimate and agent-review handling), **allowances** (Approval Risk Scanner —
 `components/approvals-panel.tsx` + `hooks/use-approval-scanner.ts`: chain
-multi-select, approval list, sign `requestScan`, poll per-spender agent scores),
+multi-select, approval list, sign `requestScan`, poll per-approval agent scores),
 **profile** (display name + Telegram connect), **inheritance** (plan builder).
 RiskGuard module install + policy
 config lives in `lib/riskguard-module.ts`; smart-account/chain/AA setup in
@@ -360,6 +372,16 @@ backend REST client in `lib/agent-api.ts`; asset enumeration in
 shadcn (button, input, badge, tooltip, sonner). Env consumed:
 `NEXT_PUBLIC_THIRDWEB_CLIENT_ID`, `NEXT_PUBLIC_AGENT_API_URL`/`_BASE_URL`,
 `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`, `NEXT_PUBLIC_APP_NAME`.
+
+**Telegram-first gate.** Enabling RiskGuard (`handleConfigureRiskPolicy`) and
+creating an inheritance plan (`handleInheritancePlanSubmit`) both short-circuit
+with a warning toast unless `telegramSession?.connected` — so alerts and heartbeat
+reminders always have a delivery channel. It is a frontend UX guard (a toast on the
+action, not a disabled control); disabling/cancelling is never blocked. The smart-
+account transaction path also exposes a single-signature batch
+(`sendRiskGuardedSmartBatch`, ERC-7579 calltype `0x01`) used by inheritance plan
+creation; it shares the same sign → block → agent-review → replay flow as the
+single-call `sendRiskGuardedSmartTransaction`.
 
 ## Security architecture
 

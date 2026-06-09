@@ -23,7 +23,7 @@ Initial user-configurable rules:
 
 ## Proposed Flow
 
-1. User enables RiskGuard on the smart account and configures thresholds.
+1. User enables RiskGuard on the smart account and configures thresholds. The dashboard requires a linked Telegram first (a warning toast blocks enabling otherwise), so the agent has a confirmation/alert channel.
 2. Frontend builds or previews the intended transaction.
 3. RiskGuard agent decodes the target, value, and calldata.
 4. If no rule is triggered, the transaction proceeds normally.
@@ -35,13 +35,23 @@ Initial user-configurable rules:
 
 ## Contract Shape
 
-The concrete interface depends on the smart account implementation:
+As implemented (current): the smart account is a **thirdweb ERC-7579 modular
+account** (`thirdweb.modular.v0.0.1`, deployed via `riskGuardModularAccountFactory`).
+RiskGuard ships as three on-chain pieces:
 
-- ERC-6900 modular accounts can install validation hooks/modules.
-- Thirdweb smart wallets may require thirdweb-specific module or extension support.
-- If the current thirdweb account on Somnia cannot install arbitrary validation modules, RiskGuard needs either a compatible modular account factory or a fallback executor/session-key policy.
+- `RiskGuardValidator` (validator module) — enforces policy at `validateUserOp` and
+  reverts `PendingApprovalRequired` until a valid approval exists.
+- `RiskGuardHookModule` (hook) — re-checks policy in `preCheck` and consumes the
+  one-time approval in `postCheck`.
+- `RiskGuardApprovalStore` — records agent/Telegram approvals (10-minute TTL,
+  one-time use) bridged on-chain by the agent.
 
-Core storage should be per smart account:
+Modules are installed via standard ERC-7579 `installModule` (no ERC-6900, no
+session-key fallback needed). The same `installModule` mechanism authorizes the
+inheritance registry as an executor module — the dashboard bundles install + setup
+into a single signed batch (ERC-7579 calltype `0x01`).
+
+Core storage is per smart account:
 
 - native amount threshold
 - native balance percent threshold

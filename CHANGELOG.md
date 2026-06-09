@@ -12,21 +12,46 @@ This project follows [Keep a Changelog](https://keepachangelog.com/) and
   contract a wallet approved as a token spender and scores each 0–100 using **all
   three Somnia base agents**.
   - Contract `contracts/src/riskguard/ApprovalRiskScanner.sol`: `requestScan`
-    escrows agent deposits and per item fans out to the **JSON API Request** +
-    **LLM Parse Website** agents, then on fan-in fires the **LLM Inference** agent
-    for an `NN|verdict` score; `getScan`/`getItem`/`quoteScan` views, `claimRefund`,
-    and `configureAgents`. Tests in `contracts/test/ApprovalRiskScanner.t.sol`;
-    wired by `configure:agents`.
+    escrows 3 agent deposits and fans out the **JSON API Request** + **LLM Parse
+    Website** agents on the representative item, then on fan-in fires the **LLM
+    Inference** agent for a batch summary; each item is stored with a 0–100
+    `riskScore` + LOW/MEDIUM/HIGH `verdict` (`ItemScored`). `getScan`/`getItem`/
+    `quoteScan` views, `claimRefund`, and `configureAgents`. Tests in
+    `contracts/test/ApprovalRiskScanner.t.sol`; wired by `configure:agents`.
   - Backend `agent/src/services/approval-scanner.service.ts` + routes
     `/api/approvals/{chains,list,scan/prepare,scan/status}`. Approval **discovery**
     uses each chain's Blockscout `getLogs` indexer (raw RPC `eth_getLogs` is capped
     at 1000 blocks on Somnia), then live `allowance`/`isApprovedForAll` reads.
   - Frontend `frontend/src/features/dashboard/components/approvals-panel.tsx` +
     `hooks/use-approval-scanner.ts`: multi-chain select (Somnia first), one signed
-    `requestScan` tx, polled per-spender scores. Read-only (no revoke).
+    `requestScan` tx, polled per-approval scores. Read-only (no revoke).
   - Config: `config/public-chains.json` gains `scanChains[]` (Somnia mainnet +
     testnet, Blockscout `explorerApiBaseUrl`) and `contracts.approvalRiskScanner`;
     new `APPROVAL_SCANNER_*` env vars.
+
+### Changed
+- **Inheritance plan creation is now a single wallet signature.** The dashboard
+  bundles `installModule(2, registry)` + `fundAgentBudget` + `createPlan` into one
+  ERC-7579 batch UserOp (`sendRiskGuardedSmartBatch`, calltype `0x01`) in
+  `frontend/src/lib/inheritance-registry.ts`.
+- **Registry authorization switched from `grantRoles` to `installModule`.** Solady
+  `grantRoles` is `onlyOwner` and reverts `Unauthorized()` (`0x82b42900`) on a
+  self-call inside a batch; ERC-7579 `installModule` is `onlyEntryPointOrSelf` and
+  installs the registry as the account's executor module (type 2) used by
+  `executeFromExecutor` at distribution time.
+- **Telegram-first gate.** Enabling RiskGuard and creating an inheritance plan now
+  show a warning toast and abort unless Telegram is connected, so alerts/heartbeat
+  reminders always have a delivery channel (`use-riskguard-dashboard.ts`).
+- **`RiskGuardInheritanceRegistry` redeployed** on Somnia testnet to
+  `0x355D81e993Bc423C81b8fe348fEEe659E738710E` (`MIN_HEARTBEAT_DURATION = 1 days`);
+  `config/public-chains.json` + `.env` updated.
+
+### Fixed
+- Frontend env: documented `NEXT_PUBLIC_THIRDWEB_CLIENT_ID` (derived from
+  `THIRDWEB_SECRET_KEY`) in `frontend/.env.local`, fixing "Smart account creation is
+  not configured yet"; Telegram "Connect" now opens the bot synchronously inside the
+  click gesture (popup-blocker fix); `<html>`/`<body>` get `suppressHydrationWarning`
+  for extension-injected attributes.
 
 ---
 

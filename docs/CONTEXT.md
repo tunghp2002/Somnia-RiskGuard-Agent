@@ -248,3 +248,55 @@ LLM dependencies and keys.
 **Date**: 2026-06-04 · **Version**: v0.1.0
 
 **Date**: 2026-05-21 · **Version**: v0.1.0
+
+## Phase 2 — Single-signature setup + delivery-channel gating (2026-06-08, post-v0.1.0)
+
+### D12. Authorize the inheritance registry via `installModule`, not `grantRoles`
+
+**Context**: Inheritance distribution needs the registry to transfer assets from
+the user's smart account. The first implementation granted the registry a Solady
+admin role (`grantRoles(registry, 1)`). When bundled into a single ERC-7579
+execute-batch (to save signatures), the `grantRoles` self-call ran with
+`msg.sender = the account` and reverted `Unauthorized()` (`0x82b42900`), because
+Solady `grantRoles` is `onlyOwner`. Verified on-chain against the live
+`thirdweb.modular.v0.0.1` account.
+
+**Decision**: Authorize the registry as an ERC-7579 **executor module** via
+`installModule(2, registry)`. `installModule` is `onlyEntryPointOrSelf`, so the
+self-call inside the batch succeeds; the registry is already built as an executor
+module (`moduleTypeId() == 2`, `onInstall`) and distribution already prefers
+`executeFromExecutor`. `isModuleInstalled` replaces the `hasAnyRole` check.
+
+**Rationale**: This is both the fix for the batch revert and the
+standards-correct authorization path for an executor that calls
+`executeFromExecutor`.
+
+**Impact**: `frontend/src/lib/inheritance-registry.ts` (both the thirdweb batch
+and the ethers fallback). Enables D13.
+
+**Date**: 2026-06-08 · **Version**: post-v0.1.0
+
+### D13. One signature for inheritance plan creation (ERC-7579 batch)
+
+**Context**: Creating a plan previously needed up to three separate signed txs
+(authorize executor + `fundAgentBudget` + `createPlan`).
+
+**Decision**: Bundle all three into a single signed UserOp via
+`sendRiskGuardedSmartBatch` (ERC-7579 calltype `0x01`), sharing the same
+sign → block → agent-review → replay path as the single-call helper.
+
+**Date**: 2026-06-08 · **Version**: post-v0.1.0
+
+### D14. Telegram-first gate for RiskGuard setup + inheritance creation
+
+**Context**: A user could enable RiskGuard or create an inheritance plan with no
+Telegram link — leaving risk alerts and heartbeat reminders with no delivery
+channel.
+
+**Decision**: A frontend UX guard: `handleConfigureRiskPolicy` (when enabling) and
+`handleInheritancePlanSubmit` abort with a warning toast unless
+`telegramSession?.connected`. Toast-only (no disabled controls); disabling and
+cancelling are never blocked. Enforcement of execution authority still lives
+on-chain (D4) — this is purely a setup-time UX prerequisite.
+
+**Date**: 2026-06-08 · **Version**: post-v0.1.0

@@ -17,13 +17,13 @@ Current contract path:
 - `contracts/src/InheritanceRegistry.sol` (`RiskGuardInheritanceRegistry`)
 - public testnet metadata: `config/public-chains.json` -> `chains.somnia-testnet.contracts.inheritanceRegistry`
 - local secret/env override: `INHERITANCE_REGISTRY_CONTRACT_ADDRESS`
-- current Somnia Testnet deployment: `0xBaa6f77B9ea4E1ecaeEE7c64526bbb51d59E0e14`
+- current Somnia Testnet deployment: `0x355D81e993Bc423C81b8fe348fEEe659E738710E`
 
 Additional sources checked on 2026-05-23:
 
 - https://docs.somnia.network/developer/building-dapps/account-abstraction
 - https://docs.somnia.network/developer/building-dapps/account-abstraction/smart-wallet-app-with-thirdweb
-- https://docs.somnia.network/developer/building-dapps/account-abstraction/gasless-transactions-with-thirdw
+- https://docs.somnia.network/developer/building-dapps/account-abstraction/gasless-transactions-with-thirdweb
 - https://docs.somnia.network/developer/how-to-guides/thirdweb/somnia-account-abstraction-apps-using-thirdweb-react-sdk
 
 ## Implementation Guidance
@@ -73,6 +73,7 @@ Important modeling points:
 - Logic should preserve state consistency assumptions when consuming event notifications.
 - On-chain cron subscriptions can target system-generated `Schedule` events for one-off future actions.
 - On-chain Reactivity handlers are invoked by the Reactivity precompile (`0x0100`), so contracts should gate handler entrypoints to that caller when the action has settlement authority.
+- Funding: the subscribing contract must hold at least **32 STT at the moment `subscribe()` is called** (a fixed sybil-resistance threshold — not escrowed or consumed, it just has to be present). Per-execution gas `(execPrice + priorityFee) * gasLimit` is then drawn from that same balance each time the schedule fires. In practice this means the `RiskGuardInheritanceRegistry` must be funded with ≥32 STT before a plan is created, or the `subscribe()` call inside `_scheduleDistribution` is caught and emits `DistributionScheduleFailed` (no auto-distribution gets scheduled). Top up with `pnpm --dir contracts inheritance:reactivity-fund`.
 
 ## Account Abstraction And Smart Wallets
 
