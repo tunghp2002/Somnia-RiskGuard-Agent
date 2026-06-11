@@ -286,14 +286,14 @@ contract InheritanceRegistryTest {
         registry.createPlan(_singleBeneficiary(), _nativeAsset(), 1 days, 0, 0);
     }
 
-    function testAllowsTenMinuteHeartbeatForFastDemo() public {
+    function testAllowsOneDayMinimumHeartbeat() public {
         vm.prank(address(smartAccount));
-        registry.createPlan(_singleBeneficiary(), _nativeAsset(), 10 minutes, 0, 0);
+        registry.createPlan(_singleBeneficiary(), _nativeAsset(), 1 days, 0, 0);
 
         (RiskGuardInheritanceRegistry.Plan memory plan,,) = registry.getPlan(address(smartAccount));
 
-        assert(plan.heartbeatInterval == 10 minutes);
-        assert(registry.timelockEndsAt(address(smartAccount)) == 1_000 days + 10 minutes);
+        assert(plan.heartbeatInterval == 1 days);
+        assert(registry.timelockEndsAt(address(smartAccount)) == 1_001 days);
     }
 
     function testRejectsSecondActivePlanUntilCancelled() public {
@@ -679,9 +679,9 @@ contract InheritanceRegistryTest {
         token.mint(address(erc7579Account), 1_000 ether);
 
         vm.prank(address(erc7579Account));
-        registry.createPlan(_beneficiaries60_40(), _nativeAndTokenAssets(), 10 minutes, 0, 0);
+        registry.createPlan(_beneficiaries60_40(), _nativeAndTokenAssets(), 1 days, 0, 0);
 
-        vm.warp(block.timestamp + 10 minutes);
+        vm.warp(block.timestamp + 1 days);
         registry.executeInheritance(address(erc7579Account));
 
         assert(address(erc7579Account).balance == 0);
@@ -698,9 +698,9 @@ contract InheritanceRegistryTest {
         vm.deal(address(batchAccount), 1 ether);
 
         vm.prank(address(batchAccount));
-        registry.createPlan(_singleBeneficiary(), _nativeAsset(), 10 minutes, 0, 0);
+        registry.createPlan(_singleBeneficiary(), _nativeAsset(), 1 days, 0, 0);
 
-        vm.warp(block.timestamp + 10 minutes);
+        vm.warp(block.timestamp + 1 days);
         registry.executeInheritance(address(batchAccount));
 
         assert(address(batchAccount).balance == 0);

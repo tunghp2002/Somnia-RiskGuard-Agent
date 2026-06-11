@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   fetchAccountAssets,
@@ -6,13 +6,17 @@ import {
   type AccountOption,
   type BlockscoutAccountScope,
 } from "@/lib/blockscout-api";
+import {
+  readCachedAccountAssets,
+  writeCachedAccountAssets,
+} from "@/lib/account-assets-cache";
+import { subscribeSomniaBalanceStream } from "@/lib/somnia-balance-stream";
 
 import { scopeAccounts } from "./account-assets-utils";
 
 import type { PublicChainMetadata } from "@/lib/agent-api";
 
-const assetCacheTtlMs = 30_000;
-const assetSnapshotCache = new Map<string, { snapshot: AccountAssetSnapshot; fetchedAt: number }>();
+const blockscoutSyncIntervalMs = 5 * 60_000;
 
 export function useAccountAssets({
   accountOptions,
@@ -28,6 +32,8 @@ export function useAccountAssets({
   const [assets, setAssets] = useState<AccountAssetSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const assetsRef = useRef<AccountAssetSnapshot | null>(null);
+  const blockscoutFetchedAtRef = useRef(0);
 
   const selectedAccounts = useMemo(
     () => scopeAccounts(accountOptions, selectedScope),
@@ -41,6 +47,10 @@ export function useAccountAssets({
   );
 
   useEffect(() => {
+    assetsRef.current = assets;
+  }, [assets]);
+
+  useEffect(() => {
     if (!publicChain || selectedAccounts.length === 0) {
       // Clear asynchronously so the reset doesn't run synchronously inside the
       // effect commit (avoids the cascading-render lint).
@@ -49,57 +59,72 @@ export function useAccountAssets({
     }
 
     const cacheKey = `${publicChain.chainId}:${selectedAccountsKey}`;
-    const cached = assetSnapshotCache.get(cacheKey);
-    const cacheFresh = cached ? Date.now() - cached.fetchedAt < assetCacheTtlMs : false;
 
     let stopped = false;
 
-    // Seed from cache and start the refresh on a macrotask so none of the
+    // Seed from IndexedDB and start the refresh on a macrotask so none of the
     // setState calls run synchronously inside the effect commit.
     const startId = window.setTimeout(() => {
-      if (cached) {
-        setAssets(cached.snapshot);
-        setError(null);
-      }
+      void readCachedAccountAssets(cacheKey).then((cached) => {
+        if (stopped) {
+          return;
+        }
 
-      if (cacheFresh && refreshNonce === 0) {
-        return;
-      }
+        if (cached) {
+          blockscoutFetchedAtRef.current = cached.fetchedAt;
+          setAssets(cached.snapshot);
+          setError(null);
+        }
 
-      setLoading(true);
-      if (!cached) {
-        setError(null);
-      }
+        const cacheFresh = cached
+          ? Date.now() - cached.fetchedAt < blockscoutSyncIntervalMs
+          : false;
 
-      void fetchAccountAssets({
-        accounts: selectedAccounts.map((account) => ({
-          label: account.label,
-          address: account.address ?? "",
-        })),
-        blockscoutUrl: publicChain.blockscoutUrl ?? publicChain.blockExplorerUrl,
-        nativeDecimals: publicChain.nativeCurrency.decimals,
-        nativeSymbol: publicChain.nativeCurrency.symbol,
-      })
-        .then((snapshot) => {
-          if (!stopped) {
-            assetSnapshotCache.set(cacheKey, { snapshot, fetchedAt: Date.now() });
-            setAssets(snapshot);
-            setError(null);
-          }
+        if (cacheFresh && refreshNonce === 0) {
+          return;
+        }
+
+        setLoading(true);
+        if (!cached) {
+          setError(null);
+        }
+
+        void fetchAccountAssets({
+          accounts: selectedAccounts.map((account) => ({
+            label: account.label,
+            address: account.address ?? "",
+          })),
+          blockscoutUrl: publicChain.blockscoutUrl ?? publicChain.blockExplorerUrl,
+          nativeDecimals: publicChain.nativeCurrency.decimals,
+          nativeSymbol: publicChain.nativeCurrency.symbol,
         })
-        .catch((fetchError) => {
-          if (!stopped) {
-            if (!cached) {
-              setAssets(null);
+          .then((snapshot) => {
+            if (!stopped) {
+              const fetchedAt = Date.now();
+              blockscoutFetchedAtRef.current = fetchedAt;
+              void writeCachedAccountAssets(cacheKey, {
+                fetchedAt,
+                snapshot,
+                updatedAt: fetchedAt,
+              });
+              setAssets(snapshot);
+              setError(null);
             }
-            setError(fetchError instanceof Error ? fetchError.message : "Blockscout refresh failed");
-          }
-        })
-        .finally(() => {
-          if (!stopped) {
-            setLoading(false);
-          }
-        });
+          })
+          .catch((fetchError) => {
+            if (!stopped) {
+              if (!cached) {
+                setAssets(null);
+              }
+              setError(fetchError instanceof Error ? fetchError.message : "Blockscout refresh failed");
+            }
+          })
+          .finally(() => {
+            if (!stopped) {
+              setLoading(false);
+            }
+          });
+      });
     }, 0);
 
     return () => {
@@ -107,6 +132,98 @@ export function useAccountAssets({
       window.clearTimeout(startId);
     };
   }, [publicChain, refreshNonce, selectedAccounts, selectedAccountsKey]);
+
+  useEffect(() => {
+    if (!publicChain || selectedAccounts.length === 0) {
+      return;
+    }
+
+    const streamAccounts = selectedAccounts
+      .filter((account) => account.address)
+      .map((account) => ({ label: account.label, address: account.address ?? "" }));
+
+    if (streamAccounts.length === 0) {
+      return;
+    }
+
+    const cacheKey = `${publicChain.chainId}:${selectedAccountsKey}`;
+    let stopped = false;
+    let unsubscribe: (() => void) | undefined;
+
+    void subscribeSomniaBalanceStream({
+      accounts: streamAccounts,
+      getSnapshot: () => assetsRef.current,
+      onSnapshot: (snapshot) => {
+        if (stopped) {
+          return;
+        }
+
+        setAssets(snapshot);
+        void writeCachedAccountAssets(cacheKey, {
+          fetchedAt: blockscoutFetchedAtRef.current || Date.now(),
+          snapshot,
+          updatedAt: Date.now(),
+        });
+      },
+      publicChain,
+    })
+      .then((nextUnsubscribe) => {
+        if (stopped) {
+          nextUnsubscribe();
+        } else {
+          unsubscribe = nextUnsubscribe;
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      stopped = true;
+
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [publicChain, selectedAccounts, selectedAccountsKey]);
+
+  useEffect(() => {
+    if (!publicChain || selectedAccounts.length === 0) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void readCachedAccountAssets(`${publicChain.chainId}:${selectedAccountsKey}`).then((cached) => {
+        if (cached && Date.now() - cached.fetchedAt >= blockscoutSyncIntervalMs) {
+          setLoading(true);
+          void fetchAccountAssets({
+            accounts: selectedAccounts.map((account) => ({
+              label: account.label,
+              address: account.address ?? "",
+            })),
+            blockscoutUrl: publicChain.blockscoutUrl ?? publicChain.blockExplorerUrl,
+            nativeDecimals: publicChain.nativeCurrency.decimals,
+            nativeSymbol: publicChain.nativeCurrency.symbol,
+          })
+            .then((snapshot) => {
+              const fetchedAt = Date.now();
+              blockscoutFetchedAtRef.current = fetchedAt;
+              void writeCachedAccountAssets(`${publicChain.chainId}:${selectedAccountsKey}`, {
+                fetchedAt,
+                snapshot,
+                updatedAt: fetchedAt,
+              });
+              setAssets(snapshot);
+              setError(null);
+            })
+            .catch(() => undefined)
+            .finally(() => setLoading(false));
+        }
+      });
+    }, blockscoutSyncIntervalMs);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [publicChain, selectedAccounts, selectedAccountsKey]);
 
   return { assets, error, loading };
 }

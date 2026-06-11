@@ -59,7 +59,15 @@ export function RiskGuardDashboard() {
               config={state.riskGuardConfig}
               moduleReady={state.riskGuardModuleReady}
               onConfigure={actions.handleConfigureRiskPolicy}
+              onTelegramRequired={() =>
+                actions.showNotice({
+                  tone: "warn",
+                  message:
+                    "Connect Telegram first so RiskGuard can alert you about risky transactions, then enable the guard.",
+                })
+              }
               rules={state.riskGuardRules}
+              telegramConnected={Boolean(state.telegramSession?.connected)}
             />
           </section>
         ) : null}

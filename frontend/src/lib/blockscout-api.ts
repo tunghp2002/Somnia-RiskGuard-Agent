@@ -144,7 +144,7 @@ function normalizeIpfsUrl(url?: string | null) {
     : url;
 }
 
-function formatUnits(value: string, decimals: number) {
+export function formatUnits(value: string, decimals: number) {
   const raw = value.replace(/^0+/, "") || "0";
 
   if (decimals <= 0) {

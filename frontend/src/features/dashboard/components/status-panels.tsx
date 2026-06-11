@@ -53,14 +53,18 @@ export function GuardianStatus({
 export function RiskPolicyGuard({
   actionLoading,
   config,
+  telegramConnected,
   moduleReady,
   onConfigure,
+  onTelegramRequired,
   rules
 }: {
   actionLoading: string | null;
   config: RiskGuardConfig;
+  telegramConnected: boolean;
   moduleReady: boolean;
   onConfigure: (config: RiskGuardConfig) => Promise<boolean> | boolean;
+  onTelegramRequired: () => void;
   rules: RiskGuardRule[];
 }) {
   const [draftConfig, setDraftConfig] = useState<RiskGuardConfig>(config);
@@ -162,6 +166,11 @@ export function RiskPolicyGuard({
           className="guard-configure-button"
           disabled={savingGuard}
           onClick={() => {
+            if (!telegramConnected) {
+              onTelegramRequired();
+              return;
+            }
+
             setDraftConfig(config);
             setValidationError(null);
             setModalOpen(true);

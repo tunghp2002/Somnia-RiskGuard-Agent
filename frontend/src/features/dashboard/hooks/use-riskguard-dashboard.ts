@@ -991,9 +991,10 @@ export function useRiskGuardDashboard() {
       const riskGuardTransferOptions = publicChain?.contracts.riskGuardValidatorModule
         ? {
             riskGuardValidatorAddress: publicChain.contracts.riskGuardValidatorModule,
+            symbol: publicChain.nativeCurrency.symbol,
             walletAddress: connectedWallet.address,
           }
-        : {};
+        : { symbol: publicChain?.nativeCurrency.symbol ?? "native token" };
       const txHash = input.source === "smart"
         ? await sendNativeTransferFromSmartAccount(
             input,
@@ -1014,7 +1015,7 @@ export function useRiskGuardDashboard() {
               riskGuardTransferOptions,
             );
           })
-        : await sendNativeTransferFromEoa(input);
+        : await sendNativeTransferFromEoa(input, publicChain?.nativeCurrency.symbol ?? "native token");
       const txAction = transactionNoticeAction(publicChain, txHash);
 
       openTransaction(publicChain, txHash);

@@ -54,8 +54,11 @@ export function errorMessage(error: unknown) {
       return "Selected account is not deployed as a smart account yet. Try creating the smart account again, then save the plan.";
     }
 
-    if (error.message.includes("execution reverted") && error.message.includes('"data":"0x"')) {
-      return "Transaction reverted without details. If this happened while funding agent budget, transfer STT to the selected smart account and try again.";
+    if (
+      error.message.includes("execution reverted") &&
+      (error.message.includes('"data":"0x"') || error.message.includes('data="0x"'))
+    ) {
+      return "Transaction was rejected by the destination contract without details. Check the recipient, amount, and account setup before trying again.";
     }
 
     return error.message;

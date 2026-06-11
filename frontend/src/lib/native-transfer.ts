@@ -79,6 +79,50 @@ function formatNative(value: bigint, symbol: string) {
   return `${whole}${trimmedFraction ? `.${trimmedFraction}` : ""} ${symbol}`;
 }
 
+function rawErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isNoDataRevert(error: unknown) {
+  const message = rawErrorMessage(error);
+
+  return (
+    /execution reverted|CALL_EXCEPTION|require\(false\)|estimateGas/i.test(message) &&
+    (/data\s*=\s*"0x"/i.test(message) || /"data"\s*:\s*"0x"/i.test(message) || /data:\s*0x/i.test(message))
+  );
+}
+
+function isUserRejected(error: unknown) {
+  return /user rejected|user denied|rejected the request|action_rejected/i.test(rawErrorMessage(error));
+}
+
+function normalizeNativeTransferError(
+  error: unknown,
+  {
+    phase,
+    source,
+    symbol,
+  }: {
+    phase: "estimate" | "send";
+    source: NativeTransferInput["source"];
+    symbol: string;
+  },
+) {
+  if (isUserRejected(error)) {
+    return "Transaction was rejected in your wallet.";
+  }
+
+  if (isNoDataRevert(error)) {
+    if (source === "eoa") {
+      return `Recipient contract rejected this native ${symbol} transfer. Use an EOA recipient or a contract that accepts native tokens.`;
+    }
+
+    return `Smart account transfer was rejected during ${phase === "estimate" ? "fee estimation" : "submission"}. Check the recipient, amount, and RiskGuard policy before trying again.`;
+  }
+
+  return rawErrorMessage(error);
+}
+
 function buildThirdwebTransferTransaction(recipient: string, amountWei: bigint) {
   if (!thirdwebClient) {
     throw new Error("Set NEXT_PUBLIC_THIRDWEB_CLIENT_ID before sending from a smart account.");
@@ -118,11 +162,19 @@ export async function estimateNativeTransfer(
 
   if (input.source === "eoa") {
     const feeData = await provider.getFeeData();
-    const gasLimit = await provider.estimateGas({
-      from: sourceAddress,
-      to: recipient,
-      value: amountWei
-    });
+    const gasLimit = await provider
+      .estimateGas({
+        from: sourceAddress,
+        to: recipient,
+        value: amountWei
+      })
+      .catch((error: unknown) => {
+        throw new Error(normalizeNativeTransferError(error, {
+          phase: "estimate",
+          source: input.source,
+          symbol: context.symbol,
+        }));
+      });
     const gasPrice = feeData.maxFeePerGas ?? feeData.gasPrice;
     if (!gasPrice) {
       throw new Error("Unable to estimate network fee.");
@@ -137,6 +189,12 @@ export async function estimateNativeTransfer(
     const estimate = await estimateGasCost({
       account: context.smartAccount,
       transaction
+    }).catch((error: unknown) => {
+      throw new Error(normalizeNativeTransferError(error, {
+        phase: "estimate",
+        source: input.source,
+        symbol: context.symbol,
+      }));
     });
     gasWei = estimate.wei;
   }
@@ -162,14 +220,28 @@ export async function estimateNativeTransfer(
   };
 }
 
-export async function sendNativeTransferFromEoa(input: NativeTransferInput) {
+export async function sendNativeTransferFromEoa(input: NativeTransferInput, symbol = "native token") {
   const provider = new BrowserProvider(getEthereumProvider());
   const signer = await provider.getSigner();
-  const tx = await signer.sendTransaction({
-    to: getAddress(input.recipient.trim()),
-    value: parseUnits(input.amount.trim(), nativeDecimals)
+  const tx = await signer
+    .sendTransaction({
+      to: getAddress(input.recipient.trim()),
+      value: parseUnits(input.amount.trim(), nativeDecimals)
+    })
+    .catch((error: unknown) => {
+      throw new Error(normalizeNativeTransferError(error, {
+        phase: "send",
+        source: input.source,
+        symbol,
+      }));
+    });
+  await tx.wait().catch((error: unknown) => {
+    throw new Error(normalizeNativeTransferError(error, {
+      phase: "send",
+      source: input.source,
+      symbol,
+    }));
   });
-  await tx.wait();
 
   return tx.hash;
 }
@@ -179,6 +251,7 @@ export async function sendNativeTransferFromSmartAccount(
   account: Account,
   options: {
     riskGuardValidatorAddress?: string;
+    symbol?: string;
     walletAddress?: string;
   } = {}
 ) {
@@ -191,5 +264,11 @@ export async function sendNativeTransferFromSmartAccount(
     transaction,
     ...(options.riskGuardValidatorAddress ? { riskGuardValidatorAddress: options.riskGuardValidatorAddress } : {}),
     ...(options.walletAddress ? { walletAddress: options.walletAddress } : {}),
+  }).catch((error: unknown) => {
+    throw new Error(normalizeNativeTransferError(error, {
+      phase: "send",
+      source: input.source,
+      symbol: options.symbol ?? "native token",
+    }));
   });
 }
