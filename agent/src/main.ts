@@ -100,19 +100,19 @@ export async function startAgentRuntime(
     config.supabase.url,
     config.supabase.serviceRoleKey,
   );
-  const auditEvents = new AuditEventsRepository(undefined, createSupabaseStore(config, "audit-events.json", auditEventsSchema, []));
+  const auditEvents = new AuditEventsRepository(undefined, createMemoryStore(auditEventsSchema, []));
   const audit = new AuditService(auditEvents, logger);
-  const portfolioSnapshots = new PortfolioSnapshotsRepository(undefined, createSupabaseStore(config, "portfolio-snapshots.json", portfolioSnapshotsSchema, []));
-  const riskSnapshots = new RiskSnapshotsRepository(undefined, createSupabaseStore(config, "risk-snapshots.json", z.array(riskSnapshotSchema), []));
+  const portfolioSnapshots = new PortfolioSnapshotsRepository(undefined, createMemoryStore(portfolioSnapshotsSchema, []));
+  const riskSnapshots = new RiskSnapshotsRepository(undefined, createMemoryStore(z.array(riskSnapshotSchema), []));
   const telegramBindings = new TelegramBindingsRepository(undefined, createSupabaseStore(config, "telegram-bindings.json", telegramBindingsSchema, []));
-  const heartbeatsRepository = new HeartbeatsRepository(undefined, createSupabaseStore(config, "heartbeats.json", heartbeatsSchema, []));
-  const rewardClaims = new RewardClaimsRepository(undefined, createSupabaseStore(config, "reward-claims.json", rewardClaimsDataSchema, {
+  const heartbeatsRepository = new HeartbeatsRepository(undefined, createMemoryStore(heartbeatsSchema, []));
+  const rewardClaims = new RewardClaimsRepository(undefined, createMemoryStore(rewardClaimsDataSchema, {
     settings: [],
     fixtures: [],
     claims: [],
   }));
-  const alerts = new AlertsRepository(undefined, createSupabaseStore(config, "alerts.json", alertsSchema, []));
-  const actionNonces = new ActionNoncesRepository(undefined, createSupabaseStore(config, "action-nonces.json", z.array(actionNonceSchema), []));
+  const alerts = new AlertsRepository(undefined, createMemoryStore(alertsSchema, []));
+  const actionNonces = new ActionNoncesRepository(undefined, createMemoryStore(z.array(actionNonceSchema), []));
   const riskGuardPendingUserOpsRepository = new RiskGuardPendingUserOpsRepository(
     undefined,
     createSupabaseStore(config, "riskguard-pending-userops.json", riskGuardPendingUserOpsSchema, [])
@@ -344,6 +344,37 @@ function createSupabaseStore<T>(
   });
 }
 
+function createMemoryStore<T>(
+  schema: z.ZodType<T>,
+  defaultValue: T,
+): RepositoryStore<T> {
+  let value = schema.parse(cloneJson(defaultValue));
+  let queue = Promise.resolve();
+
+  return {
+    async read() {
+      return schema.parse(cloneJson(value));
+    },
+    async write(nextValue: T) {
+      value = schema.parse(cloneJson(nextValue));
+    },
+    async update(mutator: (current: T) => T | Promise<T>) {
+      const operation = queue.then(async () => {
+        const current = schema.parse(cloneJson(value));
+        const next = await mutator(current);
+        value = schema.parse(cloneJson(next));
+        return schema.parse(cloneJson(value));
+      });
+      queue = operation.then(() => undefined, () => undefined);
+      return operation;
+    },
+  };
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 function startRuntimeJobs({
   logger,
   portfolioMonitorJob,
@@ -396,7 +427,7 @@ function startRuntimeJobs({
     timers.push(setInterval(() => void tick(), intervalMs));
   };
 
-  schedule("portfolio-monitor", 30_000, () => portfolioMonitorJob.runOnce());
+  schedule("portfolio-monitor", 300_000, () => portfolioMonitorJob.runOnce());
   schedule("heartbeat-reminders", 60_000, () => heartbeatJob.runOnce());
   schedule("reward-claims", 60_000, () => rewardClaimJob.runOnce());
   schedule("riskguard-agent-review", 15_000, () => riskGuardAgentReviewJob.runOnce());

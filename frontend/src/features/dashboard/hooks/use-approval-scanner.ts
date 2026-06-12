@@ -13,6 +13,10 @@ import {
   type ScanStatus
 } from "@/lib/agent-api";
 import {
+  readApprovalAnalysisHistory,
+  writeApprovalAnalysisHistory
+} from "@/lib/approval-analysis-cache";
+import {
   ensureBrowserChain,
   sendBrowserTransaction,
   waitForBrowserReceipt
@@ -21,7 +25,6 @@ import {
 const SCAN_REQUESTED_TOPIC = keccakId("ScanRequested(uint256,address,uint256,uint256)");
 const MAX_ITEMS_PER_SCAN = 50;
 const HISTORY_LIMIT = 20;
-const STORAGE_PREFIX = "riskguard.approval-scans";
 
 export interface ApprovalAnalysisRecord {
   id: string;
@@ -70,39 +73,8 @@ function createRecordId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 }
 
-function storageKey(walletAddress: string): string {
-  return `${STORAGE_PREFIX}:${walletAddress.toLowerCase()}`;
-}
-
-function readStoredHistory(walletAddress: string | undefined): ApprovalAnalysisRecord[] {
-  if (!walletAddress || typeof window === "undefined") {
-    return [];
-  }
-
-  try {
-    const raw = window.localStorage.getItem(storageKey(walletAddress));
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed)
-      ? parsed
-          .filter((item): item is ApprovalAnalysisRecord =>
-            Boolean(item && typeof item === "object" && item.status !== "error")
-          )
-          .slice(0, HISTORY_LIMIT)
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeStoredHistory(walletAddress: string | undefined, history: ApprovalAnalysisRecord[]) {
-  if (!walletAddress || typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(
-    storageKey(walletAddress),
-    JSON.stringify(history.slice(0, HISTORY_LIMIT))
-  );
+function isApprovalAnalysisRecord(item: unknown): item is ApprovalAnalysisRecord {
+  return Boolean(item && typeof item === "object" && (item as { status?: unknown }).status !== "error");
 }
 
 function messageFromError(error: unknown): string {
@@ -160,7 +132,17 @@ export function useApprovalScanner(
   }, []);
 
   useEffect(() => {
-    setHistory(readStoredHistory(walletAddress));
+    let active = true;
+    void readApprovalAnalysisHistory<ApprovalAnalysisRecord>(walletAddress).then((stored) => {
+      if (!active) {
+        return;
+      }
+
+      setHistory(stored.filter(isApprovalAnalysisRecord).slice(0, HISTORY_LIMIT));
+    });
+    return () => {
+      active = false;
+    };
   }, [walletAddress]);
 
   const updateHistory = useCallback((
@@ -168,7 +150,7 @@ export function useApprovalScanner(
   ) => {
     setHistory((current) => {
       const next = updater(current).slice(0, HISTORY_LIMIT);
-      writeStoredHistory(walletAddress, next);
+      void writeApprovalAnalysisHistory(walletAddress, next);
       return next;
     });
   }, [walletAddress]);

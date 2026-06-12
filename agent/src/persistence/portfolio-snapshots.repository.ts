@@ -59,6 +59,8 @@ export type CreatePortfolioSnapshotInput = Omit<
   createdAt?: string;
 };
 
+const maxPortfolioSnapshots = 200;
+
 export class PortfolioSnapshotsRepository {
   private readonly store: RepositoryStore<PortfolioSnapshot[]>;
 
@@ -96,7 +98,11 @@ export class PortfolioSnapshotsRepository {
       createdAt: input.createdAt ?? new Date().toISOString()
     });
 
-    await this.store.update((snapshots) => [...snapshots, snapshot]);
+    await this.store.update((snapshots) =>
+      [...snapshots, snapshot]
+        .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
+        .slice(-maxPortfolioSnapshots)
+    );
     return snapshot;
   }
 }

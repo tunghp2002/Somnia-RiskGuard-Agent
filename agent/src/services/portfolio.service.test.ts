@@ -96,7 +96,7 @@ describe("portfolio service", () => {
     );
   });
 
-  it("detects no meaningful change and records skipped risk analysis", async () => {
+  it("detects no meaningful change without appending duplicate snapshots", async () => {
     await users.upsertMonitoredWallet("0x1111111111111111111111111111111111111111");
 
     await service.collectForConfiguredWallets();
@@ -104,21 +104,8 @@ describe("portfolio service", () => {
 
     expect(secondRun[0]?.shouldAnalyzeRisk).toBe(false);
     expect(secondRun[0]?.changedFields).toEqual([]);
-    await expect(auditEvents.list()).resolves.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ eventType: "risk.analysis.skipped" })
-      ])
-    );
-    await expect(portfolioSnapshots.list()).resolves.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          change: expect.objectContaining({
-            changedFields: [],
-            shouldAnalyzeRisk: false
-          })
-        })
-      ])
-    );
+    await expect(auditEvents.list()).resolves.toHaveLength(1);
+    await expect(portfolioSnapshots.list()).resolves.toHaveLength(1);
   });
 
   it("continues monitoring later wallets when one wallet read fails", async () => {

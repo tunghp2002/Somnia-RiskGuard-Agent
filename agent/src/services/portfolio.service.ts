@@ -86,6 +86,16 @@ export class PortfolioService {
       walletAddress: checksumAddress
     } as PortfolioSnapshot;
     const change = this.detectChanges(previousSnapshot, candidateSnapshot);
+
+    if (previousSnapshot && !change.shouldAnalyzeRisk) {
+      return {
+        previousSnapshot,
+        currentSnapshot: previousSnapshot,
+        changedFields: [],
+        shouldAnalyzeRisk: false
+      };
+    }
+
     const currentSnapshot = await this.snapshots.append({
       ...input,
       change: {
@@ -107,17 +117,6 @@ export class PortfolioService {
         changedFields: persistedChange.changedFields
       }
     });
-
-    if (!persistedChange.shouldAnalyzeRisk) {
-      await this.audit.record({
-        eventType: "risk.analysis.skipped",
-        status: "skipped",
-        metadata: {
-          walletAddress: checksumAddress,
-          reason: "no_meaningful_portfolio_change"
-        }
-      });
-    }
 
     return persistedChange;
   }

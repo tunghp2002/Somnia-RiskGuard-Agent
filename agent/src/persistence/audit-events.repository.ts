@@ -33,6 +33,7 @@ export interface CreateAuditEventInput {
   createdAt?: string;
 }
 
+const maxAuditEvents = 500;
 const sensitiveMetadataKeyPattern =
   /(private[_-]?key|api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|authorization|cookie|password|credential)/i;
 
@@ -84,7 +85,11 @@ export class AuditEventsRepository {
       metadata: sanitizeAuditMetadata(input.metadata ?? {}) as Record<string, unknown>
     };
 
-    await this.store.update((events) => [...events, event]);
+    await this.store.update((events) =>
+      [...events, event]
+        .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
+        .slice(-maxAuditEvents)
+    );
     return event;
   }
 }
