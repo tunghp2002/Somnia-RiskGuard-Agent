@@ -109,6 +109,7 @@ export function RiskGuardDashboard() {
               <InheritanceSettings
                 actionLoading={state.actionLoading}
                 inheritancePlan={state.inheritancePlan}
+                inheritancePlanLoading={state.inheritancePlanLoading}
                 onInheritanceCancel={actions.handleInheritancePlanCancel}
                 onInheritanceSubmit={actions.handleInheritancePlanSubmit}
                 onNotice={actions.showNotice}

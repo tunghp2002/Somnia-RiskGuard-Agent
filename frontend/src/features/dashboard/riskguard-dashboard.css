@@ -2189,6 +2189,27 @@ label {
   white-space: nowrap;
 }
 
+@keyframes rg-shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.plan-skeleton-row {
+  display: block;
+  height: 52px;
+  border-radius: 12px;
+  background:
+    linear-gradient(
+      90deg,
+      rgb(148 163 255 / 6%) 25%,
+      rgb(148 163 255 / 14%) 50%,
+      rgb(148 163 255 / 6%) 75%
+    );
+  background-size: 800px 100%;
+  animation: rg-shimmer 1.6s ease-in-out infinite;
+}
+
+
 .current-plan-actions,
 .inheritance-edit-toolbar {
   display: flex;

@@ -157,6 +157,7 @@ export function useRiskGuardDashboard() {
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [inheritancePlan, setInheritancePlan] =
     useState<InheritancePlanStatus | null>(null);
+  const [inheritancePlanLoading, setInheritancePlanLoading] = useState(false);
   const [selectedSmartAccountAddress, setSelectedSmartAccountAddress] =
     useState<string>();
   const [selectedAssetAccountScope, setSelectedAssetAccountScope] =
@@ -172,6 +173,7 @@ export function useRiskGuardDashboard() {
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const loadRequestRef = useRef(0);
+  const agentReviewPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoSmartAccountAttemptRef = useRef<string | null>(null);
 
   const activeWalletAddress = wallet?.address;
@@ -444,6 +446,36 @@ export function useRiskGuardDashboard() {
     return () => window.clearTimeout(id);
   }, [loadData]);
 
+  // Dedicated inheritance plan fetch: runs specifically when activeInheritanceSmartAccount
+  // becomes available (after connectRiskGuardSmartAccount resolves), fixing the race
+  // condition where loadData() fires before the smart account address is known.
+  useEffect(() => {
+    if (!activeInheritanceSmartAccount) {
+      return;
+    }
+
+    let cancelled = false;
+    setInheritancePlanLoading(true);
+
+    agentApi
+      .getInheritancePlan(activeInheritanceSmartAccount)
+      .then((plan) => {
+        if (!cancelled) {
+          setInheritancePlan(plan);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) {
+          setInheritancePlanLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeInheritanceSmartAccount]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -582,6 +614,53 @@ export function useRiskGuardDashboard() {
       clearTimeout(timeout);
     };
   }, [loadData, telegramCode, telegramStatus, telegramWalletAddress]);
+
+  // Poll inheritance plan while agent review modal is open.
+  // When the agent approves via Telegram, the tx executes on-chain and the plan
+  // becomes active — we detect this and auto-dismiss the modal.
+  const agentReviewModalOpen = Boolean(agentReviewModal);
+  useEffect(() => {
+    if (!agentReviewModalOpen || !activeInheritanceSmartAccount) {
+      return;
+    }
+
+    const pollIntervalMs = 5_000;
+    const maxPollMs = 120_000;
+    let stopped = false;
+    let elapsed = 0;
+
+    const interval = setInterval(() => {
+      elapsed += pollIntervalMs;
+      if (elapsed > maxPollMs) {
+        clearInterval(interval);
+        return;
+      }
+
+      void agentApi
+        .getInheritancePlan(activeInheritanceSmartAccount)
+        .then((plan) => {
+          if (stopped) {
+            return;
+          }
+
+          if (plan?.active) {
+            setInheritancePlan(plan);
+            setAgentReviewModal(null);
+            setNotice({
+              tone: "ok",
+              message: "Inheritance plan approved and activated on-chain.",
+            });
+            clearInterval(interval);
+          }
+        })
+        .catch(() => undefined);
+    }, pollIntervalMs);
+
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+    };
+  }, [activeInheritanceSmartAccount, agentReviewModalOpen]);
 
   async function handleConnectWallet() {
     setActionLoading("wallet");
@@ -761,6 +840,12 @@ export function useRiskGuardDashboard() {
       await loadData();
     } catch (error) {
       if (error instanceof SomniaAgentReviewRequestedError) {
+        // Register session key even though tx needs agent review, so that /checkin works after the plan is approved.
+        await agentApi.ensureSessionKeyAction({
+          walletAddress: wallet.address,
+          smartAccountAddress,
+          action: "checkin",
+        }).catch(() => undefined);
         setAgentReviewModal(buildAgentReviewModal(error, publicChain, telegramSession));
         return;
       }
@@ -1147,6 +1232,7 @@ export function useRiskGuardDashboard() {
       guardianReady,
       health,
       inheritancePlan,
+      inheritancePlanLoading,
       loading,
       mobileMoreOpen,
       mode,

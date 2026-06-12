@@ -56,6 +56,7 @@ import type { Notice } from "@/features/dashboard/types";
 export function InheritanceSettings({
     actionLoading,
     inheritancePlan,
+    inheritancePlanLoading,
     onInheritanceCancel,
     onInheritanceSubmit,
     onNotice,
@@ -66,6 +67,7 @@ export function InheritanceSettings({
 }: {
     actionLoading: string | null;
     inheritancePlan?: InheritancePlanStatus | null | undefined;
+    inheritancePlanLoading?: boolean;
     onInheritanceCancel: () => void;
     onInheritanceSubmit: (event: SyntheticEvent<HTMLFormElement, SubmitEvent>) => void;
     onNotice?: (notice: Notice) => void;
@@ -148,6 +150,10 @@ export function InheritanceSettings({
     });
     const hasActivePlan = Boolean(inheritancePlan?.active);
     const [isEditingPlan, setIsEditingPlan] = useState(false);
+    // While the dedicated inheritance plan fetch is in flight and we don't yet
+    // have a result, hold off rendering the "Create plan" form so users don't
+    // see a false-negative (i.e. think they haven't created a plan yet).
+    const checkingPlan = Boolean(inheritancePlanLoading) && !hasActivePlan;
     const showingCurrentPlan = hasActivePlan && !isEditingPlan;
     const connectingForCancel = false;
     const connectingForSubmit = false;
@@ -421,6 +427,26 @@ export function InheritanceSettings({
         } catch {
             onNotice?.({ tone: "bad", message: "Could not copy smart account address." });
         }
+    }
+
+    if (checkingPlan) {
+        return (
+            <section className="inheritance-screen inheritance-current-screen">
+                <section className="inheritance-card current-plan-card current-plan-card-centered">
+                    <div className="inheritance-section-head current-plan-head">
+                        <div>
+                            <Loader2 className="spin" size={19} />
+                            <h3>Checking inheritance plan&hellip;</h3>
+                        </div>
+                    </div>
+                    <div className="current-plan-grid">
+                        <span className="plan-skeleton-row" aria-hidden="true" />
+                        <span className="plan-skeleton-row" aria-hidden="true" />
+                        <span className="plan-skeleton-row" aria-hidden="true" />
+                    </div>
+                </section>
+            </section>
+        );
     }
 
     if (showingCurrentPlan) {
