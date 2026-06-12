@@ -89,6 +89,8 @@ interface BlockscoutList<T> {
 
 const somniaLogoUrl = "/somnia-logo.png";
 const somguardLogoUrl = "/somguard-logo.png";
+const requestTimeoutMs = 8_000;
+const maxBlockscoutPages = 10;
 
 export { somniaLogoUrl, somguardLogoUrl };
 
@@ -97,7 +99,16 @@ function apiBase(blockscoutUrl: string) {
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, { cache: "no-store" });
+  const controller = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), requestTimeoutMs);
+
+  let response: Response;
+
+  try {
+    response = await fetch(url, { cache: "no-store", signal: controller.signal });
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     throw new Error(`Blockscout request failed: ${response.status}`);
@@ -124,8 +135,10 @@ function withQueryParams(url: string, params?: Record<string, string | number | 
 async function fetchBlockscoutList<T>(url: string): Promise<T[]> {
   const items: T[] = [];
   let nextUrl: string | undefined = url;
+  let pageCount = 0;
 
-  while (nextUrl) {
+  while (nextUrl && pageCount < maxBlockscoutPages) {
+    pageCount += 1;
     const payload: BlockscoutList<T> = await fetchJson<BlockscoutList<T>>(nextUrl);
     items.push(...(payload.items ?? []));
     nextUrl = payload.next_page_params ? withQueryParams(url, payload.next_page_params) : undefined;
@@ -159,15 +172,34 @@ export function formatUnits(value: string, decimals: number) {
   return shortFraction ? `${integer}.${shortFraction}` : integer;
 }
 
+async function fetchNativeBalanceWei(address: string, nativeRpcUrl?: string) {
+  if (!nativeRpcUrl) {
+    return undefined;
+  }
+
+  try {
+    const { createPublicClient, getAddress, http } = await import("viem");
+    const client = createPublicClient({
+      transport: http(nativeRpcUrl, { timeout: requestTimeoutMs }),
+    });
+
+    return (await client.getBalance({ address: getAddress(address) })).toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export async function fetchAccountAssets({
   accounts,
   blockscoutUrl,
   nativeDecimals,
+  nativeRpcUrl,
   nativeSymbol,
 }: {
   accounts: Array<{ label: string; address: string }>;
   blockscoutUrl: string;
   nativeDecimals: number;
+  nativeRpcUrl?: string;
   nativeSymbol: string;
 }): Promise<AccountAssetSnapshot> {
   const baseUrl = apiBase(blockscoutUrl);
@@ -179,12 +211,13 @@ export async function fetchAccountAssets({
         fetchJson<BlockscoutTokenBalance[]>(`${baseUrl}/addresses/${encodedAddress}/token-balances`),
         fetchBlockscoutList<BlockscoutNftItem>(`${baseUrl}/addresses/${encodedAddress}/nft`).catch(() => []),
       ]);
+      const nativeBalanceWei = await fetchNativeBalanceWei(account.address, nativeRpcUrl);
 
       return {
         native: {
           accountLabel: account.label,
           address: account.address,
-          balance: formatUnits(addressInfo.coin_balance ?? "0", nativeDecimals),
+          balance: formatUnits(nativeBalanceWei ?? addressInfo.coin_balance ?? "0", nativeDecimals),
           symbol: nativeSymbol,
         },
         tokens: tokenItems

@@ -54,7 +54,10 @@ export function useAccountAssets({
     if (!publicChain || selectedAccounts.length === 0) {
       // Clear asynchronously so the reset doesn't run synchronously inside the
       // effect commit (avoids the cascading-render lint).
-      const resetId = window.setTimeout(() => setAssets(null), 0);
+      const resetId = window.setTimeout(() => {
+        setAssets(null);
+        setLoading(false);
+      }, 0);
       return () => window.clearTimeout(resetId);
     }
 
@@ -81,6 +84,7 @@ export function useAccountAssets({
           : false;
 
         if (cacheFresh && refreshNonce === 0) {
+          setLoading(false);
           return;
         }
 
@@ -96,6 +100,7 @@ export function useAccountAssets({
           })),
           blockscoutUrl: publicChain.blockscoutUrl ?? publicChain.blockExplorerUrl,
           nativeDecimals: publicChain.nativeCurrency.decimals,
+          nativeRpcUrl: publicChain.rpcUrl,
           nativeSymbol: publicChain.nativeCurrency.symbol,
         })
           .then((snapshot) => {
@@ -158,9 +163,11 @@ export function useAccountAssets({
           return;
         }
 
+        const fetchedAt = blockscoutFetchedAtRef.current || Date.now();
+
         setAssets(snapshot);
         void writeCachedAccountAssets(cacheKey, {
-          fetchedAt: blockscoutFetchedAtRef.current || Date.now(),
+          fetchedAt,
           snapshot,
           updatedAt: Date.now(),
         });
@@ -201,6 +208,7 @@ export function useAccountAssets({
             })),
             blockscoutUrl: publicChain.blockscoutUrl ?? publicChain.blockExplorerUrl,
             nativeDecimals: publicChain.nativeCurrency.decimals,
+            nativeRpcUrl: publicChain.rpcUrl,
             nativeSymbol: publicChain.nativeCurrency.symbol,
           })
             .then((snapshot) => {

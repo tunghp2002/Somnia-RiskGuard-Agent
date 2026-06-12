@@ -9,19 +9,10 @@ import type { PublicChainMetadata } from "@/lib/agent-api";
 
 type AccountInput = { address: string; label: string };
 type Unsubscribe = () => void;
-type SomniaStreamSubscription = {
-  unsubscribe: () => Promise<unknown>;
-};
-type SomniaStreamSubscriber = {
-  subscribe: (params: {
-    ethCalls: [];
-    onData: (data: unknown) => void;
-    onError?: (error: Error) => void;
-  }) => Promise<Error | SomniaStreamSubscription>;
-};
 
-const streamLogThrottleMs = 60_000;
-let lastStreamLogAt = 0;
+const assetLogThrottleMs = 60_000;
+const balancePollIntervalMs = 30_000;
+let lastAssetLogAt = 0;
 
 const erc20BalanceAbi = [
   {
@@ -33,39 +24,25 @@ const erc20BalanceAbi = [
   },
 ] as const;
 
-function rpcWebSocketUrl(publicChain: PublicChainMetadata) {
-  const configured = process.env.NEXT_PUBLIC_SOMNIA_STREAM_WS_URL;
-
-  if (configured) {
-    return configured;
-  }
-
-  if (publicChain.chainId === 50312) {
-    return "wss://api.infra.testnet.somnia.network/ws";
-  }
-
-  return publicChain.rpcUrl.replace(/^http/i, "ws");
-}
-
-function logSomniaBalanceStreamIssue(message: string, details?: unknown) {
+function logAssetBalanceIssue(message: string, details?: unknown) {
   const now = Date.now();
 
-  if (now - lastStreamLogAt < streamLogThrottleMs) {
+  if (now - lastAssetLogAt < assetLogThrottleMs) {
     return;
   }
 
-  lastStreamLogAt = now;
+  lastAssetLogAt = now;
   console.warn(`[RiskGuard] ${message}`, details);
 }
 
-function createSomniaViemChain(publicChain: PublicChainMetadata, wsUrl: string) {
+function createSomniaViemChain(publicChain: PublicChainMetadata) {
   return {
     id: publicChain.chainId,
     name: publicChain.name,
     nativeCurrency: publicChain.nativeCurrency,
     rpcUrls: {
-      default: { http: [publicChain.rpcUrl], webSocket: [wsUrl] },
-      public: { http: [publicChain.rpcUrl], webSocket: [wsUrl] },
+      default: { http: [publicChain.rpcUrl] },
+      public: { http: [publicChain.rpcUrl] },
     },
   } as const;
 }
@@ -88,7 +65,7 @@ async function refreshSnapshotBalances({
     import("viem"),
   ]);
   const client = createPublicClient({
-    chain: createSomniaViemChain(publicChain, rpcWebSocketUrl(publicChain)),
+    chain: createSomniaViemChain(publicChain),
     transport: http(publicChain.rpcUrl),
   });
   const accountByAddress = new Map(accounts.map((account) => [account.address.toLowerCase(), account]));
@@ -148,74 +125,41 @@ export async function subscribeSomniaBalanceStream({
   onSnapshot: (snapshot: AccountAssetSnapshot) => void;
   publicChain: PublicChainMetadata;
 }): Promise<Unsubscribe> {
-  const wsUrl = rpcWebSocketUrl(publicChain);
-  const [{ SDK }, { createPublicClient, webSocket }] = await Promise.all([
-    import("@somnia-chain/streams"),
-    import("viem"),
-  ]);
-  const streamClient = createPublicClient({
-    chain: createSomniaViemChain(publicChain, wsUrl),
-    transport: webSocket(wsUrl),
-  });
-  const sdk = new SDK({ public: streamClient });
   let stopped = false;
-  let refreshTimer: number | undefined;
+  let pollRefreshInFlight = false;
 
-  const refreshBalances = () => {
-    if (refreshTimer) {
-      window.clearTimeout(refreshTimer);
+  const pollBalances = () => {
+    if (pollRefreshInFlight || stopped) {
+      return;
     }
 
-    refreshTimer = window.setTimeout(() => {
-      const snapshot = getSnapshot();
+    const snapshot = getSnapshot();
 
-      if (!snapshot || stopped) {
-        return;
-      }
+    if (!snapshot) {
+      return;
+    }
 
-      void refreshSnapshotBalances({ accounts, currentSnapshot: snapshot, publicChain })
-        .then((nextSnapshot) => {
-          if (!stopped) {
-            onSnapshot(nextSnapshot);
-          }
-        })
-        .catch((error) => {
-          logSomniaBalanceStreamIssue("Somnia balance stream refresh failed.", error);
-        });
-    }, 1_000);
+    pollRefreshInFlight = true;
+    void refreshSnapshotBalances({ accounts, currentSnapshot: snapshot, publicChain })
+      .then((nextSnapshot) => {
+        if (!stopped) {
+          onSnapshot(nextSnapshot);
+        }
+      })
+      .catch((error) => {
+        logAssetBalanceIssue("Somnia balance poll refresh failed.", error);
+      })
+      .finally(() => {
+        pollRefreshInFlight = false;
+      });
   };
 
-  const streamSubscriber = sdk.streams as unknown as Partial<SomniaStreamSubscriber>;
-
-  if (!streamSubscriber.subscribe) {
-    throw new Error("Somnia Streams SDK subscription support is unavailable. Install @somnia-chain/streams >= 0.12.");
-  }
-
-  const subscription = await streamSubscriber.subscribe({
-    ethCalls: [],
-    onData: refreshBalances,
-    onError: (error) => {
-      logSomniaBalanceStreamIssue("Somnia balance stream event callback failed.", error);
-    },
-  });
-
-  if (subscription instanceof Error) {
-    logSomniaBalanceStreamIssue(
-      "Somnia balance stream is unavailable; cached Blockscout data will remain in use.",
-      { chainId: publicChain.chainId, wsUrl, error: subscription.message },
-    );
-    throw subscription;
-  }
-
-  refreshBalances();
+  const firstPollTimeoutId = window.setTimeout(pollBalances, 1_000);
+  const pollIntervalId = window.setInterval(pollBalances, balancePollIntervalMs);
 
   return () => {
     stopped = true;
-
-    if (refreshTimer) {
-      window.clearTimeout(refreshTimer);
-    }
-
-    void subscription.unsubscribe();
+    window.clearTimeout(firstPollTimeoutId);
+    window.clearInterval(pollIntervalId);
   };
 }
