@@ -25,9 +25,12 @@ import { agentApi } from "@/lib/agent-api";
 import {
   createThirdwebAccountAbstraction,
   riskGuardAccountSalt,
+  somniaBrowserChainConfig,
+  somniaChainIdHex,
   somniaThirdwebChain,
   thirdwebClient,
 } from "@/lib/thirdweb-client";
+import { ensureBrowserChain } from "@/lib/wallet";
 
 const smartAccountExecuteGasLimit = 31_000_000n;
 const signedReplayCallGasLimit = 31_000_000n;
@@ -265,6 +268,7 @@ async function requestSomniaAgentReview(options: {
   smartAccountAddress: string;
   executeParams: ExecuteParams;
 }) {
+  await ensureBrowserChain(somniaChainIdHex, somniaBrowserChainConfig);
   const provider = new BrowserProvider(getEthereumProvider());
   const signer = await provider.getSigner();
   const validator = new Contract(

@@ -10,6 +10,14 @@ const publicChain = publicChains.chains[publicChains.defaultChain as keyof typeo
 
 export const thirdwebClientId = process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID ?? "";
 export const riskGuardAccountSalt = "riskguard-v2-2026-06-01";
+export const somniaChainIdHex = `0x${publicChain.chainId.toString(16)}`;
+export const somniaBrowserChainConfig = {
+  chainId: somniaChainIdHex,
+  chainName: publicChain.name,
+  nativeCurrency: publicChain.nativeCurrency,
+  rpcUrls: [publicChain.rpcUrl],
+  blockExplorerUrls: [publicChain.blockExplorerUrl],
+};
 
 export const thirdwebClient = thirdwebClientId
   ? createThirdwebClient({ clientId: thirdwebClientId })

@@ -107,6 +107,18 @@ export interface BrowserTransactionReceipt {
   logs: Array<{ address: string; topics: string[]; data: string }>;
 }
 
+export interface BrowserChainConfig {
+  blockExplorerUrls?: string[];
+  chainId: string;
+  chainName: string;
+  nativeCurrency: {
+    decimals: number;
+    name: string;
+    symbol: string;
+  };
+  rpcUrls: string[];
+}
+
 function toHexQuantity(value: string): string {
   if (value.startsWith("0x")) {
     return value;
@@ -114,16 +126,35 @@ function toHexQuantity(value: string): string {
   return `0x${BigInt(value).toString(16)}`;
 }
 
-export async function ensureBrowserChain(chainIdHex: string): Promise<void> {
+export async function ensureBrowserChain(
+  chainIdHex: string,
+  chainConfig?: BrowserChainConfig
+): Promise<void> {
   const provider = getProvider();
   const current = await provider.request<string>({ method: "eth_chainId" });
   if (current?.toLowerCase() === chainIdHex.toLowerCase()) {
     return;
   }
-  await provider.request({
-    method: "wallet_switchEthereumChain",
-    params: [{ chainId: chainIdHex }]
-  });
+
+  try {
+    await provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: chainIdHex }]
+    });
+  } catch (error) {
+    const code = typeof error === "object" && error && "code" in error
+      ? Number((error as { code?: unknown }).code)
+      : undefined;
+
+    if (code !== 4902 || !chainConfig) {
+      throw error;
+    }
+
+    await provider.request({
+      method: "wallet_addEthereumChain",
+      params: [chainConfig]
+    });
+  }
 }
 
 export async function sendBrowserTransaction(
