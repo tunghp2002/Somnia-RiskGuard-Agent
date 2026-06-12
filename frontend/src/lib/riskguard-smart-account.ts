@@ -3,6 +3,7 @@ import {
   BrowserProvider,
   Contract,
   Interface,
+  JsonRpcProvider,
   getAddress,
   solidityPacked,
 } from "ethers";
@@ -27,6 +28,7 @@ import {
   riskGuardAccountSalt,
   somniaBrowserChainConfig,
   somniaChainIdHex,
+  somniaRpcUrl,
   somniaThirdwebChain,
   thirdwebClient,
 } from "@/lib/thirdweb-client";
@@ -269,30 +271,38 @@ async function requestSomniaAgentReview(options: {
   executeParams: ExecuteParams;
 }) {
   await ensureBrowserChain(somniaChainIdHex, somniaBrowserChainConfig);
-  const provider = new BrowserProvider(getEthereumProvider());
-  const signer = await provider.getSigner();
-  const validator = new Contract(
+  const browserProvider = new BrowserProvider(getEthereumProvider());
+  const readProvider = new JsonRpcProvider(somniaRpcUrl, Number(somniaThirdwebChain.id));
+  const signer = await browserProvider.getSigner();
+  const validatorReader = new Contract(
+    options.riskGuardValidatorAddress,
+    riskGuardValidatorInterface,
+    readProvider
+  );
+  const validatorWriter = new Contract(
     options.riskGuardValidatorAddress,
     riskGuardValidatorInterface,
     signer
   );
-  const agentPlatform = getAddress(await validator.getFunction("agentPlatform").staticCall());
+  const agentPlatform = getAddress(
+    await validatorReader.getFunction("agentPlatform").staticCall()
+  );
 
   if (agentPlatform === getAddress(zeroAddress)) {
     throw new Error("Somnia RiskGuard agent is not configured on the validator contract.");
   }
 
-  const platform = new Contract(agentPlatform, agentRequesterInterface, provider);
+  const platform = new Contract(agentPlatform, agentRequesterInterface, readProvider);
   const [requestDeposit, rewardPerCall, subcommitteeSize, currentBudget] = await Promise.all([
     platform.getFunction("getRequestDeposit").staticCall(),
-    validator.getFunction("riskAgentRewardPerCall").staticCall(),
-    validator.getFunction("AGENT_SUBCOMMITTEE_SIZE").staticCall(),
-    validator.getFunction("agentBudgetOf").staticCall(options.smartAccountAddress),
+    validatorReader.getFunction("riskAgentRewardPerCall").staticCall(),
+    validatorReader.getFunction("AGENT_SUBCOMMITTEE_SIZE").staticCall(),
+    validatorReader.getFunction("agentBudgetOf").staticCall(options.smartAccountAddress),
   ]) as [bigint, bigint, bigint, bigint];
   const requiredBudget = requestDeposit + (rewardPerCall * subcommitteeSize);
 
   if (currentBudget < requiredBudget) {
-    const fundTx = await validator.getFunction("fundAgentBudget")(
+    const fundTx = await validatorWriter.getFunction("fundAgentBudget")(
       options.smartAccountAddress,
       { value: requiredBudget - currentBudget }
     );
@@ -301,7 +311,7 @@ async function requestSomniaAgentReview(options: {
 
   const callData = new Interface(["function execute(bytes32 mode, bytes executionCalldata)"])
     .encodeFunctionData("execute", [options.executeParams.mode, options.executeParams.executionCalldata]);
-  const requestTx = await validator.getFunction("requestAgentReview")(
+  const requestTx = await validatorWriter.getFunction("requestAgentReview")(
     options.smartAccountAddress,
     callData
   );
