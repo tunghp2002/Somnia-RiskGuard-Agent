@@ -113,6 +113,78 @@ function messageFromError(error: unknown): string {
   return "Unexpected error";
 }
 
+function scopedScanStatus(scanStatus: ScanStatus | null | undefined, chainIds: number[]): ScanStatus | null {
+  if (!scanStatus) {
+    return null;
+  }
+
+  const items = scanStatus.items.filter((item) => chainIds.includes(item.chainId));
+  const completedCount = items.filter((item) => item.status === "complete").length;
+
+  return {
+    ...scanStatus,
+    itemCount: items.length,
+    completedCount,
+    complete: items.length > 0 && completedCount === items.length,
+    items
+  };
+}
+
+function buildChainAnalysisRecords({
+  approvals,
+  chains,
+  limitApplied,
+  scanMeta,
+  scanStatus,
+  selectedChainIds,
+  status,
+  walletAddress
+}: {
+  approvals: ApprovalEntry[];
+  chains: ScanChainSummary[];
+  limitApplied?: boolean;
+  scanMeta?: ApprovalScanMeta | undefined;
+  scanStatus?: ScanStatus | null;
+  selectedChainIds: number[];
+  status?: ApprovalAnalysisRecord["status"];
+  walletAddress: string;
+}): ApprovalAnalysisRecord[] {
+  const now = new Date().toISOString();
+
+  return selectedChainIds.map((chainId) => {
+    const chain = chains.find((item) => item.chainId === chainId);
+    const chainApprovals = approvals.filter((approval) => approval.chainId === chainId);
+    const chainScanStatus = scopedScanStatus(scanStatus, [chainId]);
+    const chainStatus = status
+      ?? (chainApprovals.length === 0
+        ? "empty"
+        : chainScanStatus
+          ? chainScanStatus.complete ? "complete" : "analyzing"
+          : "analyzing");
+    const chainScanMeta = scanMeta
+      ? {
+          partial: scanMeta.chains.some((item) => item.chainId === chainId && item.partial),
+          chains: scanMeta.chains.filter((item) => item.chainId === chainId)
+        }
+      : undefined;
+
+    return {
+      id: createRecordId(),
+      walletAddress,
+      createdAt: now,
+      updatedAt: now,
+      chainIds: [chainId],
+      chainNames: [chain?.name ?? `Chain ${chainId}`],
+      approvals: chainApprovals,
+      ...(chainScanMeta ? { scanMeta: chainScanMeta } : {}),
+      scanStatus: chainScanStatus,
+      status: chainStatus,
+      ...(limitApplied ? { limitApplied } : {}),
+      ...(chainStatus === "empty" ? { note: "No active approvals found on this chain." } : {})
+    };
+  });
+}
+
 export function useApprovalScanner(
   walletAddress: string | undefined,
   somniaChainId: number | undefined
@@ -230,7 +302,7 @@ export function useApprovalScanner(
     }
   }, [walletAddress, selectedChainIds]);
 
-  const pollScan = useCallback(async (scanId: number, recordId: string) => {
+  const pollScan = useCallback(async (scanId: number, recordIds: string[]) => {
     setPolling(true);
     const deadline = Date.now() + 180_000;
     try {
@@ -242,11 +314,11 @@ export function useApprovalScanner(
         setAnalyzedAt(now);
         updateHistory((current) =>
           current.map((record) =>
-            record.id === recordId
+            recordIds.includes(record.id)
               ? {
                   ...record,
-                  scanStatus: status,
-                  status: status.complete ? "complete" : "analyzing",
+                  scanStatus: scopedScanStatus(status, record.chainIds),
+                  status: scopedScanStatus(status, record.chainIds)?.complete ? "complete" : "analyzing",
                   updatedAt: now
                 }
               : record
@@ -260,7 +332,7 @@ export function useApprovalScanner(
       setNote("Risk analysis is still running on-chain. Results will update as agents respond.");
       updateHistory((current) =>
         current.map((record) =>
-          record.id === recordId
+          recordIds.includes(record.id)
             ? {
                 ...record,
                 status: "timeout",
@@ -309,48 +381,33 @@ export function useApprovalScanner(
       }
 
       if (prepared.approvals.length === 0) {
-        const now = new Date().toISOString();
-        const record: ApprovalAnalysisRecord = {
-          id: createRecordId(),
-          walletAddress,
-          createdAt: now,
-          updatedAt: now,
-          chainIds: selectedChainIds,
-          chainNames: chains
-            .filter((chain) => selectedChainIds.includes(chain.chainId))
-            .map((chain) => chain.name),
+        const records = buildChainAnalysisRecords({
           approvals: [],
+          chains,
           scanMeta: prepared.scanMeta,
-          scanStatus: null,
+          selectedChainIds,
           status: "empty",
-          note: "No active approvals found on the selected chains."
-        };
-        updateHistory((current) => [record, ...current]);
+          walletAddress,
+        });
+        updateHistory((current) => [...records, ...current]);
         setNote("No active approvals found on the selected chains.");
-        setAnalyzedAt(now);
+        setAnalyzedAt(records[0]?.updatedAt ?? new Date().toISOString());
         return;
       }
 
       if (prepared.scanStatus) {
-        const now = new Date().toISOString();
-        const record: ApprovalAnalysisRecord = {
-          id: createRecordId(),
-          walletAddress,
-          createdAt: now,
-          updatedAt: now,
-          chainIds: selectedChainIds,
-          chainNames: chains
-            .filter((chain) => selectedChainIds.includes(chain.chainId))
-            .map((chain) => chain.name),
+        const records = buildChainAnalysisRecords({
           approvals: prepared.approvals,
+          chains,
+          limitApplied: Boolean(prepared.limitApplied),
           scanMeta: prepared.scanMeta,
           scanStatus: prepared.scanStatus,
-          status: "complete",
-          limitApplied: Boolean(prepared.limitApplied)
-        };
-        updateHistory((current) => [record, ...current]);
+          selectedChainIds,
+          walletAddress,
+        });
+        updateHistory((current) => [...records, ...current]);
         setScanStatus(prepared.scanStatus);
-        setAnalyzedAt(now);
+        setAnalyzedAt(records[0]?.updatedAt ?? new Date().toISOString());
         return;
       }
 
@@ -383,25 +440,18 @@ export function useApprovalScanner(
         throw new Error("Scan transaction did not emit a scan id.");
       }
       const scanId = Number(BigInt(scanIdTopic));
-      const now = new Date().toISOString();
-      const record: ApprovalAnalysisRecord = {
-        id: createRecordId(),
-        walletAddress,
-        createdAt: now,
-        updatedAt: now,
-        chainIds: selectedChainIds,
-        chainNames: chains
-          .filter((chain) => selectedChainIds.includes(chain.chainId))
-          .map((chain) => chain.name),
+      const records = buildChainAnalysisRecords({
         approvals: prepared.approvals,
+        chains,
+        limitApplied: prepared.approvals.length > MAX_ITEMS_PER_SCAN,
         scanMeta: prepared.scanMeta,
-        scanStatus: null,
+        selectedChainIds,
         status: "analyzing",
-        limitApplied: prepared.approvals.length > MAX_ITEMS_PER_SCAN
-      };
-      updateHistory((current) => [record, ...current]);
-      setAnalyzedAt(now);
-      await pollScan(scanId, record.id);
+        walletAddress,
+      });
+      updateHistory((current) => [...records, ...current]);
+      setAnalyzedAt(records[0]?.updatedAt ?? new Date().toISOString());
+      await pollScan(scanId, records.map((record) => record.id));
     } catch (caught) {
       const message = messageFromError(caught);
       setError(message);

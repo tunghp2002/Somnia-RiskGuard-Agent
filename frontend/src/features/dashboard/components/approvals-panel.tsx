@@ -111,6 +111,10 @@ function chainLabel(record: ApprovalAnalysisRecord): string {
   return record.chainNames.length > 0 ? record.chainNames.join(", ") : "selected chains";
 }
 
+function chainScope(record: ApprovalAnalysisRecord): string {
+  return record.chainIds.length === 1 ? `on ${chainLabel(record)}` : `across ${chainLabel(record)}`;
+}
+
 function formatBlockNumber(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
 }
@@ -119,6 +123,16 @@ function recordBlockSummary(record: ApprovalAnalysisRecord): string {
   const chains = record.scanMeta?.chains ?? [];
   if (chains.length === 0) {
     return "";
+  }
+  if (chains.length > 1) {
+    const partialCount = chains.filter((chain) => chain.partial).length;
+    const cacheCount = chains.filter((chain) => chain.fromCache).length;
+    const status = partialCount > 0
+      ? `${partialCount} partial`
+      : cacheCount > 0
+        ? `${cacheCount} cached`
+        : "complete";
+    return `Indexed ${chains.length} chains (${status}).`;
   }
   const fromBlock = Math.min(...chains.map((chain) => chain.scannedFromBlock));
   const toBlock = Math.max(...chains.map((chain) => chain.scannedToBlock));
@@ -151,22 +165,52 @@ function recordStats(record: ApprovalAnalysisRecord) {
   };
 }
 
+function chainStats(record: ApprovalAnalysisRecord) {
+  const statsByChain = new Map<number, ReturnType<typeof recordStats> & { chainName: string }>();
+  const chainNames = new Map<number, string>();
+
+  for (const chain of record.scanMeta?.chains ?? []) {
+    chainNames.set(chain.chainId, chain.chainName);
+  }
+  for (const approval of record.approvals) {
+    chainNames.set(approval.chainId, approval.chainName);
+  }
+
+  for (const [chainId, chainName] of chainNames.entries()) {
+    const approvals = record.approvals.filter((approval) => approval.chainId === chainId);
+    const items = record.scanStatus?.items.filter((item) => item.chainId === chainId) ?? [];
+    const scopedRecord: ApprovalAnalysisRecord = {
+      ...record,
+      approvals,
+      scanStatus: record.scanStatus
+        ? {
+            ...record.scanStatus,
+            items
+          }
+        : null
+    };
+    statsByChain.set(chainId, { ...recordStats(scopedRecord), chainName });
+  }
+
+  return [...statsByChain.entries()].map(([chainId, stats]) => ({ chainId, ...stats }));
+}
+
 function recordSummary(record: ApprovalAnalysisRecord): string {
   const stats = recordStats(record);
   const blockSummary = recordBlockSummary(record);
   const suffix = blockSummary ? ` ${blockSummary}` : "";
 
   if (record.status === "empty") {
-    return `Fetched 0 active approvals across ${chainLabel(record)}.${suffix}`;
+    return `Fetched 0 active approvals ${chainScope(record)}.${suffix}`;
   }
   if (record.status === "analyzing") {
-    return `Analyzing ${stats.total} of ${stats.fetched} approval${stats.fetched === 1 ? "" : "s"} across ${chainLabel(record)}.${suffix}`;
+    return `Analyzing ${stats.total} of ${stats.fetched} approval${stats.fetched === 1 ? "" : "s"} ${chainScope(record)}.${suffix}`;
   }
   if (record.status === "timeout") {
     return `Fetched ${stats.fetched} approvals. Analysis is still running: ${stats.analyzed}/${stats.total} complete.${suffix}`;
   }
 
-  return `Fetched ${stats.fetched} approvals. ${stats.analyzed} analyzed: ${stats.high} high, ${stats.medium} medium, ${stats.low} low.${suffix}`;
+  return `Fetched ${stats.fetched} approvals ${chainScope(record)}. ${stats.analyzed} analyzed: ${stats.high} high, ${stats.medium} medium, ${stats.low} low.${suffix}`;
 }
 
 function recordTitle(record: ApprovalAnalysisRecord): string {
@@ -351,6 +395,11 @@ function ApprovalDetailModal({
               {chain.chainName}: blocks {formatBlockNumber(chain.scannedFromBlock)}-
               {formatBlockNumber(chain.scannedToBlock)}
               {chain.partial ? " (partial)" : chain.fromCache ? " (cached)" : ""}
+            </span>
+          ))}
+          {chainStats(record).map((chain) => (
+            <span key={`${chain.chainId}-stats`}>
+              {chain.chainName}: {chain.fetched} approvals, {chain.high} high, {chain.medium} medium, {chain.low} low
             </span>
           ))}
         </div>
