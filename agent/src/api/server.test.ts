@@ -541,6 +541,47 @@ describe("agent setup API", () => {
     expect(payload.data.events[0].metadata.nested.apiKey).toBe("[REDACTED]");
   });
 
+  it("returns compact audit summaries with conditional cache support", async () => {
+    await auditEvents.append({
+      eventType: "operator.simulation",
+      status: "succeeded",
+      metadata: { mode: "simulation", payload: "ignored" }
+    });
+    await auditEvents.append({
+      eventType: "operator.test",
+      status: "failed",
+      metadata: {
+        subsystem: "telegram",
+        detail: {
+          reason: "large nested payload"
+        },
+        extra: "kept",
+        fourth: "omitted"
+      }
+    });
+
+    const response = await fetch(`${baseUrl}/api/audit-events/recent?limit=1&summary=1&excludeSimulation=1`);
+    const payload = await response.json();
+    const etag = response.headers.get("etag");
+
+    expect(response.status).toBe(200);
+    expect(etag).toBeTruthy();
+    expect(payload.data.events).toHaveLength(1);
+    expect(payload.data.events[0].eventType).toBe("operator.test");
+    expect(payload.data.events[0].metadata).toEqual({
+      subsystem: "telegram",
+      detail: { reason: "large nested payload" },
+      extra: "kept"
+    });
+
+    const cachedResponse = await fetch(`${baseUrl}/api/audit-events/recent?limit=1&summary=1&excludeSimulation=1`, {
+      headers: { "if-none-match": etag ?? "" }
+    });
+
+    expect(cachedResponse.status).toBe(304);
+    expect(await cachedResponse.text()).toBe("");
+  });
+
   it("runs deterministic demo scenarios through the API", async () => {
     const response = await fetch(`${baseUrl}/api/demo/scenarios`, {
       method: "POST",

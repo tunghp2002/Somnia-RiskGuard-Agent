@@ -54,7 +54,6 @@ import {
   durationToSeconds,
   errorMessage,
   formatAddress,
-  isSimulationEvent,
   readableMetadata,
 } from "../utils";
 import { useStoredRiskGuardConfig } from "./use-stored-risk-guard-config";
@@ -316,7 +315,7 @@ export function useRiskGuardDashboard() {
         activeInheritanceSmartAccount
           ? agentApi.getInheritancePlan(activeInheritanceSmartAccount)
           : Promise.resolve(null),
-        agentApi.getAuditEvents(20),
+        agentApi.getAuditEventSummaries(8),
         wallet
           ? agentApi.getUserProfile(wallet.address)
           : Promise.resolve(null),
@@ -362,10 +361,7 @@ export function useRiskGuardDashboard() {
         setInheritancePlan(null);
       }
       if (eventsResult.status === "fulfilled") {
-        const nextEvents = eventsResult.value.events.filter(
-          (event) => !isSimulationEvent(event),
-        );
-        setEvents(nextEvents);
+        setEvents(eventsResult.value.events);
       } else {
         failedReads.push("audit events");
         setEvents([]);

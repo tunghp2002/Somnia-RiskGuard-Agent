@@ -302,6 +302,10 @@ export interface AuditEvent {
   metadata: Record<string, unknown>;
 }
 
+interface AuditEventsResponse {
+  events: AuditEvent[];
+}
+
 export interface DemoScenarioResult {
   scenario: "setup_ready" | "risk_alert" | "reward_claim" | "missed_heartbeat" | "full_demo";
   mode: "simulation";
@@ -376,6 +380,42 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new AgentApiError(response.status, error.code, error.message, error.details);
   }
 
+  return payload.data;
+}
+
+const auditEventsCache: {
+  etag?: string;
+  data?: AuditEventsResponse;
+} = {};
+
+async function requestAuditEvents(path: string): Promise<AuditEventsResponse> {
+  const response = await fetch(`${getAgentApiBaseUrl()}${path}`, {
+    headers: {
+      "content-type": "application/json",
+      ...(auditEventsCache.etag ? { "if-none-match": auditEventsCache.etag } : {})
+    }
+  });
+
+  if (response.status === 304 && auditEventsCache.data) {
+    return auditEventsCache.data;
+  }
+
+  const payload = (await response.json()) as AgentEnvelope<AuditEventsResponse> | AgentFailure;
+
+  if (!response.ok || "error" in payload) {
+    const error = "error" in payload
+      ? payload.error
+      : { code: "request_failed", message: "Agent API request failed" };
+    throw new AgentApiError(response.status, error.code, error.message, error.details);
+  }
+
+  const etag = response.headers.get("etag");
+  auditEventsCache.data = payload.data;
+  if (etag) {
+    auditEventsCache.etag = etag;
+  } else {
+    delete auditEventsCache.etag;
+  }
   return payload.data;
 }
 
@@ -550,7 +590,9 @@ export const agentApi = {
     }),
   getHealth: () => request<Record<string, unknown>>("/api/health"),
   getAuditEvents: (limit = 20) =>
-    request<{ events: AuditEvent[] }>(`/api/audit-events/recent?limit=${limit}`),
+    request<AuditEventsResponse>(`/api/audit-events/recent?limit=${limit}`),
+  getAuditEventSummaries: (limit = 8) =>
+    requestAuditEvents(`/api/audit-events/recent?limit=${limit}&summary=1&excludeSimulation=1`),
   runDemoScenario: (body: {
     scenario: DemoScenarioResult["scenario"];
   }) =>

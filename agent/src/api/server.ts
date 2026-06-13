@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 
 import { getAddress } from "ethers";
@@ -64,7 +64,7 @@ import {
 const defaultMaxBodyBytes = 1_048_576;
 const sensitiveResponseKeyPattern =
   /(private[_-]?key|api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|authorization|cookie|password|credential)/i;
-const corsRequestHeaders = "content-type, x-riskguard-request-id";
+const corsRequestHeaders = "content-type, if-none-match, x-riskguard-request-id";
 
 function isAllowedDevOrigin(origin: string): boolean {
   try {
@@ -122,6 +122,7 @@ function applyCorsHeaders(request: IncomingMessage, response: Parameters<typeof 
 
   response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", corsRequestHeaders);
+  response.setHeader("Access-Control-Expose-Headers", "ETag");
 }
 
 class PayloadTooLargeError extends Error {
@@ -185,6 +186,58 @@ function redactSecretSafe(value: unknown): unknown {
       sensitiveResponseKeyPattern.test(key) ? "[REDACTED]" : redactSecretSafe(item)
     ])
   );
+}
+
+function isSimulationAuditEvent(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const metadata = (value as { metadata?: unknown }).metadata;
+  return Boolean(
+    metadata &&
+      typeof metadata === "object" &&
+      !Array.isArray(metadata) &&
+      (metadata as { mode?: unknown }).mode === "simulation"
+  );
+}
+
+function compactAuditMetadata(value: unknown, depth = 0): unknown {
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return depth > 0 ? `[${value.length} items]` : value.slice(0, 3).map((item) => compactAuditMetadata(item, depth + 1));
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>);
+  const compactEntries: Array<[string, unknown]> = [];
+
+  for (const [key, item] of entries) {
+    if (sensitiveResponseKeyPattern.test(key)) {
+      compactEntries.push([key, "[REDACTED]"]);
+    } else if (item && typeof item === "object") {
+      compactEntries.push([key, depth >= 1 ? "[object]" : compactAuditMetadata(item, depth + 1)]);
+    } else {
+      compactEntries.push([key, item]);
+    }
+
+    if (compactEntries.length >= 3) {
+      break;
+    }
+  }
+
+  const mode = (value as { mode?: unknown }).mode;
+  if (mode !== undefined && !compactEntries.some(([key]) => key === "mode")) {
+    compactEntries.unshift(["mode", mode]);
+  }
+
+  return Object.fromEntries(compactEntries);
+}
+
+function createWeakEtag(payload: unknown): string {
+  return `W/"${createHash("sha256").update(JSON.stringify(payload)).digest("base64url")}"`;
 }
 
 async function readJsonBody(
@@ -308,11 +361,36 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
           throw new ServerDependencyError("Audit events repository is not configured");
         }
         const limit = parseOptionalLimit(url.searchParams.get("limit"));
+        const summary = url.searchParams.get("summary") === "1";
+        const excludeSimulation = url.searchParams.get("excludeSimulation") === "1";
         const data = (await dependencies.auditEvents.list())
           .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+          .filter((event) => !excludeSimulation || !isSimulationAuditEvent(event))
           .slice(0, limit)
-          .map((event) => redactSecretSafe(event));
-        sendJson(response, 200, success({ events: data }, requestId));
+          .map((event) => {
+            const redacted = redactSecretSafe(event) as typeof event;
+            return summary
+              ? {
+                  auditEventId: redacted.auditEventId,
+                  createdAt: redacted.createdAt,
+                  eventType: redacted.eventType,
+                  status: redacted.status,
+                  metadata: compactAuditMetadata(redacted.metadata)
+                }
+              : redacted;
+          });
+        const payload = success({ events: data }, requestId);
+        const etag = createWeakEtag(payload.data);
+        response.setHeader("Cache-Control", "private, max-age=15, stale-while-revalidate=45");
+        response.setHeader("ETag", etag);
+
+        if (request.headers["if-none-match"] === etag) {
+          response.writeHead(304);
+          response.end();
+          return;
+        }
+
+        sendJson(response, 200, payload);
         return;
       }
 
