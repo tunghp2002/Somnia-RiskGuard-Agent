@@ -868,21 +868,51 @@ export class ApprovalScannerService {
           isUnlimited: entry.isUnlimited
         }))
       );
-      return {
-        analysisMode: "onchain",
-        approvals,
-        scanMeta: discovery.scanMeta,
-        limitApplied: approvals.length > selected.length,
-        ...prepared
-      };
+
+      if (await this.canSubmitPreparedScan(walletAddress, prepared)) {
+        return {
+          analysisMode: "onchain",
+          approvals,
+          scanMeta: discovery.scanMeta,
+          limitApplied: approvals.length > selected.length,
+          ...prepared
+        };
+      }
     }
 
+    return this.buildLocalDiscoveredScan(walletAddress, approvals, selected, discovery.scanMeta, items);
+  }
+
+  private buildLocalDiscoveredScan(
+    walletAddress: string,
+    approvals: ApprovalEntry[],
+    selected: ApprovalEntry[],
+    scanMeta: ApprovalDiscoveryResult["scanMeta"],
+    items: Array<{
+      chainId: number;
+      spender: string;
+      token: string;
+      context: string;
+    }>
+  ): {
+    analysisMode: "local";
+    approvals: ApprovalEntry[];
+    scanMeta: ApprovalDiscoveryResult["scanMeta"];
+    limitApplied: boolean;
+    scanStatus: ScanStatus;
+    items: Array<{
+      chainId: number;
+      spender: string;
+      token: string;
+      context: string;
+    }>;
+  } {
     const scanStatus = this.buildLocalBatchStatus(walletAddress, selected, items);
 
     return {
       analysisMode: "local",
       approvals,
-      scanMeta: discovery.scanMeta,
+      scanMeta,
       limitApplied: approvals.length > selected.length,
       scanStatus,
       items: items.map((item) => ({
@@ -904,6 +934,28 @@ export class ApprovalScannerService {
     try {
       const stages = (await scanner.getFunction("STAGES_PER_SCAN")()) as bigint;
       return stages === 3n;
+    } catch {
+      return false;
+    }
+  }
+
+  private async canSubmitPreparedScan(
+    walletAddress: string,
+    prepared: {
+      scannerAddress: string;
+      calldata: string;
+      value: string;
+    }
+  ): Promise<boolean> {
+    const provider = this.somniaProvider();
+    try {
+      await provider.call({
+        from: getAddress(walletAddress),
+        to: prepared.scannerAddress,
+        data: prepared.calldata,
+        value: BigInt(prepared.value)
+      });
+      return true;
     } catch {
       return false;
     }
