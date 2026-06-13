@@ -73,7 +73,8 @@ export const approvalScanPrepareRequestSchema = z.object({
 
 export const approvalAnalyzePrepareRequestSchema = z.object({
   walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  chainIds: z.array(z.number().int().positive()).min(1)
+  chainIds: z.array(z.number().int().positive()).min(1),
+  mode: z.enum(["local", "onchain"]).optional()
 });
 
 export interface ApprovalEntry {
@@ -828,7 +829,8 @@ export class ApprovalScannerService {
 
   public async prepareDiscoveredScan(
     walletAddress: string,
-    chainIds: number[]
+    chainIds: number[],
+    options: { mode?: "local" | "onchain" } = {}
   ): Promise<{
     analysisMode: "local" | "onchain";
     approvals: ApprovalEntry[];
@@ -855,7 +857,7 @@ export class ApprovalScannerService {
     }
 
     const items = selected.map((entry) => this.toScanItem(entry));
-    if (await this.supportsBatchedOnchainScanner()) {
+    if (options.mode !== "local" && await this.supportsBatchedOnchainScanner()) {
       const prepared = await this.prepareScan(
         selected.map((entry) => ({
           chainId: entry.chainId,

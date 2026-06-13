@@ -457,7 +457,8 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         const body = approvalAnalyzePrepareRequestSchema.parse(await readJsonBody(request));
         const prepared = await dependencies.approvalScanner.prepareDiscoveredScan(
           body.walletAddress,
-          body.chainIds
+          body.chainIds,
+          body.mode ? { mode: body.mode } : {}
         );
         sendJson(response, 200, success(prepared, requestId));
         return;

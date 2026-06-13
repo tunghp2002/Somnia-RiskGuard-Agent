@@ -478,7 +478,7 @@ export const agentApi = {
       method: "POST",
       body: JSON.stringify(body)
     }),
-  prepareApprovalAnalysis: (body: { walletAddress: string; chainIds: number[] }) =>
+  prepareApprovalAnalysis: (body: { walletAddress: string; chainIds: number[]; mode?: "local" | "onchain" }) =>
     request<ApprovalAnalysisPrepare>("/api/approvals/analyze/prepare", {
       method: "POST",
       body: JSON.stringify(body)

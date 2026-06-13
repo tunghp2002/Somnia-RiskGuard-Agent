@@ -132,6 +132,18 @@ export async function ensureBrowserChain(
 ): Promise<void> {
   const provider = getProvider();
   const current = await provider.request<string>({ method: "eth_chainId" });
+  if (chainConfig) {
+    try {
+      await provider.request({
+        method: "wallet_addEthereumChain",
+        params: [chainConfig]
+      });
+    } catch {
+      // Wallets may reject updates for an already-known chain. Switching below
+      // will still work if the existing RPC is healthy.
+    }
+  }
+
   if (current?.toLowerCase() === chainIdHex.toLowerCase()) {
     return;
   }
@@ -146,13 +158,17 @@ export async function ensureBrowserChain(
       ? Number((error as { code?: unknown }).code)
       : undefined;
 
-    if (code !== 4902 || !chainConfig) {
+    if ((code !== 4902 && code !== -32006) || !chainConfig) {
       throw error;
     }
 
     await provider.request({
       method: "wallet_addEthereumChain",
       params: [chainConfig]
+    });
+    await provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: chainIdHex }]
     });
   }
 }
