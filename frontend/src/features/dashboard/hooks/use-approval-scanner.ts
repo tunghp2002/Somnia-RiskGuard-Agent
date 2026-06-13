@@ -21,6 +21,7 @@ import {
   sendBrowserTransaction,
   waitForBrowserReceipt
 } from "@/lib/wallet";
+import { somniaBrowserChainConfig } from "@/lib/thirdweb-client";
 
 const SCAN_REQUESTED_TOPIC = keccakId("ScanRequested(uint256,address,uint256,uint256)");
 const MAX_ITEMS_PER_SCAN = 50;
@@ -83,6 +84,31 @@ function messageFromError(error: unknown): string {
   }
   if (error instanceof Error) {
     return error.message;
+  }
+  if (error && typeof error === "object") {
+    const providerError = error as {
+      code?: unknown;
+      data?: { message?: unknown };
+      message?: unknown;
+      reason?: unknown;
+      shortMessage?: unknown;
+    };
+    const message =
+      providerError.shortMessage ??
+      providerError.reason ??
+      providerError.data?.message ??
+      providerError.message;
+
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+
+    if (providerError.code !== undefined) {
+      return `Wallet request failed with code ${String(providerError.code)}.`;
+    }
+  }
+  if (typeof error === "string" && error.trim()) {
+    return error;
   }
   return "Unexpected error";
 }
@@ -333,7 +359,7 @@ export function useApprovalScanner(
       }
 
       if (somniaChainId) {
-        await ensureBrowserChain(chainIdToHex(somniaChainId));
+        await ensureBrowserChain(chainIdToHex(somniaChainId), somniaBrowserChainConfig);
       }
 
       const txHash = await sendBrowserTransaction({
@@ -343,6 +369,9 @@ export function useApprovalScanner(
       });
 
       const receipt = await waitForBrowserReceipt(txHash);
+      if (receipt.status === "0x0" || receipt.status === "0") {
+        throw new Error("Scan transaction reverted. Check your wallet balance and the selected network.");
+      }
       const scannerAddress = prepared.scannerAddress.toLowerCase();
       const scanLog = receipt.logs.find(
         (log) =>

@@ -389,12 +389,7 @@ const auditEventsCache: {
 } = {};
 
 async function requestAuditEvents(path: string): Promise<AuditEventsResponse> {
-  const response = await fetch(`${getAgentApiBaseUrl()}${path}`, {
-    headers: {
-      "content-type": "application/json",
-      ...(auditEventsCache.etag ? { "if-none-match": auditEventsCache.etag } : {})
-    }
-  });
+  const response = await fetch(`${getAgentApiBaseUrl()}${path}`);
 
   if (response.status === 304 && auditEventsCache.data) {
     return auditEventsCache.data;

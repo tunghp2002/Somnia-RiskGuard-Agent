@@ -417,10 +417,9 @@ export function useRiskGuardDashboard() {
       }
 
       if (failedReads.length > 0) {
-        setNotice({
-          tone: "warn",
-          message: `Some agent API reads are unavailable: ${failedReads.join(", ")}.`,
-        });
+        console.warn(
+          `Some agent API reads are unavailable: ${failedReads.join(", ")}.`,
+        );
       }
     } catch (error) {
       if (requestId !== loadRequestRef.current) {
