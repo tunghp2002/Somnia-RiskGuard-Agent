@@ -31,8 +31,7 @@ const publicChains = JSON.parse(
 const publicChain = publicChains.chains[publicChains.defaultChain];
 const smartAccount = process.argv[2] ?? env.SMART_ACCOUNT_ADDRESS;
 const registryAddress = env.INHERITANCE_REGISTRY_CONTRACT_ADDRESS;
-const rpcUrl =
-  env.SOMNIA_RPC_URL ?? env.RPC_URL ?? env.NEXT_PUBLIC_SOMNIA_RPC_URL ?? publicChain.rpcUrl;
+const rpcUrl = publicChain.rpcUrl;
 
 if (!rpcUrl || !registryAddress || !smartAccount) {
   throw new Error(

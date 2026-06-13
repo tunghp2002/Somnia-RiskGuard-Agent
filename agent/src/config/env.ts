@@ -104,16 +104,14 @@ const rawEnvSchema = z
     .default("info"),
   PUBLIC_CHAIN_KEY: requiredNonEmptyString("PUBLIC_CHAIN_KEY"),
   PUBLIC_CHAIN_NAME: requiredNonEmptyString("PUBLIC_CHAIN_NAME"),
+  PUBLIC_CHAIN_RPC_URL: z.string().url("Must be a valid URL"),
+  PUBLIC_CHAIN_ID: z.number().int().positive(),
   PUBLIC_CHAIN_EXPLORER_URL: z.string().url("Must be a valid URL"),
   PUBLIC_CHAIN_BLOCKSCOUT_URL: optionalNonEmptyString.pipe(z.string().url().optional()),
   PUBLIC_CHAIN_NATIVE_CURRENCY_NAME: requiredNonEmptyString("PUBLIC_CHAIN_NATIVE_CURRENCY_NAME"),
   PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL: requiredNonEmptyString("PUBLIC_CHAIN_NATIVE_CURRENCY_SYMBOL"),
   PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS: integerFromString("PUBLIC_CHAIN_NATIVE_CURRENCY_DECIMALS").pipe(
     z.number().int().nonnegative()
-  ),
-  SOMNIA_RPC_URL: z.string().url("Must be a valid URL"),
-  SOMNIA_CHAIN_ID: integerFromString("SOMNIA_CHAIN_ID").pipe(
-    z.number().int().positive()
   ),
   THIRDWEB_SECRET_KEY: requiredNonEmptyString("THIRDWEB_SECRET_KEY"),
   THIRDWEB_CLIENT_ID: optionalNonEmptyString,
@@ -152,22 +150,6 @@ const rawEnvSchema = z
   TELEGRAM_WEBHOOK_SECRET: optionalNonEmptyString
 })
   .superRefine((env, context) => {
-    if (!env.SOMNIA_RPC_URL) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Must be configured through config/public-chains.json or SOMNIA_RPC_URL legacy override",
-        path: ["SOMNIA_RPC_URL"]
-      });
-    }
-
-    if (!env.SOMNIA_CHAIN_ID || Number(env.SOMNIA_CHAIN_ID) <= 0) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Must be configured through config/public-chains.json or SOMNIA_CHAIN_ID legacy override",
-        path: ["SOMNIA_CHAIN_ID"]
-      });
-    }
-
     if (!env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -197,8 +179,8 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
   nodeEnv: env.NODE_ENV,
   logLevel: env.LOG_LEVEL,
   somnia: {
-    rpcUrl: env.SOMNIA_RPC_URL,
-    chainId: Number(env.SOMNIA_CHAIN_ID),
+    rpcUrl: env.PUBLIC_CHAIN_RPC_URL,
+    chainId: env.PUBLIC_CHAIN_ID,
     monitoredWalletAddress: env.MONITORED_WALLET_ADDRESS,
     agentWalletAddress: env.AGENT_WALLET_ADDRESS,
     inheritanceRegistryContractAddress: env.INHERITANCE_REGISTRY_CONTRACT_ADDRESS
@@ -215,8 +197,8 @@ export const agentEnvSchema = rawEnvSchema.transform((env) => ({
   publicChain: {
     key: env.PUBLIC_CHAIN_KEY,
     name: env.PUBLIC_CHAIN_NAME,
-    rpcUrl: env.SOMNIA_RPC_URL,
-    chainId: Number(env.SOMNIA_CHAIN_ID),
+    rpcUrl: env.PUBLIC_CHAIN_RPC_URL,
+    chainId: env.PUBLIC_CHAIN_ID,
     blockExplorerUrl: env.PUBLIC_CHAIN_EXPLORER_URL,
     blockscoutUrl: env.PUBLIC_CHAIN_BLOCKSCOUT_URL,
     nativeCurrency: {
@@ -301,8 +283,6 @@ export function validateConfig(
 
   const envWithPublicDefaults = {
     ...env,
-    SOMNIA_RPC_URL: publicChain.rpcUrl,
-    SOMNIA_CHAIN_ID: String(publicChain.chainId),
     INHERITANCE_REGISTRY_CONTRACT_ADDRESS: publicChain.contracts.inheritanceRegistry,
     RISK_GUARD_APPROVAL_STORE_ADDRESS: publicChain.contracts.riskGuardApprovalStore,
     RISK_GUARD_HOOK_MODULE_ADDRESS: publicChain.contracts.riskGuardHookModule,
@@ -313,6 +293,8 @@ export function validateConfig(
       env.APPROVAL_SCANNER_CONTRACT_ADDRESS ?? publicChain.contracts.approvalRiskScanner,
     PUBLIC_CHAIN_KEY: publicChain.key,
     PUBLIC_CHAIN_NAME: publicChain.name,
+    PUBLIC_CHAIN_RPC_URL: publicChain.rpcUrl,
+    PUBLIC_CHAIN_ID: publicChain.chainId,
     PUBLIC_CHAIN_EXPLORER_URL: publicChain.blockExplorerUrl,
     PUBLIC_CHAIN_BLOCKSCOUT_URL: publicChain.blockscoutUrl,
     PUBLIC_CHAIN_NATIVE_CURRENCY_NAME: publicChain.nativeCurrency.name,

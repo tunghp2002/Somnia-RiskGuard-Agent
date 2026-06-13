@@ -62,10 +62,9 @@ function usage() {
 
 async function main() {
   const action = process.argv[2] ?? "balance";
-  const rpcUrl = env.SOMNIA_RPC_URL || env.NEXT_PUBLIC_SOMNIA_RPC_URL || publicChain.rpcUrl;
+  const rpcUrl = publicChain.rpcUrl;
   const registryAddress =
     env.INHERITANCE_REGISTRY_CONTRACT_ADDRESS || publicChain.contracts.inheritanceRegistry;
-  if (!rpcUrl) throw new Error("Missing SOMNIA_RPC_URL");
   if (!registryAddress) throw new Error("Missing INHERITANCE_REGISTRY_CONTRACT_ADDRESS");
 
   const provider = new JsonRpcProvider(rpcUrl);

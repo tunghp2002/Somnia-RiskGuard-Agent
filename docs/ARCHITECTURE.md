@@ -371,7 +371,7 @@ backend REST client in `lib/agent-api.ts`; asset enumeration in
 `lib/blockscout-api.ts`; browser wallet in `lib/wallet.ts`. UI primitives are
 shadcn (button, input, badge, tooltip, sonner). Env consumed:
 `NEXT_PUBLIC_THIRDWEB_CLIENT_ID`, `NEXT_PUBLIC_AGENT_API_URL`/`_BASE_URL`,
-`NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`, `NEXT_PUBLIC_APP_NAME`.
+`NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`.
 
 **Telegram-first gate.** Enabling RiskGuard (`handleConfigureRiskPolicy`) and
 creating an inheritance plan (`handleInheritancePlanSubmit`) both short-circuit

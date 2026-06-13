@@ -131,7 +131,7 @@ Required environment variables:
 
 - `WALLET_DEPLOYER_PRIVATE_KEY`
 - `THIRDWEB_SECRET_KEY` or `THIRDWEB_CLIENT_ID`
-- optional `SOMNIA_RPC_URL`; otherwise the script uses `config/public-chains.json`
+- RPC/chain metadata comes from `config/public-chains.json`
 
 After deployment, set:
 
@@ -160,8 +160,8 @@ Deploy the registry with Foundry:
 
 ```bash
 forge create src/InheritanceRegistry.sol:RiskGuardInheritanceRegistry \
-  --rpc-url $SOMNIA_RPC_URL \
-  --private-key $AGENT_PRIVATE_KEY \
+  --rpc-url https://dream-rpc.somnia.network \
+  --private-key $WALLET_DEPLOYER_PRIVATE_KEY \
   --broadcast
 ```
 

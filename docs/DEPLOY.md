@@ -55,7 +55,6 @@ The repo already ships [`render.yaml`](../render.yaml), so Render configures its
    | `NEXT_PUBLIC_AGENT_API_URL` | the Render URL from step 2 (e.g. `https://somguard-agent.onrender.com`) |
    | `NEXT_PUBLIC_THIRDWEB_CLIENT_ID` | your thirdweb client id |
    | `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` | bot username (e.g. `@somguard_bot`) — if using Telegram |
-   | `NEXT_PUBLIC_APP_NAME` | `SomGuard` (optional) |
 4. **Deploy** → grab the URL, e.g. `https://somguard.vercel.app`.
 
 ---

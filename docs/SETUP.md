@@ -64,9 +64,7 @@ LOG_LEVEL=info
 
 ```bash
 # Public chain id/RPC/explorer/contracts live in config/public-chains.json.
-# SOMNIA_* are a legacy fallback until the runtime loader is fully migrated.
-SOMNIA_RPC_URL=
-SOMNIA_CHAIN_ID=
+# To change the runtime chain, update config/public-chains.json.
 MONITORED_WALLET_ADDRESS=          # optional pre-configured wallet to monitor
 # Public address of the agent's automation/executor wallet. Used as the policy
 # signer for safe on-chain actions (reward auto-claim). Unset = those actions
@@ -170,7 +168,6 @@ TELEGRAM_WEBHOOK_SECRET=
 ### Frontend (`NEXT_PUBLIC_*`)
 
 ```bash
-NEXT_PUBLIC_APP_NAME=SomGuard
 NEXT_PUBLIC_AGENT_API_URL=http://localhost:3001
 NEXT_PUBLIC_THIRDWEB_CLIENT_ID=
 # NEXT_PUBLIC_AGENT_API_BASE_URL=http://localhost:3001

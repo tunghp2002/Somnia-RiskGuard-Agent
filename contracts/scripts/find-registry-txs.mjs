@@ -28,8 +28,7 @@ const publicChains = JSON.parse(
   readFileSync(resolve(repoRoot, "config", "public-chains.json"), "utf8")
 );
 const publicChain = publicChains.chains[publicChains.defaultChain];
-const rpcUrl =
-  env.SOMNIA_RPC_URL ?? env.RPC_URL ?? env.NEXT_PUBLIC_SOMNIA_RPC_URL ?? publicChain.rpcUrl;
+const rpcUrl = publicChain.rpcUrl;
 const registry = (process.argv[2] ?? env.INHERITANCE_REGISTRY_CONTRACT_ADDRESS).toLowerCase();
 const fromBlock = Number(process.argv[3]);
 const toBlock = Number(process.argv[4]);

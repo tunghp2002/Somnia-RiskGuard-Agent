@@ -12,8 +12,6 @@ import {
 const validEnv = {
   NODE_ENV: "development",
   LOG_LEVEL: "info",
-  SOMNIA_RPC_URL: "https://dream-rpc.somnia.network",
-  SOMNIA_CHAIN_ID: "50312",
   THIRDWEB_SECRET_KEY: "thirdweb-secret-key",
   SUPABASE_URL: "https://riskguard.supabase.co",
   SUPABASE_SERVICE_ROLE_KEY: "supabase-service-role",
@@ -76,8 +74,6 @@ describe("agent runtime config", () => {
   it("loads non-secret public chain metadata from config/public-chains.json", () => {
     const config = validateConfig({
       ...validEnv,
-      SOMNIA_RPC_URL: undefined,
-      SOMNIA_CHAIN_ID: undefined,
       INHERITANCE_REGISTRY_CONTRACT_ADDRESS: undefined
     });
 

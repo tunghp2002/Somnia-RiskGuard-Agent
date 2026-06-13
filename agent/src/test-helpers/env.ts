@@ -4,8 +4,6 @@ import { validateConfig } from "../config/env.js";
 export const validEnv = {
   NODE_ENV: "development",
   LOG_LEVEL: "info",
-  SOMNIA_RPC_URL: "https://dream-rpc.somnia.network",
-  SOMNIA_CHAIN_ID: "50312",
   THIRDWEB_SECRET_KEY: "thirdweb-secret-key",
   SUPABASE_URL: "https://riskguard.supabase.co",
   SUPABASE_SERVICE_ROLE_KEY: "supabase-service-role",

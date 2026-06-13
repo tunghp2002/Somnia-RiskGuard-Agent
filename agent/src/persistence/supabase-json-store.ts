@@ -48,7 +48,6 @@ export class SupabaseJsonStore<T> implements RepositoryStore<T> {
 
   public async write(value: T): Promise<void> {
     const parsed = this.options.schema.parse(value);
-    const now = new Date().toISOString();
     const params = new URLSearchParams({
       on_conflict: "collection"
     });
@@ -59,8 +58,7 @@ export class SupabaseJsonStore<T> implements RepositoryStore<T> {
       },
       body: JSON.stringify({
         collection: this.collection,
-        data: parsed,
-        updated_at: now
+        data: parsed
       })
     });
   }

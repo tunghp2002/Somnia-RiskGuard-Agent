@@ -100,7 +100,7 @@ loadDotEnv(envPath);
 const publicChains = JSON.parse(fs.readFileSync(publicChainsPath, "utf8"));
 const publicChain = publicChains.chains[publicChains.defaultChain];
 const nativeDecimals = publicChain.nativeCurrency.decimals;
-const rpcUrl = process.env.SOMNIA_RPC_URL || publicChain.rpcUrl;
+const rpcUrl = publicChain.rpcUrl;
 const secretKey = process.env.THIRDWEB_SECRET_KEY;
 const clientId = process.env.THIRDWEB_CLIENT_ID || process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID;
 const privateKey = process.env.WALLET_DEPLOYER_PRIVATE_KEY;

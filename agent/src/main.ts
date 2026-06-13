@@ -21,7 +21,7 @@ import { AlertsRepository, alertsSchema } from "./persistence/alerts.repository.
 import { ActionNoncesRepository, actionNonceSchema } from "./persistence/action-nonces.repository.js";
 import { PortfolioSnapshotsRepository, portfolioSnapshotsSchema } from "./persistence/portfolio-snapshots.repository.js";
 import { RiskSnapshotsRepository, riskSnapshotSchema } from "./persistence/risk-snapshots.repository.js";
-import { TelegramBindingsRepository, telegramBindingsSchema } from "./persistence/telegram-bindings.repository.js";
+import { TelegramBindingsRepository } from "./persistence/telegram-bindings.repository.js";
 import { SupabaseUsersRepository } from "./persistence/users.repository.js";
 import { HeartbeatsRepository, heartbeatsSchema } from "./persistence/heartbeats.repository.js";
 import { RewardClaimsRepository, rewardClaimsDataSchema } from "./persistence/reward-claims.repository.js";
@@ -104,7 +104,7 @@ export async function startAgentRuntime(
   const audit = new AuditService(auditEvents, logger);
   const portfolioSnapshots = new PortfolioSnapshotsRepository(undefined, createMemoryStore(portfolioSnapshotsSchema, []));
   const riskSnapshots = new RiskSnapshotsRepository(undefined, createMemoryStore(z.array(riskSnapshotSchema), []));
-  const telegramBindings = new TelegramBindingsRepository(undefined, createSupabaseStore(config, "telegram-bindings.json", telegramBindingsSchema, []));
+  const telegramBindings = new TelegramBindingsRepository(undefined, undefined, users);
   const heartbeatsRepository = new HeartbeatsRepository(undefined, createMemoryStore(heartbeatsSchema, []));
   const rewardClaims = new RewardClaimsRepository(undefined, createMemoryStore(rewardClaimsDataSchema, {
     settings: [],

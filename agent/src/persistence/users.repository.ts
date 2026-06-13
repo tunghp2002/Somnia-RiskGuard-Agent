@@ -15,7 +15,15 @@ export const userSchema = z.object({
   displayName: z.string().trim().min(1).max(64).optional(),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
-  telegramChatId: z.string().optional()
+  telegramChatId: z.string().optional(),
+  telegramUserId: z.string().optional(),
+  telegramUsername: z.string().optional(),
+  telegramDisplayName: z.string().optional(),
+  telegramSmartAccountAddress: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/)
+    .transform((value) => getAddress(value))
+    .optional()
 });
 
 export const usersSchema = z.array(userSchema);
@@ -27,6 +35,10 @@ interface UserProfileRow {
   wallet_address: string;
   display_name: string | null;
   telegram_chat_id: string | null;
+  telegram_user_id: string | null;
+  telegram_username: string | null;
+  telegram_display_name: string | null;
+  telegram_smart_account_address: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -110,6 +122,96 @@ export class UsersRepository {
 
     return saved;
   }
+
+  public async updateTelegramBinding(input: {
+    walletAddress: string;
+    chatId: string;
+    telegramUserId?: string;
+    telegramUsername?: string;
+    telegramDisplayName?: string;
+    smartAccountAddress?: string;
+  }): Promise<UserRecord | undefined> {
+    const checksumAddress = getAddress(input.walletAddress);
+    const now = new Date().toISOString();
+    let saved: UserRecord | undefined;
+
+    await this.store.update((users) =>
+      users.map((user) => {
+        if (user.walletAddress !== checksumAddress) {
+          return user;
+        }
+
+        saved = userSchema.parse({
+          ...user,
+          telegramChatId: input.chatId,
+          telegramUserId: input.telegramUserId,
+          telegramUsername: input.telegramUsername,
+          telegramDisplayName: input.telegramDisplayName,
+          ...(input.smartAccountAddress
+            ? { telegramSmartAccountAddress: getAddress(input.smartAccountAddress) }
+            : {}),
+          updatedAt: now
+        });
+        return saved;
+      })
+    );
+
+    return saved;
+  }
+
+  public async attachTelegramSmartAccount(
+    walletAddress: string,
+    smartAccountAddress: string
+  ): Promise<UserRecord | undefined> {
+    const checksumAddress = getAddress(walletAddress);
+    const checksumSmartAccount = getAddress(smartAccountAddress);
+    const now = new Date().toISOString();
+    let saved: UserRecord | undefined;
+
+    await this.store.update((users) =>
+      users.map((user) => {
+        if (user.walletAddress !== checksumAddress || !user.telegramChatId) {
+          return user;
+        }
+
+        saved = userSchema.parse({
+          ...user,
+          telegramSmartAccountAddress: checksumSmartAccount,
+          updatedAt: now
+        });
+        return saved;
+      })
+    );
+
+    return saved;
+  }
+
+  public async clearTelegramBinding(walletAddress: string): Promise<UserRecord | undefined> {
+    const checksumAddress = getAddress(walletAddress);
+    const now = new Date().toISOString();
+    let cleared: UserRecord | undefined;
+
+    await this.store.update((users) =>
+      users.map((user) => {
+        if (user.walletAddress !== checksumAddress || !user.telegramChatId) {
+          return user;
+        }
+
+        cleared = user;
+        return userSchema.parse({
+          ...user,
+          telegramChatId: undefined,
+          telegramUserId: undefined,
+          telegramUsername: undefined,
+          telegramDisplayName: undefined,
+          telegramSmartAccountAddress: undefined,
+          updatedAt: now
+        });
+      })
+    );
+
+    return cleared;
+  }
 }
 
 export class SupabaseUsersRepository extends UsersRepository {
@@ -185,6 +287,61 @@ export class SupabaseUsersRepository extends UsersRepository {
     return this.upsertRow(row);
   }
 
+  public override async updateTelegramBinding(input: {
+    walletAddress: string;
+    chatId: string;
+    telegramUserId?: string;
+    telegramUsername?: string;
+    telegramDisplayName?: string;
+    smartAccountAddress?: string;
+  }): Promise<UserRecord | undefined> {
+    const existing = await this.findByWalletAddress(input.walletAddress);
+    if (!existing) {
+      return undefined;
+    }
+
+    return this.patchByWallet(input.walletAddress, {
+      telegram_chat_id: input.chatId,
+      telegram_user_id: input.telegramUserId ?? null,
+      telegram_username: input.telegramUsername ?? null,
+      telegram_display_name: input.telegramDisplayName ?? null,
+      telegram_smart_account_address: input.smartAccountAddress
+        ? getAddress(input.smartAccountAddress)
+        : existing.telegramSmartAccountAddress ?? null
+    });
+  }
+
+  public override async attachTelegramSmartAccount(
+    walletAddress: string,
+    smartAccountAddress: string
+  ): Promise<UserRecord | undefined> {
+    const existing = await this.findByWalletAddress(walletAddress);
+    if (!existing?.telegramChatId) {
+      return undefined;
+    }
+
+    return this.patchByWallet(walletAddress, {
+      telegram_smart_account_address: getAddress(smartAccountAddress)
+    });
+  }
+
+  public override async clearTelegramBinding(walletAddress: string): Promise<UserRecord | undefined> {
+    const existing = await this.findByWalletAddress(walletAddress);
+    if (!existing?.telegramChatId) {
+      return undefined;
+    }
+
+    await this.patchByWallet(walletAddress, {
+      telegram_chat_id: null,
+      telegram_user_id: null,
+      telegram_username: null,
+      telegram_display_name: null,
+      telegram_smart_account_address: null
+    });
+
+    return existing;
+  }
+
   private async upsertRow(row: UserProfileRow): Promise<UserRecord> {
     const params = new URLSearchParams({
       on_conflict: "wallet_address"
@@ -199,6 +356,32 @@ export class SupabaseUsersRepository extends UsersRepository {
 
     if (!rows[0]) {
       throw new Error("Supabase did not return the upserted user profile");
+    }
+
+    return fromProfileRow(rows[0]);
+  }
+
+  private async patchByWallet(
+    walletAddress: string,
+    patch: Partial<UserProfileRow>
+  ): Promise<UserRecord> {
+    const now = new Date().toISOString();
+    const params = new URLSearchParams({
+      wallet_address: `eq.${getAddress(walletAddress)}`
+    });
+    const rows = await this.request<UserProfileRow[]>(`?${params.toString()}`, {
+      method: "PATCH",
+      headers: {
+        Prefer: "return=representation"
+      },
+      body: JSON.stringify({
+        ...patch,
+        updated_at: now
+      })
+    });
+
+    if (!rows[0]) {
+      throw new Error("Supabase did not return the updated user profile");
     }
 
     return fromProfileRow(rows[0]);
@@ -236,7 +419,13 @@ function fromProfileRow(row: UserProfileRow): UserRecord {
     ...(row.display_name ? { displayName: row.display_name } : {}),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    ...(row.telegram_chat_id ? { telegramChatId: row.telegram_chat_id } : {})
+    ...(row.telegram_chat_id ? { telegramChatId: row.telegram_chat_id } : {}),
+    ...(row.telegram_user_id ? { telegramUserId: row.telegram_user_id } : {}),
+    ...(row.telegram_username ? { telegramUsername: row.telegram_username } : {}),
+    ...(row.telegram_display_name ? { telegramDisplayName: row.telegram_display_name } : {}),
+    ...(row.telegram_smart_account_address
+      ? { telegramSmartAccountAddress: row.telegram_smart_account_address }
+      : {})
   });
 }
 
@@ -246,6 +435,10 @@ function toProfileRow(record: UserRecord): UserProfileRow {
     wallet_address: record.walletAddress,
     display_name: record.displayName ?? null,
     telegram_chat_id: record.telegramChatId ?? null,
+    telegram_user_id: record.telegramUserId ?? null,
+    telegram_username: record.telegramUsername ?? null,
+    telegram_display_name: record.telegramDisplayName ?? null,
+    telegram_smart_account_address: record.telegramSmartAccountAddress ?? null,
     created_at: record.createdAt,
     updated_at: record.updatedAt
   };

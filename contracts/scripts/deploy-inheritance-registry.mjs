@@ -47,12 +47,7 @@ function requireEnv(name) {
 }
 
 async function main() {
-  const rpcUrl = env.SOMNIA_RPC_URL || env.NEXT_PUBLIC_SOMNIA_RPC_URL || publicChain.rpcUrl;
-  if (!rpcUrl) {
-    throw new Error("Missing SOMNIA_RPC_URL");
-  }
-
-  const provider = new JsonRpcProvider(rpcUrl);
+  const provider = new JsonRpcProvider(publicChain.rpcUrl);
   const wallet = new Wallet(requireEnv("WALLET_DEPLOYER_PRIVATE_KEY"), provider);
   const artifactPath = resolve(
     resolve(repoRoot, "contracts", "out"),

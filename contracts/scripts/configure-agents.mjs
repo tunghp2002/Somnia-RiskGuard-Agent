@@ -48,8 +48,8 @@ const approvalRiskScannerAbi = [
 
 async function main() {
   const privateKey = requireEnv("WALLET_DEPLOYER_PRIVATE_KEY");
-  const rpcUrl = env.SOMNIA_RPC_URL || publicChain.rpcUrl;
-  const chainId = Number(env.SOMNIA_CHAIN_ID || publicChain.chainId);
+  const rpcUrl = publicChain.rpcUrl;
+  const chainId = Number(publicChain.chainId);
   const configuredAgentRequester = env.SOMNIA_AGENT_REQUESTER_ADDRESS || agentRequesterByChainId[chainId];
 
   if (!configuredAgentRequester) {
