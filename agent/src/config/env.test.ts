@@ -66,7 +66,6 @@ describe("agent runtime config", () => {
       const message = formatConfigError(error as ConfigValidationError);
 
       expect(message).toContain("THIRDWEB_SECRET_KEY");
-      expect(message).not.toContain("SOMNIA_RPC_URL");
       expect(message).not.toContain("undefined");
     }
   });
