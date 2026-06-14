@@ -21,8 +21,8 @@ import type { AuditService } from "./audit.service.js";
 import {
   riskGuardPendingApprovalRequestSchema,
   type RiskGuardPendingApprovalRequest
-} from "./riskguard-approval.service.js";
-import type { RiskGuardPendingUserOpService } from "./riskguard-pending-userop.service.js";
+} from "./riskguard/approval.service.js";
+import type { RiskGuardPendingUserOpService } from "./riskguard/pending-userop.service.js";
 
 export const telegramBindingRequestSchema = z
   .object({

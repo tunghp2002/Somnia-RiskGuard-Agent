@@ -1,298 +1,55 @@
-import { createHash, randomUUID } from "node:crypto";
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import { randomUUID } from "node:crypto";
+import { createServer, type Server } from "node:http";
 
-import { getAddress } from "ethers";
-import { z, ZodError } from "zod";
+import { ZodError } from "zod";
 
+import {
+  AddressValidationError,
+  PayloadTooLargeError,
+  ServerDependencyError,
+  applyCorsHeaders,
+  compactAuditMetadata,
+  createWeakEtag,
+  isSimulationAuditEvent,
+  parseOptionalLimit,
+  parseOptionalWalletAddress,
+  readJsonBody,
+  redactSecretSafe
+} from "./http-support.js";
+import { sessionKeyActionRequestSchema } from "./request-schemas.js";
 import { failure, sendJson, success } from "./response.js";
-import type { SetupService } from "../services/setup.service.js";
+import { handleRiskGuardRoutes } from "./routes/riskguard.routes.js";
+import { handleTelegramRoutes } from "./routes/telegram.routes.js";
+import type { AgentApiDependencies } from "./dependencies.js";
 import {
   setupWalletRequestSchema,
   userProfileUpdateRequestSchema
 } from "../services/setup.service.js";
-import { sessionKeyActionSchema } from "../services/session-key-actions.js";
+import { demoScenarioRequestSchema } from "../services/demo-scenario.service.js";
 import {
-  signedWalletProofFields,
-  validateSignedWalletProof
-} from "../services/signed-wallet-proof.js";
-import type { PublicChainMetadata } from "../config/public-chain.js";
-import type { AuditEventsRepository } from "../persistence/audit-events.repository.js";
-import type { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
-import type { RiskSnapshotsRepository } from "../persistence/risk-snapshots.repository.js";
-import {
-  demoScenarioRequestSchema,
-  type DemoScenarioService
-} from "../services/demo-scenario.service.js";
-import {
-  riskGuardAgentReviewRequestedSchema,
-  telegramCallbackRequestSchema,
-  telegramSignedBindingRequestSchema,
-  telegramUnlinkRequestSchema,
-  TelegramAlertServiceError,
-  type TelegramAlertService
+  TelegramAlertServiceError
 } from "../services/telegram-alert.service.js";
-import { riskGuardPendingApprovalRequestSchema } from "../services/riskguard-approval.service.js";
-import {
-  riskGuardPendingUserOpRequestSchema,
-  type RiskGuardPendingUserOpService
-} from "../services/riskguard-pending-userop.service.js";
-import {
-  riskGuardReviewBudgetRequestSchema,
-  type RiskGuardReviewBudgetService
-} from "../services/riskguard-review-budget.service.js";
 import { TelegramConnectService } from "../services/telegram-connect.service.js";
 import {
   deadmanPolicyRequestSchema,
   heartbeatCheckInRequestSchema,
   HeartbeatServiceError,
-  heartbeatSettingsRequestSchema,
-  type HeartbeatService
+  heartbeatSettingsRequestSchema
 } from "../services/heartbeat.service.js";
 import {
   rewardFixtureRequestSchema,
   RewardClaimServiceError,
   rewardPolicyCheckRequestSchema,
   rewardRunSignedRequestSchema,
-  rewardSettingsSignedRequestSchema,
-  type RewardClaimService
+  rewardSettingsSignedRequestSchema
 } from "../services/reward-claim.service.js";
 import { InheritanceRegistryClient } from "../integrations/somnia/inheritance-registry.client.js";
 import {
   approvalAnalyzePrepareRequestSchema,
   approvalListRequestSchema,
   approvalScanPrepareRequestSchema,
-  ApprovalScannerServiceError,
-  type ApprovalScannerService
-} from "../services/approval-scanner.service.js";
-
-const defaultMaxBodyBytes = 1_048_576;
-const sensitiveResponseKeyPattern =
-  /(private[_-]?key|api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|authorization|cookie|password|credential)/i;
-const corsRequestHeaders = "content-type, if-none-match, x-riskguard-request-id";
-
-function isAllowedDevOrigin(origin: string): boolean {
-  try {
-    const url = new URL(origin);
-    const hostname = url.hostname.toLowerCase();
-
-    return (
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      hostname.startsWith("192.168.") ||
-      hostname.startsWith("10.") ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
-    );
-  } catch {
-    return false;
-  }
-}
-
-// Production frontends must be explicitly allowlisted. Avoid broad preview
-// domains here because several API routes perform wallet-scoped mutations.
-function getConfiguredOrigins(): string[] {
-  return (process.env.ALLOWED_ORIGINS ?? process.env.FRONTEND_URL ?? "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase().replace(/\/$/, ""))
-    .filter(Boolean);
-}
-
-function isAllowedOrigin(origin: string): boolean {
-  if (isAllowedDevOrigin(origin)) {
-    return true;
-  }
-
-  const normalized = origin.toLowerCase().replace(/\/$/, "");
-  return getConfiguredOrigins().includes(normalized);
-}
-
-function applyCorsHeaders(request: IncomingMessage, response: Parameters<typeof sendJson>[0]) {
-  const origin = request.headers.origin;
-
-  if (origin && isAllowedOrigin(origin)) {
-    response.setHeader("Access-Control-Allow-Origin", origin);
-    response.setHeader("Vary", "Origin");
-  }
-
-  response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
-  response.setHeader("Access-Control-Allow-Headers", corsRequestHeaders);
-  response.setHeader("Access-Control-Expose-Headers", "ETag");
-}
-
-class PayloadTooLargeError extends Error {
-  public constructor() {
-    super("Request body is too large");
-    this.name = "PayloadTooLargeError";
-  }
-}
-
-class AddressValidationError extends Error {
-  public constructor() {
-    super("Wallet address is invalid");
-    this.name = "AddressValidationError";
-  }
-}
-
-class ServerDependencyError extends Error {
-  public constructor(message: string) {
-    super(message);
-    this.name = "ServerDependencyError";
-  }
-}
-
-function parseOptionalWalletAddress(value: string | null): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  try {
-    return getAddress(value);
-  } catch {
-    throw new AddressValidationError();
-  }
-}
-
-function parseOptionalLimit(value: string | null, defaultValue = 20): number {
-  if (!value) {
-    return defaultValue;
-  }
-
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
-    throw new AddressValidationError();
-  }
-
-  return parsed;
-}
-
-function redactSecretSafe(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => redactSecretSafe(item));
-  }
-
-  if (!value || typeof value !== "object") {
-    return value;
-  }
-
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [
-      key,
-      sensitiveResponseKeyPattern.test(key) ? "[REDACTED]" : redactSecretSafe(item)
-    ])
-  );
-}
-
-function isSimulationAuditEvent(value: unknown): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-
-  const metadata = (value as { metadata?: unknown }).metadata;
-  return Boolean(
-    metadata &&
-      typeof metadata === "object" &&
-      !Array.isArray(metadata) &&
-      (metadata as { mode?: unknown }).mode === "simulation"
-  );
-}
-
-function compactAuditMetadata(value: unknown, depth = 0): unknown {
-  if (!value || typeof value !== "object") {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    return depth > 0 ? `[${value.length} items]` : value.slice(0, 3).map((item) => compactAuditMetadata(item, depth + 1));
-  }
-
-  const entries = Object.entries(value as Record<string, unknown>);
-  const compactEntries: Array<[string, unknown]> = [];
-
-  for (const [key, item] of entries) {
-    if (sensitiveResponseKeyPattern.test(key)) {
-      compactEntries.push([key, "[REDACTED]"]);
-    } else if (item && typeof item === "object") {
-      compactEntries.push([key, depth >= 1 ? "[object]" : compactAuditMetadata(item, depth + 1)]);
-    } else {
-      compactEntries.push([key, item]);
-    }
-
-    if (compactEntries.length >= 3) {
-      break;
-    }
-  }
-
-  const mode = (value as { mode?: unknown }).mode;
-  if (mode !== undefined && !compactEntries.some(([key]) => key === "mode")) {
-    compactEntries.unshift(["mode", mode]);
-  }
-
-  return Object.fromEntries(compactEntries);
-}
-
-function createWeakEtag(payload: unknown): string {
-  return `W/"${createHash("sha256").update(JSON.stringify(payload)).digest("base64url")}"`;
-}
-
-const sessionKeyActionRequestSchema = z
-  .object({
-    walletAddress: z
-      .string()
-      .regex(/^0x[a-fA-F0-9]{40}$/)
-      .transform((value) => getAddress(value)),
-    smartAccountAddress: z
-      .string()
-      .regex(/^0x[a-fA-F0-9]{40}$/)
-      .transform((value) => getAddress(value))
-      .optional(),
-    action: sessionKeyActionSchema.default("checkin"),
-    ...signedWalletProofFields
-  })
-  .strict()
-  .superRefine((input, context) =>
-    validateSignedWalletProof(input, context, `session-key.${input.action}`)
-  );
-
-async function readJsonBody(
-  request: IncomingMessage,
-  maxBodyBytes = defaultMaxBodyBytes
-): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  let byteLength = 0;
-
-  for await (const chunk of request) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    byteLength += buffer.byteLength;
-
-    if (byteLength > maxBodyBytes) {
-      throw new PayloadTooLargeError();
-    }
-
-    chunks.push(buffer);
-  }
-
-  if (chunks.length === 0) {
-    return {};
-  }
-
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-}
-
-export interface AgentApiDependencies {
-  setupService: SetupService;
-  auditEvents?: AuditEventsRepository;
-  portfolioSnapshots?: PortfolioSnapshotsRepository;
-  riskSnapshots?: RiskSnapshotsRepository;
-  demoScenarios?: DemoScenarioService;
-  telegramAlerts?: TelegramAlertService;
-  telegramConnect?: TelegramConnectService;
-  heartbeats?: HeartbeatService;
-  rewards?: RewardClaimService;
-  riskGuardPendingUserOps?: RiskGuardPendingUserOpService;
-  riskGuardReviewBudget?: RiskGuardReviewBudgetService;
-  approvalScanner?: ApprovalScannerService;
-  publicChain?: PublicChainMetadata;
-  health?: () => Promise<unknown> | unknown;
-}
+  ApprovalScannerServiceError
+} from "../services/approval-scanner/service.js";
 
 export function createAgentApiServer(dependencies: AgentApiDependencies): Server {
   const telegramConnect = dependencies.telegramConnect
@@ -655,208 +412,13 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         return;
       }
 
-      if (request.method === "GET" && url.pathname === "/api/telegram/health") {
-        if (!dependencies.telegramAlerts) {
-          throw new ServerDependencyError("Telegram alert service is not configured");
-        }
-        sendJson(response, 200, success(await dependencies.telegramAlerts.health(), requestId));
+      const routeContext = { dependencies, telegramConnect, request, response, url, requestId };
+
+      if (await handleTelegramRoutes(routeContext)) {
         return;
       }
 
-      if (request.method === "POST" && url.pathname === "/api/telegram/connect/start") {
-        if (!telegramConnect) {
-          throw new ServerDependencyError("Telegram alert service is not configured");
-        }
-
-        const body = await readJsonBody(request);
-        const walletAddress = parseOptionalWalletAddress(
-          typeof body === "object" && body && "walletAddress" in body
-            ? String((body as { walletAddress?: unknown }).walletAddress ?? "")
-            : null
-        );
-        const smartAccountAddress = parseOptionalWalletAddress(
-          typeof body === "object" && body && "smartAccountAddress" in body
-            ? String((body as { smartAccountAddress?: unknown }).smartAccountAddress ?? "")
-            : null
-        );
-
-        if (!walletAddress) {
-          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
-          return;
-        }
-
-        const session = telegramConnect.start(walletAddress, smartAccountAddress);
-        sendJson(
-          response,
-          201,
-          success(telegramConnect.serialize(session), requestId)
-        );
-        return;
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/telegram/connect/status") {
-        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
-
-        if (!walletAddress) {
-          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
-          return;
-        }
-
-        if (!telegramConnect) {
-          throw new ServerDependencyError("Telegram alert service is not configured");
-        }
-
-        const session = telegramConnect.latestForWallet(walletAddress);
-
-        if (!session) {
-          sendJson(response, 404, failure("not_found", "No Telegram Connect session is active"));
-          return;
-        }
-
-        sendJson(response, 200, success(telegramConnect.serialize(session), requestId));
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/telegram/connect/confirm") {
-        if (!telegramConnect) {
-          throw new ServerDependencyError("Telegram alert service is not configured");
-        }
-
-        const body = await readJsonBody(request);
-        const code = typeof body === "object" && body && "code" in body
-          ? String((body as { code?: unknown }).code ?? "").toUpperCase()
-          : "";
-        const chatId = typeof body === "object" && body && "chatId" in body
-          ? String((body as { chatId?: unknown }).chatId ?? "")
-          : "";
-        const telegramUserId = typeof body === "object" && body && "telegramUserId" in body
-          ? String((body as { telegramUserId?: unknown }).telegramUserId ?? "")
-          : undefined;
-        const telegramUsername = typeof body === "object" && body && "telegramUsername" in body
-          ? String((body as { telegramUsername?: unknown }).telegramUsername ?? "")
-          : undefined;
-        const telegramDisplayName = typeof body === "object" && body && "telegramDisplayName" in body
-          ? String((body as { telegramDisplayName?: unknown }).telegramDisplayName ?? "")
-          : undefined;
-        const session = telegramConnect.get(code);
-
-        if (!session) {
-          sendJson(response, 404, failure("not_found", "Telegram Connect code was not found"));
-          return;
-        }
-
-        if (Date.parse(session.expiresAt) <= Date.now()) {
-          await telegramConnect.confirm({
-            code,
-            chatId,
-            ...(telegramUserId ? { telegramUserId } : {}),
-            ...(telegramUsername ? { telegramUsername } : {}),
-            ...(telegramDisplayName ? { telegramDisplayName } : {})
-          });
-          sendJson(response, 410, failure("telegram_connect_expired", "Telegram Connect code expired"));
-          return;
-        }
-
-        const confirmed = await telegramConnect.confirm({
-          code,
-          chatId,
-          ...(telegramUserId ? { telegramUserId } : {}),
-          ...(telegramUsername ? { telegramUsername } : {}),
-          ...(telegramDisplayName ? { telegramDisplayName } : {})
-        });
-        sendJson(response, 200, success(telegramConnect.serialize(confirmed ?? session), requestId));
-        return;
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/telegram/bindings") {
-        if (!dependencies.telegramAlerts) {
-          throw new ServerDependencyError("Telegram alert service is not configured");
-        }
-
-        const walletAddress = parseOptionalWalletAddress(url.searchParams.get("walletAddress"));
-
-        if (!walletAddress) {
-          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
-          return;
-        }
-
-        const binding = await dependencies.telegramAlerts.latestBindingForWallet(walletAddress);
-        sendJson(response, 200, success({
-          connected: Boolean(binding),
-          botUrl: telegramConnect?.botUrl(),
-          ...(binding ? { binding } : {})
-        }, requestId));
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/telegram/bindings") {
-        if (!dependencies.telegramAlerts) {
-          throw new ServerDependencyError("Telegram alert service is not configured");
-        }
-        const body = telegramSignedBindingRequestSchema.parse(await readJsonBody(request));
-        const binding = await dependencies.telegramAlerts.linkChat(body);
-        sendJson(response, 201, success(binding, requestId));
-        return;
-      }
-
-      if (request.method === "DELETE" && url.pathname === "/api/telegram/bindings") {
-        if (!dependencies.telegramAlerts) {
-          throw new ServerDependencyError("Telegram alert service is not configured");
-        }
-
-        const body = telegramUnlinkRequestSchema.parse(await readJsonBody(request));
-        const binding = await dependencies.telegramAlerts.unlinkChat(body.walletAddress);
-        sendJson(response, 200, success({ unlinked: Boolean(binding) }, requestId));
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/telegram/callback") {
-        if (!dependencies.telegramAlerts) {
-          throw new ServerDependencyError("Telegram alert service is not configured");
-        }
-        const body = telegramCallbackRequestSchema.parse(await readJsonBody(request));
-        const result = await dependencies.telegramAlerts.processCallback(body);
-        sendJson(response, result.ok ? 200 : 400, success(result, requestId));
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/riskguard/pending-approval") {
-        if (!dependencies.telegramAlerts) {
-          throw new ServerDependencyError("Telegram alert service is not configured");
-        }
-        const body = riskGuardPendingApprovalRequestSchema.parse(await readJsonBody(request));
-        const result = await dependencies.telegramAlerts.sendRiskGuardApprovalRequest(body);
-        sendJson(response, 202, success(result, requestId));
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/riskguard/agent-review/requested") {
-        if (!dependencies.telegramAlerts) {
-          throw new ServerDependencyError("Telegram alert service is not configured");
-        }
-        const body = riskGuardAgentReviewRequestedSchema.parse(await readJsonBody(request));
-        const result = await dependencies.telegramAlerts.sendRiskGuardAgentReviewRequested(body);
-        sendJson(response, 202, success(result, requestId));
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/riskguard/pending-userop") {
-        if (!dependencies.riskGuardPendingUserOps) {
-          throw new ServerDependencyError("RiskGuard pending UserOp service is not configured");
-        }
-        const body = riskGuardPendingUserOpRequestSchema.parse(await readJsonBody(request));
-        const result = await dependencies.riskGuardPendingUserOps.store(body);
-        sendJson(response, 202, success(result, requestId));
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/riskguard/ensure-review-budget") {
-        if (!dependencies.riskGuardReviewBudget) {
-          throw new ServerDependencyError("RiskGuard review budget service is not configured");
-        }
-        const body = riskGuardReviewBudgetRequestSchema.parse(await readJsonBody(request));
-        const result = await dependencies.riskGuardReviewBudget.ensureBudget(body);
-        sendJson(response, 202, success(result, requestId));
+      if (await handleRiskGuardRoutes(routeContext)) {
         return;
       }
 

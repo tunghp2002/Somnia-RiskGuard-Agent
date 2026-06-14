@@ -4,13 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 import { navItems } from "../config";
-import { formatAddress } from "../utils";
+import { formatAddress } from "@/utils";
 
-import type { DashboardSection } from "../types";
+import type { DashboardSection } from "@/types";
 import type { PublicChainMetadata } from "@/lib/agent-api";
 import type { BrowserWalletState } from "@/lib/wallet";
 import { somguardLogoUrl } from "@/lib/blockscout-api";
-import { AssetImage } from "./common";
+import { AssetImage } from "./common/asset-image";
 
 type NavigationProps = {
   activeSection: DashboardSection;

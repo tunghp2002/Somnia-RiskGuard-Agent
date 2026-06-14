@@ -17,7 +17,7 @@ import {
   thirdwebClient,
 } from "@/lib/thirdweb-client";
 
-import type { RiskGuardConfig } from "@/features/dashboard/types";
+import type { RiskGuardConfig } from "@/types";
 
 const moduleTypeValidator = 1n;
 const zeroAddress = "0x0000000000000000000000000000000000000000";

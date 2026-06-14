@@ -10,8 +10,8 @@ import {
   approvalKey,
   type ApprovalAnalysisRecord,
   useApprovalScanner
-} from "../hooks/use-approval-scanner";
-import { formatAddress, readableMetadata } from "../utils";
+} from "@/hooks";
+import { formatAddress, readableMetadata } from "@/utils";
 
 import type {
   ApprovalEntry,

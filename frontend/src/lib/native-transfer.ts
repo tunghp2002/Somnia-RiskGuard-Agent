@@ -10,7 +10,7 @@ import { estimateGasCost, prepareTransaction } from "thirdweb";
 import { sendRiskGuardedSmartTransaction } from "@/lib/riskguard-smart-account";
 import { somniaThirdwebChain, thirdwebClient } from "@/lib/thirdweb-client";
 
-import type { NativeTransferEstimate, NativeTransferInput } from "@/features/dashboard/types";
+import type { NativeTransferEstimate, NativeTransferInput } from "@/types";
 import type { Account } from "thirdweb/wallets";
 
 const nativeDecimals = 18;

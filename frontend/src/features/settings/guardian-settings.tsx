@@ -35,8 +35,8 @@ import {
     thirdwebClient
 } from "@/lib/thirdweb-client";
 
-import { CheckInAuthorizationModal } from "./check-in-authorization-modal";
-import { DurationField, Field, InfoHint } from "./inheritance-settings-controls";
+import { CheckInAuthorizationModal } from "./components/check-in-authorization-modal";
+import { DurationField, Field, InfoHint } from "./components/inheritance-settings-controls";
 import {
     formatAddressPreview,
     formatDurationPreview,
@@ -46,12 +46,12 @@ import {
     getBeneficiaryAddressError,
     getBeneficiaryShareError,
     getRecipientColor,
-} from "./inheritance-settings.utils";
-import { readCachedSmartAccount, cacheSmartAccount } from "./smart-account-cache";
-import { TokenImportDialog } from "./token-import-dialog";
-import { useInheritanceSettingsForm } from "./use-inheritance-settings-form";
+} from "@/utils";
+import { readCachedSmartAccount, cacheSmartAccount } from "@/cache";
+import { TokenImportDialog } from "./components/token-import-dialog";
+import { useInheritanceSettingsForm } from "@/hooks";
 
-import type { Notice } from "@/features/dashboard/types";
+import type { Notice } from "@/types";
 
 export function InheritanceSettings({
     actionLoading,

@@ -2,7 +2,7 @@
 
 import { InheritanceSettings } from "@/features/settings/guardian-settings";
 
-import { AccountAssetsPanel } from "./components/account-assets-panel";
+import { AccountAssetsPanel } from "./components/account-assets/panel";
 import { AgentReviewRequestModal } from "./components/agent-review-modal";
 import { ApprovalsPanel } from "./components/approvals-panel";
 import {
@@ -18,7 +18,7 @@ import {
   RiskPolicyGuard
 } from "./components/status-panels";
 import { TransferPanel } from "./components/transfer-panel";
-import { useRiskGuardDashboard } from "./hooks/use-riskguard-dashboard";
+import { useRiskGuardDashboard } from "@/hooks";
 
 export function RiskGuardDashboard() {
   const { state, actions } = useRiskGuardDashboard();

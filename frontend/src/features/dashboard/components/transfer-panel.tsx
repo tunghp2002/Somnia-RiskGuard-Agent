@@ -7,14 +7,14 @@ import { Input } from "@/components/ui/input";
 import {
   useNativeTransferEstimate,
   type TransferEstimateState,
-} from "../hooks/use-native-transfer-estimate";
-import { formatAddress } from "../utils";
+} from "@/hooks";
+import { formatAddress } from "@/utils";
 
 import type {
   NativeTransferEstimate,
   NativeTransferInput,
   TransferSource,
-} from "../types";
+} from "@/types";
 import type { PublicChainMetadata } from "@/lib/agent-api";
 import type { BrowserWalletState } from "@/lib/wallet";
 

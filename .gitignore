@@ -36,3 +36,7 @@ cache/
 artifacts/
 broadcast/
 typechain-types/
+
+# Frontend source modules named "cache" are application code, not build output.
+!frontend/src/cache/
+!frontend/src/cache/**
