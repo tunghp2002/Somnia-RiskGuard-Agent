@@ -1,4 +1,5 @@
 import publicChains from "../../../config/public-chains.json";
+import { signWalletMessage } from "./wallet";
 
 export interface AgentEnvelope<T> {
   data: T;
@@ -418,6 +419,18 @@ function walletQuery(walletAddress?: string) {
   return walletAddress ? `?walletAddress=${encodeURIComponent(walletAddress)}` : "";
 }
 
+async function signedWalletFields(action: string, walletAddress: string) {
+  const message = [
+    "SomGuard signed wallet mutation",
+    `Action: ${action}`,
+    `Wallet: ${walletAddress}`,
+    `Issued At: ${new Date().toISOString()}`
+  ].join("\n");
+  const signature = await signWalletMessage(message);
+
+  return { message, signature };
+}
+
 export const agentApi = {
   getReadiness: () => request<Readiness>("/api/setup/readiness"),
   getPublicChain: async () => {
@@ -427,14 +440,17 @@ export const agentApi = {
       return bundledPublicChain;
     }
   },
-  ensureSessionKeyAction: (body: {
+  ensureSessionKeyAction: async (body: {
     walletAddress: string;
     smartAccountAddress?: string;
     action: SessionKeyActionPermission["action"];
   }) =>
     request<SessionKeyActionPermission>("/api/session-keys/action", {
       method: "POST",
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        ...body,
+        ...(await signedWalletFields(`session-key.${body.action}`, body.walletAddress))
+      })
     }),
   getInheritancePlan: (smartAccount: string) =>
     request<InheritancePlanStatus | null>(
@@ -447,10 +463,13 @@ export const agentApi = {
     }),
   getUserProfile: (walletAddress: string) =>
     request<UserRecord | null>(`/api/users/profile${walletQuery(walletAddress)}`),
-  updateUserProfile: (body: { walletAddress: string; displayName: string }) =>
+  updateUserProfile: async (body: { walletAddress: string; displayName: string }) =>
     request<UserRecord>("/api/users/profile", {
       method: "PATCH",
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        ...body,
+        ...(await signedWalletFields("profile.update", body.walletAddress))
+      })
     }),
   getPortfolio: (walletAddress?: string) =>
     request<PortfolioSnapshot | null>(`/api/portfolios/latest${walletQuery(walletAddress)}`),
@@ -500,7 +519,7 @@ export const agentApi = {
       method: "POST",
       body: JSON.stringify(body)
     }),
-  configureRewards: (body: {
+  configureRewards: async (body: {
     walletAddress: string;
     autoClaimEnabled: boolean;
     minRewardValueUsd: number;
@@ -508,7 +527,10 @@ export const agentApi = {
   }) =>
     request<RewardStatus>("/api/rewards/settings", {
       method: "POST",
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        ...body,
+        ...(await signedWalletFields("rewards.settings", body.walletAddress))
+      })
     }),
   getRewards: (walletAddress: string) =>
     request<RewardStatus>(`/api/rewards/status${walletQuery(walletAddress)}`),
@@ -556,7 +578,7 @@ export const agentApi = {
       method: "POST",
       body: JSON.stringify(body)
     }),
-  storeRiskGuardPendingUserOp: (body: {
+  storeRiskGuardPendingUserOp: async (body: {
     walletAddress: string;
     smartAccountAddress: string;
     guardedTxHash: string;
@@ -565,9 +587,12 @@ export const agentApi = {
   }) =>
     request<{ pendingUserOpId: string; stored: boolean }>("/api/riskguard/pending-userop", {
       method: "POST",
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        ...body,
+        ...(await signedWalletFields("riskguard.pending-userop", body.walletAddress))
+      })
     }),
-  ensureRiskGuardReviewBudget: (body: { smartAccountAddress: string }) =>
+  ensureRiskGuardReviewBudget: async (body: { walletAddress: string; smartAccountAddress: string }) =>
     request<{
       funded: boolean;
       sufficient: boolean;
@@ -576,7 +601,10 @@ export const agentApi = {
       fundingTxHash?: string;
     }>("/api/riskguard/ensure-review-budget", {
       method: "POST",
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        ...body,
+        ...(await signedWalletFields("riskguard.ensure-review-budget", body.walletAddress))
+      })
     }),
   confirmTelegramConnect: (body: { code: string; chatId: string; telegramUserId?: string }) =>
     request<TelegramConnectSession>("/api/telegram/connect/confirm", {

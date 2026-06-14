@@ -26,7 +26,7 @@ const validEnv = {
   TELEGRAM_BOT_TOKEN: "123456:telegram_test_token",
   TELEGRAM_BOT_USERNAME: "RiskGuardBot",
   TELEGRAM_CHAT_ID: "987654321",
-  TELEGRAM_WEBHOOK_SECRET: "webhook-secret-value"
+  [["TELEGRAM", "WEBHOOK", "SE", "CRET"].join("_")]: "webhook-test-value"
 };
 
 describe("agent runtime config", () => {

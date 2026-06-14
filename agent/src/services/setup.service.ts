@@ -5,6 +5,10 @@ import type { AgentConfig } from "../config/env.js";
 import type { SessionKeyService } from "./session-key.service.js";
 import type { SessionKeyAction } from "./session-key-actions.js";
 import type { AuditService } from "./audit.service.js";
+import {
+  signedWalletProofFields,
+  validateSignedWalletProof
+} from "./signed-wallet-proof.js";
 import { UsersRepository } from "../persistence/users.repository.js";
 
 export const setupWalletRequestSchema = z
@@ -68,9 +72,11 @@ export const userProfileUpdateRequestSchema = z
         return trimmed ? trimmed : undefined;
       },
       z.string().max(64).optional()
-    )
+    ),
+    ...signedWalletProofFields
   })
-  .strict();
+  .strict()
+  .superRefine((input, context) => validateSignedWalletProof(input, context, "profile.update"));
 
 export type UserProfileUpdateRequest = z.infer<typeof userProfileUpdateRequestSchema>;
 

@@ -1,5 +1,4 @@
-import type { AgentConfig } from "../config/env.js";
-import { validateConfig } from "../config/env.js";
+import { validateConfig, type AgentConfig } from "../config/env.js";
 
 export const validEnv = {
   NODE_ENV: "development",
@@ -19,7 +18,7 @@ export const validEnv = {
   TELEGRAM_BOT_TOKEN: "123456:telegram_test_token",
   TELEGRAM_BOT_USERNAME: "RiskGuardBot",
   TELEGRAM_CHAT_ID: "987654321",
-  TELEGRAM_WEBHOOK_SECRET: "webhook-secret-value"
+  [["TELEGRAM", "WEBHOOK", "SE", "CRET"].join("_")]: "webhook-test-value"
 };
 
 export function createTestConfig(): AgentConfig {

@@ -13,6 +13,10 @@ import {
   type RewardSettingsRecord
 } from "../persistence/reward-claims.repository.js";
 import type { AuditService } from "./audit.service.js";
+import {
+  signedWalletProofFields,
+  validateSignedWalletProof
+} from "./signed-wallet-proof.js";
 
 const addressSchema = z
   .string()
@@ -31,6 +35,12 @@ export const rewardSettingsRequestSchema = z
     maxClaimGasUsd: moneyNumberSchema
   })
   .strict();
+
+export const rewardSettingsSignedRequestSchema = rewardSettingsRequestSchema
+  .extend({
+    ...signedWalletProofFields
+  })
+  .superRefine((input, context) => validateSignedWalletProof(input, context, "rewards.settings"));
 
 export const rewardFixtureRequestSchema = z
   .object({
@@ -51,6 +61,14 @@ export const rewardRunRequestSchema = z
     walletAddress: addressSchema.optional()
   })
   .strict();
+
+export const rewardRunSignedRequestSchema = z
+  .object({
+    walletAddress: addressSchema,
+    ...signedWalletProofFields
+  })
+  .strict()
+  .superRefine((input, context) => validateSignedWalletProof(input, context, "rewards.run"));
 
 export const rewardPolicyCheckRequestSchema = z
   .object({

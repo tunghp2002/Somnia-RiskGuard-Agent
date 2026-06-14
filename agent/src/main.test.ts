@@ -3,9 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConfigValidationError } from "./config/env.js";
 import { createSomniaAgentKitClient } from "./integrations/somnia/somnia-agent-kit.client.js";
 import type { TelegramClient } from "./integrations/telegram/telegram.client.js";
-import { main } from "./main.js";
-import { runCli } from "./main.js";
-import { startAgentRuntime } from "./main.js";
+import { main, runCli, startAgentRuntime } from "./main.js";
 import { createTestConfig } from "./test-helpers/env.js";
 
 class FakePollingTelegramClient implements TelegramClient {

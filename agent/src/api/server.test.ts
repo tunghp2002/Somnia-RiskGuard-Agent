@@ -163,11 +163,13 @@ describe("agent setup API", () => {
   });
 
   it("persists wallet profile display names", async () => {
+    const proof = await signedProof(wallet, "profile.update");
     const updateResponse = await fetch(`${baseUrl}/api/users/profile`, {
       method: "PATCH",
       body: JSON.stringify({
         walletAddress: wallet.address,
-        displayName: "Somnia Builder"
+        displayName: "Somnia Builder",
+        ...proof
       })
     });
     const updatePayload = await updateResponse.json();
@@ -180,6 +182,20 @@ describe("agent setup API", () => {
     expect(updatePayload.data.displayName).toBe("Somnia Builder");
     expect(readPayload.data.walletAddress).toBe(wallet.address);
     expect(readPayload.data.displayName).toBe("Somnia Builder");
+  });
+
+  it("rejects unsigned wallet profile mutations", async () => {
+    const response = await fetch(`${baseUrl}/api/users/profile`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        walletAddress: wallet.address,
+        displayName: "Unsigned Builder"
+      })
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error.code).toBe("validation_failed");
   });
 
   it("rejects private-key bearing setup payloads", async () => {
@@ -459,6 +475,8 @@ describe("agent setup API", () => {
       })
     });
     const target = Wallet.createRandom();
+    const rewardSettingsProof = await signedProof(wallet, "rewards.settings");
+    const rewardRunProof = await signedProof(wallet, "rewards.run");
 
     const settingsResponse = await fetch(`${baseUrl}/api/rewards/settings`, {
       method: "POST",
@@ -466,7 +484,8 @@ describe("agent setup API", () => {
         walletAddress: wallet.address,
         autoClaimEnabled: true,
         minRewardValueUsd: 1,
-        maxClaimGasUsd: 2
+        maxClaimGasUsd: 2,
+        ...rewardSettingsProof
       })
     });
     const fixtureResponse = await fetch(`${baseUrl}/api/rewards/fixtures`, {
@@ -497,7 +516,10 @@ describe("agent setup API", () => {
     });
     const runResponse = await fetch(`${baseUrl}/api/rewards/run`, {
       method: "POST",
-      body: JSON.stringify({ walletAddress: wallet.address })
+      body: JSON.stringify({
+        walletAddress: wallet.address,
+        ...rewardRunProof
+      })
     });
 
     const settingsPayload = await settingsResponse.json();

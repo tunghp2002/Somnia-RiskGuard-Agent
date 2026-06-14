@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 
 import { getAddress } from "ethers";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 
 import { failure, sendJson, success } from "./response.js";
 import type { SetupService } from "../services/setup.service.js";
@@ -11,6 +11,10 @@ import {
   userProfileUpdateRequestSchema
 } from "../services/setup.service.js";
 import { sessionKeyActionSchema } from "../services/session-key-actions.js";
+import {
+  signedWalletProofFields,
+  validateSignedWalletProof
+} from "../services/signed-wallet-proof.js";
 import type { PublicChainMetadata } from "../config/public-chain.js";
 import type { AuditEventsRepository } from "../persistence/audit-events.repository.js";
 import type { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
@@ -48,8 +52,8 @@ import {
   rewardFixtureRequestSchema,
   RewardClaimServiceError,
   rewardPolicyCheckRequestSchema,
-  rewardRunRequestSchema,
-  rewardSettingsRequestSchema,
+  rewardRunSignedRequestSchema,
+  rewardSettingsSignedRequestSchema,
   type RewardClaimService
 } from "../services/reward-claim.service.js";
 import { InheritanceRegistryClient } from "../integrations/somnia/inheritance-registry.client.js";
@@ -83,9 +87,8 @@ function isAllowedDevOrigin(origin: string): boolean {
   }
 }
 
-// Production frontends. Set ALLOWED_ORIGINS (comma-separated, e.g.
-// "https://somguard.vercel.app") to the deployed dashboard URL. Any
-// *.vercel.app subdomain is also accepted so Vercel preview deploys work.
+// Production frontends must be explicitly allowlisted. Avoid broad preview
+// domains here because several API routes perform wallet-scoped mutations.
 function getConfiguredOrigins(): string[] {
   return (process.env.ALLOWED_ORIGINS ?? process.env.FRONTEND_URL ?? "")
     .split(",")
@@ -96,16 +99,6 @@ function getConfiguredOrigins(): string[] {
 function isAllowedOrigin(origin: string): boolean {
   if (isAllowedDevOrigin(origin)) {
     return true;
-  }
-
-  try {
-    const url = new URL(origin);
-    const hostname = url.hostname.toLowerCase();
-    if (hostname === "vercel.app" || hostname.endsWith(".vercel.app")) {
-      return true;
-    }
-  } catch {
-    return false;
   }
 
   const normalized = origin.toLowerCase().replace(/\/$/, "");
@@ -239,6 +232,25 @@ function compactAuditMetadata(value: unknown, depth = 0): unknown {
 function createWeakEtag(payload: unknown): string {
   return `W/"${createHash("sha256").update(JSON.stringify(payload)).digest("base64url")}"`;
 }
+
+const sessionKeyActionRequestSchema = z
+  .object({
+    walletAddress: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/)
+      .transform((value) => getAddress(value)),
+    smartAccountAddress: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/)
+      .transform((value) => getAddress(value))
+      .optional(),
+    action: sessionKeyActionSchema.default("checkin"),
+    ...signedWalletProofFields
+  })
+  .strict()
+  .superRefine((input, context) =>
+    validateSignedWalletProof(input, context, `session-key.${input.action}`)
+  );
 
 async function readJsonBody(
   request: IncomingMessage,
@@ -483,32 +495,12 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
           throw new ServerDependencyError("Public chain metadata is not configured");
         }
 
-        const body = await readJsonBody(request);
-        const walletAddress = parseOptionalWalletAddress(
-          typeof body === "object" && body && "walletAddress" in body
-            ? String((body as { walletAddress?: unknown }).walletAddress ?? "")
-            : null
-        );
-        const smartAccountAddress = parseOptionalWalletAddress(
-          typeof body === "object" && body && "smartAccountAddress" in body
-            ? String((body as { smartAccountAddress?: unknown }).smartAccountAddress ?? "")
-            : null
-        );
-        const action = sessionKeyActionSchema.parse(
-          typeof body === "object" && body && "action" in body
-            ? String((body as { action?: unknown }).action ?? "checkin")
-            : "checkin"
-        );
-
-        if (!walletAddress) {
-          sendJson(response, 400, failure("validation_failed", "walletAddress is required"));
-          return;
-        }
+        const body = sessionKeyActionRequestSchema.parse(await readJsonBody(request));
 
         sendJson(response, 200, success(await dependencies.setupService.ensureSessionKeyAction({
-          walletAddress,
-          ...(smartAccountAddress ? { smartAccountAddress } : {}),
-          action
+          walletAddress: body.walletAddress,
+          ...(body.smartAccountAddress ? { smartAccountAddress: body.smartAccountAddress } : {}),
+          action: body.action
         }), requestId));
         return;
       }
@@ -609,7 +601,8 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         if (!dependencies.rewards) {
           throw new ServerDependencyError("Reward claim service is not configured");
         }
-        const body = rewardSettingsRequestSchema.parse(await readJsonBody(request));
+        const { message: _message, signature: _signature, ...body } =
+          rewardSettingsSignedRequestSchema.parse(await readJsonBody(request));
         const status = await dependencies.rewards.configure(body);
         sendJson(response, 201, success(status, requestId));
         return;
@@ -645,7 +638,8 @@ export function createAgentApiServer(dependencies: AgentApiDependencies): Server
         if (!dependencies.rewards) {
           throw new ServerDependencyError("Reward claim service is not configured");
         }
-        const body = rewardRunRequestSchema.parse(await readJsonBody(request));
+        const { message: _message, signature: _signature, ...body } =
+          rewardRunSignedRequestSchema.parse(await readJsonBody(request));
         const result = await dependencies.rewards.run(body);
         sendJson(response, 200, success(result, requestId));
         return;

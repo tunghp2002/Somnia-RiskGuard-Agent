@@ -367,9 +367,14 @@ async function sendGuardedExecute(options: {
     // the user does not have to sign a separate fundAgentBudget transaction.
     // Best-effort: if the backend cannot fund it, requestSomniaAgentReview still
     // falls back to funding from the user's wallet (no behaviour change).
-    await agentApi
-      .ensureRiskGuardReviewBudget({ smartAccountAddress: pendingApproval.smartAccountAddress })
-      .catch(() => undefined);
+    if (options.walletAddress) {
+      await agentApi
+        .ensureRiskGuardReviewBudget({
+          walletAddress: options.walletAddress,
+          smartAccountAddress: pendingApproval.smartAccountAddress
+        })
+        .catch(() => undefined);
+    }
 
     const reviewTxHash = await requestSomniaAgentReview({
       riskGuardValidatorAddress: options.riskGuardValidatorAddress,

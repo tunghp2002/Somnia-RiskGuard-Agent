@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { TelegramAlertServiceError } from "./telegram-alert.service.js";
-import type { TelegramAlertService } from "./telegram-alert.service.js";
+import {
+  TelegramAlertServiceError,
+  type TelegramAlertService
+} from "./telegram-alert.service.js";
 
 export interface TelegramConnectSession {
   walletAddress: string;

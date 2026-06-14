@@ -8,14 +8,24 @@ import type {
   RiskGuardPendingUserOpsRepository
 } from "../persistence/riskguard-pending-userops.repository.js";
 import type { AuditService } from "./audit.service.js";
+import {
+  signedWalletProofFields,
+  validateSignedWalletProof
+} from "./signed-wallet-proof.js";
 
-export const riskGuardPendingUserOpRequestSchema = z.object({
-  walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).transform((value) => getAddress(value)),
-  smartAccountAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).transform((value) => getAddress(value)),
-  guardedTxHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
-  entrypointAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
-  userOp: z.record(z.string(), z.unknown())
-});
+export const riskGuardPendingUserOpRequestSchema = z
+  .object({
+    walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).transform((value) => getAddress(value)),
+    smartAccountAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).transform((value) => getAddress(value)),
+    guardedTxHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+    entrypointAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+    userOp: z.record(z.string(), z.unknown()),
+    ...signedWalletProofFields
+  })
+  .strict()
+  .superRefine((input, context) =>
+    validateSignedWalletProof(input, context, "riskguard.pending-userop")
+  );
 
 export type RiskGuardPendingUserOpRequest = z.infer<typeof riskGuardPendingUserOpRequestSchema>;
 

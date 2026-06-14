@@ -4,6 +4,10 @@ import { z } from "zod";
 import type { AgentConfig } from "../config/env.js";
 import type { AuditService } from "./audit.service.js";
 import type { SessionKeyService } from "./session-key.service.js";
+import {
+  signedWalletProofFields,
+  validateSignedWalletProof
+} from "./signed-wallet-proof.js";
 
 const validatorAbi = [
   "function agentBudgetOf(address smartAccount) view returns (uint256)",
@@ -19,12 +23,20 @@ const zeroAddress = "0x0000000000000000000000000000000000000000";
 
 export const riskGuardReviewBudgetRequestSchema = z
   .object({
+    walletAddress: z
+      .string()
+      .regex(/^0x[a-fA-F0-9]{40}$/)
+      .transform((value) => getAddress(value)),
     smartAccountAddress: z
       .string()
       .regex(/^0x[a-fA-F0-9]{40}$/)
-      .transform((value) => getAddress(value))
+      .transform((value) => getAddress(value)),
+    ...signedWalletProofFields
   })
-  .strict();
+  .strict()
+  .superRefine((input, context) =>
+    validateSignedWalletProof(input, context, "riskguard.ensure-review-budget")
+  );
 
 export type RiskGuardReviewBudgetRequest = z.infer<typeof riskGuardReviewBudgetRequestSchema>;
 
