@@ -215,13 +215,15 @@ export function useApprovalScanner(
           current.length > 0 ? current : supported.slice(0, 1).map((chain) => chain.chainId)
         );
       } catch (caught) {
-        if (active) {
-          const message = messageFromError(caught);
-          setError(message);
-          toast.error("Approval scanner unavailable", {
-            description: message
-          });
+        if (!active) {
+          return;
         }
+
+        const message = messageFromError(caught);
+        setError(message);
+        toast.error("Approval scanner unavailable", {
+          description: message
+        });
       }
     })();
     return () => {

@@ -3,9 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApprovalScannerService,
   ApprovalScannerServiceError
-} from "./approval-scanner.service.js";
-import { createTestConfig } from "../test-helpers/env.js";
-import type { ScanChain } from "../config/public-chain.js";
+} from "./index.js";
+import { createTestConfig } from "../../test-helpers/env.js";
+import type { ScanChain } from "../../config/public-chain.js";
+import type { AgentConfig } from "../../config/env.js";
+import type { RepositoryStore } from "../../persistence/json-store.js";
+import type { ApprovalScanCacheRecord } from "./types.js";
 
 const chains: ScanChain[] = [
   {
@@ -38,13 +41,52 @@ const chains: ScanChain[] = [
   }
 ];
 
+function createMemoryApprovalStore(
+  initial: ApprovalScanCacheRecord[] = []
+): RepositoryStore<ApprovalScanCacheRecord[]> {
+  let records = initial;
+
+  return {
+    async read() {
+      return records;
+    },
+    async write(value) {
+      records = value;
+    },
+    async update(mutator) {
+      records = await mutator(records);
+      return records;
+    }
+  };
+}
+
+function withoutApprovalScanner(config: AgentConfig): AgentConfig {
+  const { approvalRiskScanner: _approvalRiskScanner, ...contracts } =
+    config.publicChain.contracts;
+  const { contractAddress: _contractAddress, ...approvalScanner } =
+    config.approvalScanner;
+
+  return {
+    ...config,
+    publicChain: {
+      ...config.publicChain,
+      contracts
+    },
+    approvalScanner
+  };
+}
+
 describe("approval scanner service", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   it("returns supported chains sorted by priority (Somnia first)", () => {
-    const service = new ApprovalScannerService(createTestConfig(), chains);
+    const service = new ApprovalScannerService(
+      createTestConfig(),
+      chains,
+      createMemoryApprovalStore()
+    );
     const supported = service.getSupportedChains();
 
     expect(supported.map((chain) => chain.chainId)).toEqual([50312, 1]);
@@ -53,7 +95,11 @@ describe("approval scanner service", () => {
   });
 
   it("skips unknown chain ids without performing network reads", async () => {
-    const service = new ApprovalScannerService(createTestConfig(), chains);
+    const service = new ApprovalScannerService(
+      withoutApprovalScanner(createTestConfig()),
+      chains,
+      createMemoryApprovalStore()
+    );
     const result = await service.discoverApprovals(
       "0x1111111111111111111111111111111111111111",
       [999999]
@@ -74,7 +120,11 @@ describe("approval scanner service", () => {
       })) as unknown as typeof fetch
     );
 
-    const service = new ApprovalScannerService(createTestConfig(), chains);
+    const service = new ApprovalScannerService(
+      createTestConfig(),
+      chains,
+      createMemoryApprovalStore()
+    );
 
     await expect(
       service.discoverApprovals(
@@ -88,7 +138,11 @@ describe("approval scanner service", () => {
   });
 
   it("rejects prepareScan when the scanner contract is not configured", async () => {
-    const service = new ApprovalScannerService(createTestConfig(), chains);
+    const service = new ApprovalScannerService(
+      withoutApprovalScanner(createTestConfig()),
+      chains,
+      createMemoryApprovalStore()
+    );
     await expect(
       service.prepareScan([
         {

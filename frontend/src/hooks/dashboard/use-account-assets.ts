@@ -18,6 +18,36 @@ import type { PublicChainMetadata } from "@/lib/agent-api";
 
 const blockscoutSyncIntervalMs = 5 * 60_000;
 
+async function fetchFreshAccountAssets({
+  cacheKey,
+  publicChain,
+  selectedAccounts,
+}: {
+  cacheKey: string;
+  publicChain: PublicChainMetadata;
+  selectedAccounts: AccountOption[];
+}) {
+  const snapshot = await fetchAccountAssets({
+    accounts: selectedAccounts.map((account) => ({
+      label: account.label,
+      address: account.address ?? "",
+    })),
+    blockscoutUrl: publicChain.blockscoutUrl ?? publicChain.blockExplorerUrl,
+    nativeDecimals: publicChain.nativeCurrency.decimals,
+    nativeRpcUrl: publicChain.rpcUrl,
+    nativeSymbol: publicChain.nativeCurrency.symbol,
+  });
+  const fetchedAt = Date.now();
+
+  await writeCachedAccountAssets(cacheKey, {
+    fetchedAt,
+    snapshot,
+    updatedAt: fetchedAt,
+  });
+
+  return { fetchedAt, snapshot };
+}
+
 export function useAccountAssets({
   accountOptions,
   publicChain,
@@ -61,76 +91,71 @@ export function useAccountAssets({
       return () => window.clearTimeout(resetId);
     }
 
-    const cacheKey = `${publicChain.chainId}:${selectedAccountsKey}`;
+    const chain = publicChain;
+    const cacheKey = `${chain.chainId}:${selectedAccountsKey}`;
 
     let stopped = false;
 
-    // Seed from IndexedDB and start the refresh on a macrotask so none of the
-    // setState calls run synchronously inside the effect commit.
-    const startId = window.setTimeout(() => {
-      void readCachedAccountAssets(cacheKey).then((cached) => {
+    async function loadAssets() {
+      const cached = await readCachedAccountAssets(cacheKey);
+
+      if (stopped) {
+        return;
+      }
+
+      if (cached) {
+        blockscoutFetchedAtRef.current = cached.fetchedAt;
+        setAssets(cached.snapshot);
+        setError(null);
+      }
+
+      const cacheFresh = cached
+        ? Date.now() - cached.fetchedAt < blockscoutSyncIntervalMs
+        : false;
+
+      if (cacheFresh && refreshNonce === 0) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      if (!cached) {
+        setError(null);
+      }
+
+      try {
+        const { fetchedAt, snapshot } = await fetchFreshAccountAssets({
+          cacheKey,
+          publicChain: chain,
+          selectedAccounts,
+        });
+
         if (stopped) {
           return;
         }
 
-        if (cached) {
-          blockscoutFetchedAtRef.current = cached.fetchedAt;
-          setAssets(cached.snapshot);
-          setError(null);
-        }
-
-        const cacheFresh = cached
-          ? Date.now() - cached.fetchedAt < blockscoutSyncIntervalMs
-          : false;
-
-        if (cacheFresh && refreshNonce === 0) {
-          setLoading(false);
+        blockscoutFetchedAtRef.current = fetchedAt;
+        setAssets(snapshot);
+        setError(null);
+      } catch (fetchError) {
+        if (stopped) {
           return;
         }
 
-        setLoading(true);
         if (!cached) {
-          setError(null);
+          setAssets(null);
         }
+        setError(fetchError instanceof Error ? fetchError.message : "Blockscout refresh failed");
+      } finally {
+        if (!stopped) {
+          setLoading(false);
+        }
+      }
+    }
 
-        void fetchAccountAssets({
-          accounts: selectedAccounts.map((account) => ({
-            label: account.label,
-            address: account.address ?? "",
-          })),
-          blockscoutUrl: publicChain.blockscoutUrl ?? publicChain.blockExplorerUrl,
-          nativeDecimals: publicChain.nativeCurrency.decimals,
-          nativeRpcUrl: publicChain.rpcUrl,
-          nativeSymbol: publicChain.nativeCurrency.symbol,
-        })
-          .then((snapshot) => {
-            if (!stopped) {
-              const fetchedAt = Date.now();
-              blockscoutFetchedAtRef.current = fetchedAt;
-              void writeCachedAccountAssets(cacheKey, {
-                fetchedAt,
-                snapshot,
-                updatedAt: fetchedAt,
-              });
-              setAssets(snapshot);
-              setError(null);
-            }
-          })
-          .catch((fetchError) => {
-            if (!stopped) {
-              if (!cached) {
-                setAssets(null);
-              }
-              setError(fetchError instanceof Error ? fetchError.message : "Blockscout refresh failed");
-            }
-          })
-          .finally(() => {
-            if (!stopped) {
-              setLoading(false);
-            }
-          });
-      });
-    }, 0);
+    // Seed from IndexedDB and start the refresh on a macrotask so none of the
+    // setState calls run synchronously inside the effect commit.
+    const startId = window.setTimeout(() => void loadAssets(), 0);
 
     return () => {
       stopped = true;
@@ -197,38 +222,47 @@ export function useAccountAssets({
       return;
     }
 
+    const cacheKey = `${publicChain.chainId}:${selectedAccountsKey}`;
+    let active = true;
+
     const intervalId = window.setInterval(() => {
-      void readCachedAccountAssets(`${publicChain.chainId}:${selectedAccountsKey}`).then((cached) => {
-        if (cached && Date.now() - cached.fetchedAt >= blockscoutSyncIntervalMs) {
-          setLoading(true);
-          void fetchAccountAssets({
-            accounts: selectedAccounts.map((account) => ({
-              label: account.label,
-              address: account.address ?? "",
-            })),
-            blockscoutUrl: publicChain.blockscoutUrl ?? publicChain.blockExplorerUrl,
-            nativeDecimals: publicChain.nativeCurrency.decimals,
-            nativeRpcUrl: publicChain.rpcUrl,
-            nativeSymbol: publicChain.nativeCurrency.symbol,
-          })
-            .then((snapshot) => {
-              const fetchedAt = Date.now();
-              blockscoutFetchedAtRef.current = fetchedAt;
-              void writeCachedAccountAssets(`${publicChain.chainId}:${selectedAccountsKey}`, {
-                fetchedAt,
-                snapshot,
-                updatedAt: fetchedAt,
-              });
-              setAssets(snapshot);
-              setError(null);
-            })
-            .catch(() => undefined)
-            .finally(() => setLoading(false));
+      void (async () => {
+        const cached = await readCachedAccountAssets(cacheKey);
+        if (
+          !active ||
+          !cached ||
+          Date.now() - cached.fetchedAt < blockscoutSyncIntervalMs
+        ) {
+          return;
         }
-      });
+
+        setLoading(true);
+        try {
+          const { fetchedAt, snapshot } = await fetchFreshAccountAssets({
+            cacheKey,
+            publicChain,
+            selectedAccounts,
+          });
+
+          if (!active) {
+            return;
+          }
+
+          blockscoutFetchedAtRef.current = fetchedAt;
+          setAssets(snapshot);
+          setError(null);
+        } catch {
+          // Keep the last streamed/cached snapshot when background refresh fails.
+        } finally {
+          if (active) {
+            setLoading(false);
+          }
+        }
+      })();
     }, blockscoutSyncIntervalMs);
 
     return () => {
+      active = false;
       window.clearInterval(intervalId);
     };
   }, [publicChain, selectedAccounts, selectedAccountsKey]);

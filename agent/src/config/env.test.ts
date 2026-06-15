@@ -52,7 +52,7 @@ describe("agent runtime config", () => {
     // An empty env override is not a disable: contract addresses fall back to the
     // committed config/public-chains.json (the source of truth, per CONTEXT D10).
     expect(config.somnia.inheritanceRegistryContractAddress).toBe(
-      "0xBaa6f77B9ea4E1ecaeEE7c64526bbb51d59E0e14"
+      config.publicChain.contracts.inheritanceRegistry
     );
   });
 

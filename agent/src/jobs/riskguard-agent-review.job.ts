@@ -2,7 +2,7 @@ import { Contract, Interface, JsonRpcProvider } from "ethers";
 
 import type { AgentConfig } from "../config/env.js";
 import type { AuditService } from "../services/audit.service.js";
-import type { TelegramAlertService } from "../services/telegram-alert.service.js";
+import type { TelegramAlertService } from "../services/telegram-alert/index.js";
 import type { TelegramClient } from "../integrations/telegram/telegram.client.js";
 import type { TelegramBindingsRepository } from "../persistence/telegram-bindings.repository.js";
 

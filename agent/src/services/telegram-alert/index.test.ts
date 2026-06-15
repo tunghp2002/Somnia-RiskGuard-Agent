@@ -5,27 +5,27 @@ import { tmpdir } from "node:os";
 import { Wallet } from "ethers";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { AuditEventsRepository } from "../persistence/audit-events.repository.js";
-import { AlertsRepository } from "../persistence/alerts.repository.js";
-import { ActionNoncesRepository } from "../persistence/action-nonces.repository.js";
-import { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
-import { TelegramBindingsRepository } from "../persistence/telegram-bindings.repository.js";
-import { UsersRepository } from "../persistence/users.repository.js";
+import { AuditEventsRepository } from "../../persistence/audit-events.repository.js";
+import { AlertsRepository } from "../../persistence/alerts.repository.js";
+import { ActionNoncesRepository } from "../../persistence/action-nonces.repository.js";
+import { PortfolioSnapshotsRepository } from "../../persistence/portfolio-snapshots.repository.js";
+import { TelegramBindingsRepository } from "../../persistence/telegram-bindings.repository.js";
+import { UsersRepository } from "../../persistence/users.repository.js";
 import type {
   TelegramClient,
   TelegramEditMessageTextInput,
   TelegramSendMessageInput
-} from "../integrations/telegram/telegram.client.js";
+} from "../../integrations/telegram/telegram.client.js";
 import {
   createCompactTelegramCallbackData
-} from "../integrations/telegram/callback-signing.js";
-import { createTestConfig } from "../test-helpers/env.js";
-import { AuditService } from "./audit.service.js";
+} from "../../integrations/telegram/callback-signing.js";
+import { createTestConfig } from "../../test-helpers/env.js";
+import { AuditService } from "../audit.service.js";
 import {
   TelegramAlertService,
   type RiskGuardApprovalSubmitter
-} from "./telegram-alert.service.js";
-import type { RiskGuardPendingUserOpService } from "./riskguard-pending-userop.service.js";
+} from "./index.js";
+import type { RiskGuardPendingUserOpService } from "../riskguard-pending-userop.service.js";
 
 class FakeTelegramClient implements TelegramClient {
   public messages: TelegramSendMessageInput[] = [];

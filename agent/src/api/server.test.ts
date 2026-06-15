@@ -14,7 +14,7 @@ import { AuditService } from "../services/audit.service.js";
 import { DemoScenarioService } from "../services/demo-scenario.service.js";
 import { SetupService } from "../services/setup.service.js";
 import type { SessionKeyService } from "../services/session-key.service.js";
-import type { TelegramAlertService } from "../services/telegram-alert.service.js";
+import type { TelegramAlertService } from "../services/telegram-alert/index.js";
 import { HeartbeatsRepository } from "../persistence/heartbeats.repository.js";
 import { HeartbeatService } from "../services/heartbeat.service.js";
 import { RewardClaimsRepository } from "../persistence/reward-claims.repository.js";

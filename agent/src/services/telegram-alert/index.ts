@@ -1,138 +1,59 @@
-import { formatUnits, getAddress, verifyMessage } from "ethers";
-import { z } from "zod";
+import { getAddress } from "ethers";
 
-import type { AgentConfig } from "../config/env.js";
-import type { AlertsRepository } from "../persistence/alerts.repository.js";
-import type { ActionNoncesRepository } from "../persistence/action-nonces.repository.js";
-import type { PortfolioSnapshotsRepository } from "../persistence/portfolio-snapshots.repository.js";
-import type { TelegramBindingsRepository } from "../persistence/telegram-bindings.repository.js";
-import type { UsersRepository } from "../persistence/users.repository.js";
+import type { AgentConfig } from "../../config/env.js";
+import type { AlertsRepository } from "../../persistence/alerts.repository.js";
+import type { ActionNoncesRepository } from "../../persistence/action-nonces.repository.js";
+import type { PortfolioSnapshotsRepository } from "../../persistence/portfolio-snapshots.repository.js";
+import type { TelegramBindingsRepository } from "../../persistence/telegram-bindings.repository.js";
+import type { UsersRepository } from "../../persistence/users.repository.js";
 import {
   createCompactTelegramCallbackData,
   verifyCompactTelegramCallbackData,
   type TelegramActionType
-} from "../integrations/telegram/callback-signing.js";
+} from "../../integrations/telegram/callback-signing.js";
 import type {
   TelegramClient,
   TelegramInlineButton
-} from "../integrations/telegram/telegram.client.js";
+} from "../../integrations/telegram/telegram.client.js";
 import {
   evaluateTelegramSafeActionApproval,
   type PolicyDecision
-} from "../policies/execution-policy.js";
-import type { AuditService } from "./audit.service.js";
+} from "../../policies/execution-policy.js";
+import type { AuditService } from "../audit.service.js";
 import {
   riskGuardPendingApprovalRequestSchema,
   type RiskGuardPendingApprovalRequest
-} from "./riskguard-approval.service.js";
-import type { RiskGuardPendingUserOpService } from "./riskguard-pending-userop.service.js";
+} from "../riskguard-approval.service.js";
+import type { RiskGuardPendingUserOpService } from "../riskguard-pending-userop.service.js";
+import {
+  escapeHtml,
+  formatAddress,
+  formatNativeValue,
+  stripAgentRecommendationPrefix,
+  summarizeReason,
+  summarizeRiskGuardApprovalFailure
+} from "./format.js";
+import {
+  riskGuardAgentReviewRequestedSchema,
+  telegramBindingRequestSchema,
+  telegramCallbackRequestSchema,
+  type RiskGuardAgentReviewRequested,
+  type TelegramBindingRequest,
+  type TelegramCallbackRequest
+} from "./schemas.js";
 
-export const telegramBindingRequestSchema = z
-  .object({
-    walletAddress: z
-      .string()
-      .regex(/^0x[a-fA-F0-9]{40}$/)
-      .transform((value) => getAddress(value)),
-    chatId: z.string().regex(/^-?\d+$/),
-    telegramUserId: z.string().regex(/^\d+$/).optional(),
-    telegramUsername: z.string().min(1).max(64).optional(),
-    telegramDisplayName: z.string().min(1).max(128).optional(),
-    smartAccountAddress: z
-      .string()
-      .regex(/^0x[a-fA-F0-9]{40}$/)
-      .transform((value) => getAddress(value))
-      .optional()
-  })
-  .strict();
-
-const signedProofFieldsSchema = z
-  .object({
-    signature: z.string().min(1),
-    message: z.string().min(1)
-  })
-  .strict();
-
-const signedWalletMutationSchema = z
-  .object({
-    walletAddress: z
-      .string()
-      .regex(/^0x[a-fA-F0-9]{40}$/)
-      .transform((value) => getAddress(value)),
-    signature: z.string().min(1),
-    message: z.string().min(1)
-  })
-  .strict()
-  .superRefine(validateSignedWalletMutation);
-
-export const telegramSignedBindingRequestSchema = telegramBindingRequestSchema
-  .merge(signedProofFieldsSchema)
-  .superRefine(validateSignedWalletMutation);
-
-export const telegramUnlinkRequestSchema = signedWalletMutationSchema;
-
-export const riskGuardAgentReviewRequestedSchema = z
-  .object({
-    walletAddress: z
-      .string()
-      .regex(/^0x[a-fA-F0-9]{40}$/)
-      .transform((value) => getAddress(value)),
-    smartAccountAddress: z
-      .string()
-      .regex(/^0x[a-fA-F0-9]{40}$/)
-      .transform((value) => getAddress(value)),
-    guardedTxHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
-    requestTxHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/)
-  })
-  .strict();
-
-export const telegramCallbackRequestSchema = z
-  .object({
-    chatId: z.string().regex(/^-?\d+$/),
-    messageId: z.string().regex(/^\d+$/).optional(),
-    telegramUserId: z.string().regex(/^\d+$/).optional(),
-    data: z.string().min(1)
-  })
-  .strict();
-
-export type TelegramBindingRequest = z.infer<typeof telegramBindingRequestSchema>;
-export type TelegramSignedBindingRequest = z.infer<typeof telegramSignedBindingRequestSchema>;
-export type TelegramUnlinkRequest = z.infer<typeof telegramUnlinkRequestSchema>;
-export type RiskGuardAgentReviewRequested = z.infer<typeof riskGuardAgentReviewRequestedSchema>;
-export type TelegramCallbackRequest = z.infer<typeof telegramCallbackRequestSchema>;
-
-function validateSignedWalletMutation(
-  input: { walletAddress: string; message: string; signature: string },
-  context: z.RefinementCtx
-) {
-  let recoveredAddress: string;
-
-  try {
-    recoveredAddress = verifyMessage(input.message, input.signature);
-  } catch {
-    context.addIssue({
-      code: "custom",
-      message: "Signature must be a valid signed-message proof",
-      path: ["signature"]
-    });
-    return;
-  }
-
-  if (getAddress(recoveredAddress) !== input.walletAddress) {
-    context.addIssue({
-      code: "custom",
-      message: "Signature must recover the submitted wallet address",
-      path: ["signature"]
-    });
-  }
-
-  if (!input.message.toLowerCase().includes(input.walletAddress.toLowerCase())) {
-    context.addIssue({
-      code: "custom",
-      message: "Signed message must include the submitted wallet address",
-      path: ["message"]
-    });
-  }
-}
+export {
+  riskGuardAgentReviewRequestedSchema,
+  telegramBindingRequestSchema,
+  telegramCallbackRequestSchema,
+  telegramSignedBindingRequestSchema,
+  telegramUnlinkRequestSchema,
+  type RiskGuardAgentReviewRequested,
+  type TelegramBindingRequest,
+  type TelegramCallbackRequest,
+  type TelegramSignedBindingRequest,
+  type TelegramUnlinkRequest
+} from "./schemas.js";
 
 export class TelegramAlertServiceError extends Error {
   public constructor(
@@ -162,53 +83,6 @@ interface RiskGuardTelegramMessageRef {
   chatId?: string;
   telegramMessageId?: string;
   requestTxHash?: string;
-}
-
-function summarizeReason(explanation: string): string {
-  return explanation.length > 240 ? `${explanation.slice(0, 237)}...` : explanation;
-}
-
-function formatAddress(value: string): string {
-  return value.length > 14 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function formatNativeValue(valueWei: string): string {
-  try {
-    const formatted = formatUnits(valueWei, 18);
-    const [whole, fraction = ""] = formatted.split(".");
-    const trimmedFraction = fraction.slice(0, 6).replace(/0+$/, "");
-
-    return `${whole}${trimmedFraction ? `.${trimmedFraction}` : ""} STT`;
-  } catch {
-    return `${valueWei} wei`;
-  }
-}
-
-function stripAgentRecommendationPrefix(reason: string): string {
-  return reason
-    .replace(/^\s*APPROVE\s*:?\s*/i, "")
-    .replace(/^\s*REJECT\s*:?\s*/i, "")
-    .trim();
-}
-
-function summarizeRiskGuardApprovalFailure(reason: string): string {
-  if (/account does not exist|insufficient funds|no STT for gas/i.test(reason)) {
-    return "RiskGuard approval signer does not have enough STT for gas. Reconfigure Risk Policy Guard so the user smart account funds the approval signer, then request review again.";
-  }
-
-  if (/not registered/i.test(reason)) {
-    return "RiskGuard approval signer is not registered for this smart account. Reconfigure Risk Policy Guard, then request review again.";
-  }
-
-  return reason.length > 240 ? `${reason.slice(0, 237)}...` : reason;
 }
 
 export class TelegramAlertService {

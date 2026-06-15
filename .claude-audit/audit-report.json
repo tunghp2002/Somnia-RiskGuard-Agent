@@ -1,0 +1,1825 @@
+{
+  "version": "0.2.2",
+  "timestamp": "2026-06-15T15:41:17.302Z",
+  "project": {
+    "name": "Somnia",
+    "path": "C:\\Users\\T\\Subwallet\\Somnia",
+    "languages": {
+      "Markdown": 16,
+      "JSON": 9,
+      "YAML": 9,
+      "TypeScript": 137,
+      "TOML": 10,
+      "JavaScript": 11,
+      "SQL": 5,
+      "Python": 2,
+      "CSS": 2
+    },
+    "frameworks": [],
+    "totalFiles": 201,
+    "totalLines": 35823,
+    "hasTests": true,
+    "hasDependencyFile": true,
+    "dependencyFile": "package.json",
+    "dependencies": {},
+    "testFrameworks": [],
+    "packageManager": "pnpm"
+  },
+  "overallScore": 60,
+  "overallGrade": "C",
+  "categories": [
+    {
+      "category": "security",
+      "score": 80,
+      "grade": "B",
+      "findings": [],
+      "summary": ""
+    },
+    {
+      "category": "quality",
+      "score": 0,
+      "grade": "F",
+      "findings": [
+        {
+          "id": "QUA-005",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Large File — Consider Splitting",
+          "description": "agent/src/api/server.test.ts has 638 lines. Large files are hard to test, review, and maintain.",
+          "file": "agent/src/api/server.test.ts",
+          "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+        },
+        {
+          "id": "QUA-007",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Large File — Consider Splitting",
+          "description": "agent/src/api/server.ts has 919 lines. Large files are hard to test, review, and maintain.",
+          "file": "agent/src/api/server.ts",
+          "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+        },
+        {
+          "id": "QUA-008",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Deep Nesting Detected",
+          "description": "agent/src/api/server.ts:385 — nesting depth of 6. This hurts readability and testability.",
+          "file": "agent/src/api/server.ts",
+          "line": 385,
+          "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+        },
+        {
+          "id": "QUA-013",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Deep Nesting Detected",
+          "description": "agent/src/jobs/riskguard-agent-review.job.ts:69 — nesting depth of 6. This hurts readability and testability.",
+          "file": "agent/src/jobs/riskguard-agent-review.job.ts",
+          "line": 69,
+          "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+        },
+        {
+          "id": "QUA-018",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Deep Nesting Detected",
+          "description": "agent/src/persistence/heartbeats.repository.ts:144 — nesting depth of 6. This hurts readability and testability.",
+          "file": "agent/src/persistence/heartbeats.repository.ts",
+          "line": 144,
+          "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+        },
+        {
+          "id": "QUA-020",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Deep Nesting Detected",
+          "description": "agent/src/persistence/json-store.test.ts:70 — nesting depth of 6. This hurts readability and testability.",
+          "file": "agent/src/persistence/json-store.test.ts",
+          "line": 70,
+          "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+        },
+        {
+          "id": "QUA-031",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Large File — Consider Splitting",
+          "description": "agent/src/services/approval-scanner.service.ts has 905 lines. Large files are hard to test, review, and maintain.",
+          "file": "agent/src/services/approval-scanner.service.ts",
+          "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+        },
+        {
+          "id": "QUA-036",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Large File — Consider Splitting",
+          "description": "agent/src/services/heartbeat.service.ts has 576 lines. Large files are hard to test, review, and maintain.",
+          "file": "agent/src/services/heartbeat.service.ts",
+          "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+        },
+        {
+          "id": "QUA-037",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Deep Nesting Detected",
+          "description": "agent/src/services/heartbeat.service.ts:308 — nesting depth of 6. This hurts readability and testability.",
+          "file": "agent/src/services/heartbeat.service.ts",
+          "line": 308,
+          "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+        },
+        {
+          "id": "QUA-039",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Deep Nesting Detected",
+          "description": "agent/src/services/portfolio.service.test.ts:130 — nesting depth of 6. This hurts readability and testability.",
+          "file": "agent/src/services/portfolio.service.test.ts",
+          "line": 130,
+          "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+        },
+        {
+          "id": "QUA-041",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Deep Nesting Detected",
+          "description": "agent/src/services/portfolio.service.ts:65 — nesting depth of 6. This hurts readability and testability.",
+          "file": "agent/src/services/portfolio.service.ts",
+          "line": 65,
+          "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+        },
+        {
+          "id": "QUA-044",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Deep Nesting Detected",
+          "description": "agent/src/services/reward-claim.service.ts:252 — nesting depth of 6. This hurts readability and testability.",
+          "file": "agent/src/services/reward-claim.service.ts",
+          "line": 252,
+          "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+        },
+        {
+          "id": "QUA-054",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Large File — Consider Splitting",
+          "description": "agent/src/services/telegram-alert.service.ts has 993 lines. Large files are hard to test, review, and maintain.",
+          "file": "agent/src/services/telegram-alert.service.ts",
+          "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+        },
+        {
+          "id": "QUA-058",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Large File — Consider Splitting",
+          "description": "frontend/src/lib/agent-api.ts has 681 lines. Large files are hard to test, review, and maintain.",
+          "file": "frontend/src/lib/agent-api.ts",
+          "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+        },
+        {
+          "id": "QUA-070",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Large File — Consider Splitting",
+          "description": "agent/src/integrations/telegram/telegram.client.ts has 510 lines. Large files are hard to test, review, and maintain.",
+          "file": "agent/src/integrations/telegram/telegram.client.ts",
+          "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+        },
+        {
+          "id": "QUA-073",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Deep Nesting Detected",
+          "description": "frontend/src/hooks/dashboard/use-account-assets.ts:241 — nesting depth of 6. This hurts readability and testability.",
+          "file": "frontend/src/hooks/dashboard/use-account-assets.ts",
+          "line": 241,
+          "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+        },
+        {
+          "id": "QUA-077",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Large File — Consider Splitting",
+          "description": "frontend/src/hooks/dashboard/use-riskguard-dashboard.ts has 992 lines. Large files are hard to test, review, and maintain.",
+          "file": "frontend/src/hooks/dashboard/use-riskguard-dashboard.ts",
+          "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+        },
+        {
+          "id": "QUA-078",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Deep Nesting Detected",
+          "description": "frontend/src/hooks/dashboard/use-riskguard-dashboard.ts:450 — nesting depth of 6. This hurts readability and testability.",
+          "file": "frontend/src/hooks/dashboard/use-riskguard-dashboard.ts",
+          "line": 450,
+          "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+        },
+        {
+          "id": "QUA-085",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Deep Nesting Detected",
+          "description": "frontend/src/features/dashboard/components/status-panels.tsx:230 — nesting depth of 6. This hurts readability and testability.",
+          "file": "frontend/src/features/dashboard/components/status-panels.tsx",
+          "line": 230,
+          "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+        },
+        {
+          "id": "QUA-088",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Large File — Consider Splitting",
+          "description": "frontend/src/features/settings/guardian-settings/index.tsx has 890 lines. Large files are hard to test, review, and maintain.",
+          "file": "frontend/src/features/settings/guardian-settings/index.tsx",
+          "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+        },
+        {
+          "id": "QUA-089",
+          "category": "quality",
+          "severity": "medium",
+          "title": "Deep Nesting Detected",
+          "description": "frontend/src/features/settings/guardian-settings/index.tsx:259 — nesting depth of 7. This hurts readability and testability.",
+          "file": "frontend/src/features/settings/guardian-settings/index.tsx",
+          "line": 259,
+          "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+        }
+      ],
+      "summary": ""
+    },
+    {
+      "category": "performance",
+      "score": 80,
+      "grade": "B",
+      "findings": [],
+      "summary": ""
+    },
+    {
+      "category": "architecture",
+      "score": 80,
+      "grade": "B",
+      "findings": [],
+      "summary": ""
+    },
+    {
+      "category": "dependencies",
+      "score": 80,
+      "grade": "B",
+      "findings": [],
+      "summary": ""
+    },
+    {
+      "category": "testing",
+      "score": 80,
+      "grade": "B",
+      "findings": [],
+      "summary": ""
+    },
+    {
+      "category": "documentation",
+      "score": 0,
+      "grade": "F",
+      "findings": [
+        {
+          "id": "QUA-001",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/index.ts has < 5% comment coverage across 116 lines.",
+          "file": "agent/src/index.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-002",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/main.ts has < 5% comment coverage across 481 lines.",
+          "file": "agent/src/main.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-003",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "_bmad/scripts/resolve_config.py has < 5% comment coverage across 177 lines.",
+          "file": "_bmad/scripts/resolve_config.py",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-004",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "_bmad/scripts/resolve_customization.py has < 5% comment coverage across 231 lines.",
+          "file": "_bmad/scripts/resolve_customization.py",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-006",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/api/server.test.ts has < 5% comment coverage across 638 lines.",
+          "file": "agent/src/api/server.test.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-009",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/api/server.ts has < 5% comment coverage across 919 lines.",
+          "file": "agent/src/api/server.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-010",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/config/env.test.ts has < 5% comment coverage across 179 lines.",
+          "file": "agent/src/config/env.test.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-011",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/config/env.ts has < 5% comment coverage across 333 lines.",
+          "file": "agent/src/config/env.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-012",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/config/public-chain.ts has < 5% comment coverage across 128 lines.",
+          "file": "agent/src/config/public-chain.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-014",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/jobs/riskguard-agent-review.job.ts has < 5% comment coverage across 123 lines.",
+          "file": "agent/src/jobs/riskguard-agent-review.job.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-015",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/policies/deadman-policy.ts has < 5% comment coverage across 101 lines.",
+          "file": "agent/src/policies/deadman-policy.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-016",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/persistence/action-nonces.repository.ts has < 5% comment coverage across 128 lines.",
+          "file": "agent/src/persistence/action-nonces.repository.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-017",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/persistence/alerts.repository.ts has < 5% comment coverage across 111 lines.",
+          "file": "agent/src/persistence/alerts.repository.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-019",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/persistence/heartbeats.repository.ts has < 5% comment coverage across 221 lines.",
+          "file": "agent/src/persistence/heartbeats.repository.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-021",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/persistence/json-store.ts has < 5% comment coverage across 104 lines.",
+          "file": "agent/src/persistence/json-store.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-022",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/persistence/portfolio-snapshots.repository.ts has < 5% comment coverage across 109 lines.",
+          "file": "agent/src/persistence/portfolio-snapshots.repository.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-023",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/persistence/reward-claims.repository.ts has < 5% comment coverage across 309 lines.",
+          "file": "agent/src/persistence/reward-claims.repository.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-024",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/persistence/riskguard-pending-userops.repository.ts has < 5% comment coverage across 120 lines.",
+          "file": "agent/src/persistence/riskguard-pending-userops.repository.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-025",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/persistence/session-keys.repository.ts has < 5% comment coverage across 281 lines.",
+          "file": "agent/src/persistence/session-keys.repository.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-026",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/persistence/supabase-json-store.ts has < 5% comment coverage across 121 lines.",
+          "file": "agent/src/persistence/supabase-json-store.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-027",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/persistence/telegram-bindings.repository.ts has < 5% comment coverage across 271 lines.",
+          "file": "agent/src/persistence/telegram-bindings.repository.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-028",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/persistence/users.repository.ts has < 5% comment coverage across 446 lines.",
+          "file": "agent/src/persistence/users.repository.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-029",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/approval-scanner-analysis.ts has < 5% comment coverage across 235 lines.",
+          "file": "agent/src/services/approval-scanner-analysis.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-030",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/approval-scanner.service.test.ts has < 5% comment coverage across 157 lines.",
+          "file": "agent/src/services/approval-scanner.service.test.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-032",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/approval-scanner.service.ts has < 5% comment coverage across 905 lines.",
+          "file": "agent/src/services/approval-scanner.service.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-033",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/approval-scanner.types.ts has < 5% comment coverage across 196 lines.",
+          "file": "agent/src/services/approval-scanner.types.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-034",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/demo-scenario.service.ts has < 5% comment coverage across 296 lines.",
+          "file": "agent/src/services/demo-scenario.service.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-035",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/heartbeat.service.test.ts has < 5% comment coverage across 273 lines.",
+          "file": "agent/src/services/heartbeat.service.test.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-038",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/heartbeat.service.ts has < 5% comment coverage across 576 lines.",
+          "file": "agent/src/services/heartbeat.service.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-040",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/portfolio.service.test.ts has < 5% comment coverage across 186 lines.",
+          "file": "agent/src/services/portfolio.service.test.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-042",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/portfolio.service.ts has < 5% comment coverage across 251 lines.",
+          "file": "agent/src/services/portfolio.service.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-043",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/reward-claim.service.test.ts has < 5% comment coverage across 266 lines.",
+          "file": "agent/src/services/reward-claim.service.test.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-045",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/reward-claim.service.ts has < 5% comment coverage across 484 lines.",
+          "file": "agent/src/services/reward-claim.service.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-046",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/riskguard-approval.service.ts has < 5% comment coverage across 107 lines.",
+          "file": "agent/src/services/riskguard-approval.service.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-047",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/riskguard-pending-userop.service.ts has < 5% comment coverage across 147 lines.",
+          "file": "agent/src/services/riskguard-pending-userop.service.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-048",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/session-key.service.ts has < 5% comment coverage across 125 lines.",
+          "file": "agent/src/services/session-key.service.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-049",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/setup.service.test.ts has < 5% comment coverage across 104 lines.",
+          "file": "agent/src/services/setup.service.test.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-050",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/setup.service.ts has < 5% comment coverage across 158 lines.",
+          "file": "agent/src/services/setup.service.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-051",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/signed-wallet-proof.ts has < 5% comment coverage across 129 lines.",
+          "file": "agent/src/services/signed-wallet-proof.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-052",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/telegram-alert.schemas.ts has < 5% comment coverage across 110 lines.",
+          "file": "agent/src/services/telegram-alert.schemas.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-053",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/telegram-alert.service.test.ts has < 5% comment coverage across 438 lines.",
+          "file": "agent/src/services/telegram-alert.service.test.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-055",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/telegram-alert.service.ts has < 5% comment coverage across 993 lines.",
+          "file": "agent/src/services/telegram-alert.service.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-056",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/telegram-check-in.service.ts has < 5% comment coverage across 212 lines.",
+          "file": "agent/src/services/telegram-check-in.service.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-057",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/services/telegram-connect.service.ts has < 5% comment coverage across 212 lines.",
+          "file": "agent/src/services/telegram-connect.service.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-059",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/lib/agent-api.ts has < 5% comment coverage across 681 lines.",
+          "file": "frontend/src/lib/agent-api.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-060",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/lib/blockscout-api.ts has < 5% comment coverage across 267 lines.",
+          "file": "frontend/src/lib/blockscout-api.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-061",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/lib/inheritance-registry.ts has < 5% comment coverage across 467 lines.",
+          "file": "frontend/src/lib/inheritance-registry.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-062",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/lib/native-transfer.ts has < 5% comment coverage across 282 lines.",
+          "file": "frontend/src/lib/native-transfer.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-063",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/lib/riskguard-module.ts has < 5% comment coverage across 358 lines.",
+          "file": "frontend/src/lib/riskguard-module.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-064",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/lib/riskguard-smart-account.ts has < 5% comment coverage across 459 lines.",
+          "file": "frontend/src/lib/riskguard-smart-account.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-065",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/lib/wallet.ts has < 5% comment coverage across 236 lines.",
+          "file": "frontend/src/lib/wallet.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-066",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/integrations/somnia/inheritance-registry.client.ts has < 5% comment coverage across 136 lines.",
+          "file": "agent/src/integrations/somnia/inheritance-registry.client.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-067",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/integrations/somnia/somnia-agent-kit.client.test.ts has < 5% comment coverage across 110 lines.",
+          "file": "agent/src/integrations/somnia/somnia-agent-kit.client.test.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-068",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/integrations/somnia/somnia-agent-kit.client.ts has < 5% comment coverage across 350 lines.",
+          "file": "agent/src/integrations/somnia/somnia-agent-kit.client.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-069",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/integrations/telegram/callback-signing.ts has < 5% comment coverage across 135 lines.",
+          "file": "agent/src/integrations/telegram/callback-signing.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-071",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "agent/src/integrations/telegram/telegram.client.ts has < 5% comment coverage across 510 lines.",
+          "file": "agent/src/integrations/telegram/telegram.client.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-072",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/features/dashboard/riskguard-dashboard.tsx has < 5% comment coverage across 133 lines.",
+          "file": "frontend/src/features/dashboard/riskguard-dashboard.tsx",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-074",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/hooks/dashboard/use-account-assets.ts has < 5% comment coverage across 272 lines.",
+          "file": "frontend/src/hooks/dashboard/use-account-assets.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-075",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/hooks/dashboard/use-approval-scanner.ts has < 5% comment coverage across 495 lines.",
+          "file": "frontend/src/hooks/dashboard/use-approval-scanner.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-076",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/hooks/dashboard/use-riskguard-dashboard-helpers.ts has < 5% comment coverage across 456 lines.",
+          "file": "frontend/src/hooks/dashboard/use-riskguard-dashboard-helpers.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-079",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/hooks/dashboard/use-riskguard-dashboard.ts has < 5% comment coverage across 992 lines.",
+          "file": "frontend/src/hooks/dashboard/use-riskguard-dashboard.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-080",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/hooks/settings/use-inheritance-settings-form.ts has < 5% comment coverage across 399 lines.",
+          "file": "frontend/src/hooks/settings/use-inheritance-settings-form.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-081",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/lib/somnia/balance-stream.ts has < 5% comment coverage across 166 lines.",
+          "file": "frontend/src/lib/somnia/balance-stream.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-082",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/utils/dashboard/index.ts has < 5% comment coverage across 109 lines.",
+          "file": "frontend/src/utils/dashboard/index.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-083",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/utils/settings/inheritance-settings.ts has < 5% comment coverage across 313 lines.",
+          "file": "frontend/src/utils/settings/inheritance-settings.ts",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-084",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/features/dashboard/components/approvals-panel.tsx has < 5% comment coverage across 483 lines.",
+          "file": "frontend/src/features/dashboard/components/approvals-panel.tsx",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-086",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/features/dashboard/components/status-panels.tsx has < 5% comment coverage across 296 lines.",
+          "file": "frontend/src/features/dashboard/components/status-panels.tsx",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-087",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/features/dashboard/components/transfer-panel.tsx has < 5% comment coverage across 225 lines.",
+          "file": "frontend/src/features/dashboard/components/transfer-panel.tsx",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-090",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/features/settings/guardian-settings/index.tsx has < 5% comment coverage across 890 lines.",
+          "file": "frontend/src/features/settings/guardian-settings/index.tsx",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-091",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/features/settings/inheritance-settings-controls/index.tsx has < 5% comment coverage across 103 lines.",
+          "file": "frontend/src/features/settings/inheritance-settings-controls/index.tsx",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-092",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/features/settings/token-import-dialog/index.tsx has < 5% comment coverage across 102 lines.",
+          "file": "frontend/src/features/settings/token-import-dialog/index.tsx",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-093",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/features/dashboard/components/account/assets-panel.tsx has < 5% comment coverage across 104 lines.",
+          "file": "frontend/src/features/dashboard/components/account/assets-panel.tsx",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-094",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/features/dashboard/components/dashboard/navigation.tsx has < 5% comment coverage across 144 lines.",
+          "file": "frontend/src/features/dashboard/components/dashboard/navigation.tsx",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        },
+        {
+          "id": "QUA-095",
+          "category": "documentation",
+          "severity": "low",
+          "title": "Insufficient Documentation",
+          "description": "frontend/src/features/dashboard/components/dashboard/sections.tsx has < 5% comment coverage across 254 lines.",
+          "file": "frontend/src/features/dashboard/components/dashboard/sections.tsx",
+          "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+        }
+      ],
+      "summary": ""
+    }
+  ],
+  "allFindings": [
+    {
+      "id": "QUA-005",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Large File — Consider Splitting",
+      "description": "agent/src/api/server.test.ts has 638 lines. Large files are hard to test, review, and maintain.",
+      "file": "agent/src/api/server.test.ts",
+      "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+    },
+    {
+      "id": "QUA-007",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Large File — Consider Splitting",
+      "description": "agent/src/api/server.ts has 919 lines. Large files are hard to test, review, and maintain.",
+      "file": "agent/src/api/server.ts",
+      "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+    },
+    {
+      "id": "QUA-008",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Deep Nesting Detected",
+      "description": "agent/src/api/server.ts:385 — nesting depth of 6. This hurts readability and testability.",
+      "file": "agent/src/api/server.ts",
+      "line": 385,
+      "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+    },
+    {
+      "id": "QUA-013",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Deep Nesting Detected",
+      "description": "agent/src/jobs/riskguard-agent-review.job.ts:69 — nesting depth of 6. This hurts readability and testability.",
+      "file": "agent/src/jobs/riskguard-agent-review.job.ts",
+      "line": 69,
+      "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+    },
+    {
+      "id": "QUA-018",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Deep Nesting Detected",
+      "description": "agent/src/persistence/heartbeats.repository.ts:144 — nesting depth of 6. This hurts readability and testability.",
+      "file": "agent/src/persistence/heartbeats.repository.ts",
+      "line": 144,
+      "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+    },
+    {
+      "id": "QUA-020",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Deep Nesting Detected",
+      "description": "agent/src/persistence/json-store.test.ts:70 — nesting depth of 6. This hurts readability and testability.",
+      "file": "agent/src/persistence/json-store.test.ts",
+      "line": 70,
+      "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+    },
+    {
+      "id": "QUA-031",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Large File — Consider Splitting",
+      "description": "agent/src/services/approval-scanner.service.ts has 905 lines. Large files are hard to test, review, and maintain.",
+      "file": "agent/src/services/approval-scanner.service.ts",
+      "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+    },
+    {
+      "id": "QUA-036",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Large File — Consider Splitting",
+      "description": "agent/src/services/heartbeat.service.ts has 576 lines. Large files are hard to test, review, and maintain.",
+      "file": "agent/src/services/heartbeat.service.ts",
+      "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+    },
+    {
+      "id": "QUA-037",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Deep Nesting Detected",
+      "description": "agent/src/services/heartbeat.service.ts:308 — nesting depth of 6. This hurts readability and testability.",
+      "file": "agent/src/services/heartbeat.service.ts",
+      "line": 308,
+      "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+    },
+    {
+      "id": "QUA-039",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Deep Nesting Detected",
+      "description": "agent/src/services/portfolio.service.test.ts:130 — nesting depth of 6. This hurts readability and testability.",
+      "file": "agent/src/services/portfolio.service.test.ts",
+      "line": 130,
+      "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+    },
+    {
+      "id": "QUA-041",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Deep Nesting Detected",
+      "description": "agent/src/services/portfolio.service.ts:65 — nesting depth of 6. This hurts readability and testability.",
+      "file": "agent/src/services/portfolio.service.ts",
+      "line": 65,
+      "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+    },
+    {
+      "id": "QUA-044",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Deep Nesting Detected",
+      "description": "agent/src/services/reward-claim.service.ts:252 — nesting depth of 6. This hurts readability and testability.",
+      "file": "agent/src/services/reward-claim.service.ts",
+      "line": 252,
+      "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+    },
+    {
+      "id": "QUA-054",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Large File — Consider Splitting",
+      "description": "agent/src/services/telegram-alert.service.ts has 993 lines. Large files are hard to test, review, and maintain.",
+      "file": "agent/src/services/telegram-alert.service.ts",
+      "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+    },
+    {
+      "id": "QUA-058",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Large File — Consider Splitting",
+      "description": "frontend/src/lib/agent-api.ts has 681 lines. Large files are hard to test, review, and maintain.",
+      "file": "frontend/src/lib/agent-api.ts",
+      "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+    },
+    {
+      "id": "QUA-070",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Large File — Consider Splitting",
+      "description": "agent/src/integrations/telegram/telegram.client.ts has 510 lines. Large files are hard to test, review, and maintain.",
+      "file": "agent/src/integrations/telegram/telegram.client.ts",
+      "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+    },
+    {
+      "id": "QUA-073",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Deep Nesting Detected",
+      "description": "frontend/src/hooks/dashboard/use-account-assets.ts:241 — nesting depth of 6. This hurts readability and testability.",
+      "file": "frontend/src/hooks/dashboard/use-account-assets.ts",
+      "line": 241,
+      "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+    },
+    {
+      "id": "QUA-077",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Large File — Consider Splitting",
+      "description": "frontend/src/hooks/dashboard/use-riskguard-dashboard.ts has 992 lines. Large files are hard to test, review, and maintain.",
+      "file": "frontend/src/hooks/dashboard/use-riskguard-dashboard.ts",
+      "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+    },
+    {
+      "id": "QUA-078",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Deep Nesting Detected",
+      "description": "frontend/src/hooks/dashboard/use-riskguard-dashboard.ts:450 — nesting depth of 6. This hurts readability and testability.",
+      "file": "frontend/src/hooks/dashboard/use-riskguard-dashboard.ts",
+      "line": 450,
+      "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+    },
+    {
+      "id": "QUA-085",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Deep Nesting Detected",
+      "description": "frontend/src/features/dashboard/components/status-panels.tsx:230 — nesting depth of 6. This hurts readability and testability.",
+      "file": "frontend/src/features/dashboard/components/status-panels.tsx",
+      "line": 230,
+      "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+    },
+    {
+      "id": "QUA-088",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Large File — Consider Splitting",
+      "description": "frontend/src/features/settings/guardian-settings/index.tsx has 890 lines. Large files are hard to test, review, and maintain.",
+      "file": "frontend/src/features/settings/guardian-settings/index.tsx",
+      "fix": "Split into smaller, focused modules. Follow the Single Responsibility Principle."
+    },
+    {
+      "id": "QUA-089",
+      "category": "quality",
+      "severity": "medium",
+      "title": "Deep Nesting Detected",
+      "description": "frontend/src/features/settings/guardian-settings/index.tsx:259 — nesting depth of 7. This hurts readability and testability.",
+      "file": "frontend/src/features/settings/guardian-settings/index.tsx",
+      "line": 259,
+      "fix": "Use early returns, extract functions, or restructure logic to reduce nesting. Aim for max depth of 3."
+    },
+    {
+      "id": "QUA-001",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/index.ts has < 5% comment coverage across 116 lines.",
+      "file": "agent/src/index.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-002",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/main.ts has < 5% comment coverage across 481 lines.",
+      "file": "agent/src/main.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-003",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "_bmad/scripts/resolve_config.py has < 5% comment coverage across 177 lines.",
+      "file": "_bmad/scripts/resolve_config.py",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-004",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "_bmad/scripts/resolve_customization.py has < 5% comment coverage across 231 lines.",
+      "file": "_bmad/scripts/resolve_customization.py",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-006",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/api/server.test.ts has < 5% comment coverage across 638 lines.",
+      "file": "agent/src/api/server.test.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-009",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/api/server.ts has < 5% comment coverage across 919 lines.",
+      "file": "agent/src/api/server.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-010",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/config/env.test.ts has < 5% comment coverage across 179 lines.",
+      "file": "agent/src/config/env.test.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-011",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/config/env.ts has < 5% comment coverage across 333 lines.",
+      "file": "agent/src/config/env.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-012",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/config/public-chain.ts has < 5% comment coverage across 128 lines.",
+      "file": "agent/src/config/public-chain.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-014",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/jobs/riskguard-agent-review.job.ts has < 5% comment coverage across 123 lines.",
+      "file": "agent/src/jobs/riskguard-agent-review.job.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-015",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/policies/deadman-policy.ts has < 5% comment coverage across 101 lines.",
+      "file": "agent/src/policies/deadman-policy.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-016",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/persistence/action-nonces.repository.ts has < 5% comment coverage across 128 lines.",
+      "file": "agent/src/persistence/action-nonces.repository.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-017",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/persistence/alerts.repository.ts has < 5% comment coverage across 111 lines.",
+      "file": "agent/src/persistence/alerts.repository.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-019",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/persistence/heartbeats.repository.ts has < 5% comment coverage across 221 lines.",
+      "file": "agent/src/persistence/heartbeats.repository.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-021",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/persistence/json-store.ts has < 5% comment coverage across 104 lines.",
+      "file": "agent/src/persistence/json-store.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-022",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/persistence/portfolio-snapshots.repository.ts has < 5% comment coverage across 109 lines.",
+      "file": "agent/src/persistence/portfolio-snapshots.repository.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-023",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/persistence/reward-claims.repository.ts has < 5% comment coverage across 309 lines.",
+      "file": "agent/src/persistence/reward-claims.repository.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-024",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/persistence/riskguard-pending-userops.repository.ts has < 5% comment coverage across 120 lines.",
+      "file": "agent/src/persistence/riskguard-pending-userops.repository.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-025",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/persistence/session-keys.repository.ts has < 5% comment coverage across 281 lines.",
+      "file": "agent/src/persistence/session-keys.repository.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-026",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/persistence/supabase-json-store.ts has < 5% comment coverage across 121 lines.",
+      "file": "agent/src/persistence/supabase-json-store.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-027",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/persistence/telegram-bindings.repository.ts has < 5% comment coverage across 271 lines.",
+      "file": "agent/src/persistence/telegram-bindings.repository.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-028",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/persistence/users.repository.ts has < 5% comment coverage across 446 lines.",
+      "file": "agent/src/persistence/users.repository.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-029",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/approval-scanner-analysis.ts has < 5% comment coverage across 235 lines.",
+      "file": "agent/src/services/approval-scanner-analysis.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-030",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/approval-scanner.service.test.ts has < 5% comment coverage across 157 lines.",
+      "file": "agent/src/services/approval-scanner.service.test.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-032",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/approval-scanner.service.ts has < 5% comment coverage across 905 lines.",
+      "file": "agent/src/services/approval-scanner.service.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-033",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/approval-scanner.types.ts has < 5% comment coverage across 196 lines.",
+      "file": "agent/src/services/approval-scanner.types.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-034",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/demo-scenario.service.ts has < 5% comment coverage across 296 lines.",
+      "file": "agent/src/services/demo-scenario.service.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-035",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/heartbeat.service.test.ts has < 5% comment coverage across 273 lines.",
+      "file": "agent/src/services/heartbeat.service.test.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-038",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/heartbeat.service.ts has < 5% comment coverage across 576 lines.",
+      "file": "agent/src/services/heartbeat.service.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-040",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/portfolio.service.test.ts has < 5% comment coverage across 186 lines.",
+      "file": "agent/src/services/portfolio.service.test.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-042",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/portfolio.service.ts has < 5% comment coverage across 251 lines.",
+      "file": "agent/src/services/portfolio.service.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-043",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/reward-claim.service.test.ts has < 5% comment coverage across 266 lines.",
+      "file": "agent/src/services/reward-claim.service.test.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-045",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/reward-claim.service.ts has < 5% comment coverage across 484 lines.",
+      "file": "agent/src/services/reward-claim.service.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-046",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/riskguard-approval.service.ts has < 5% comment coverage across 107 lines.",
+      "file": "agent/src/services/riskguard-approval.service.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-047",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/riskguard-pending-userop.service.ts has < 5% comment coverage across 147 lines.",
+      "file": "agent/src/services/riskguard-pending-userop.service.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-048",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/session-key.service.ts has < 5% comment coverage across 125 lines.",
+      "file": "agent/src/services/session-key.service.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-049",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/setup.service.test.ts has < 5% comment coverage across 104 lines.",
+      "file": "agent/src/services/setup.service.test.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-050",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/setup.service.ts has < 5% comment coverage across 158 lines.",
+      "file": "agent/src/services/setup.service.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-051",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/signed-wallet-proof.ts has < 5% comment coverage across 129 lines.",
+      "file": "agent/src/services/signed-wallet-proof.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-052",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/telegram-alert.schemas.ts has < 5% comment coverage across 110 lines.",
+      "file": "agent/src/services/telegram-alert.schemas.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-053",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/telegram-alert.service.test.ts has < 5% comment coverage across 438 lines.",
+      "file": "agent/src/services/telegram-alert.service.test.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-055",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/telegram-alert.service.ts has < 5% comment coverage across 993 lines.",
+      "file": "agent/src/services/telegram-alert.service.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-056",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/telegram-check-in.service.ts has < 5% comment coverage across 212 lines.",
+      "file": "agent/src/services/telegram-check-in.service.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-057",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/services/telegram-connect.service.ts has < 5% comment coverage across 212 lines.",
+      "file": "agent/src/services/telegram-connect.service.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-059",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/lib/agent-api.ts has < 5% comment coverage across 681 lines.",
+      "file": "frontend/src/lib/agent-api.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-060",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/lib/blockscout-api.ts has < 5% comment coverage across 267 lines.",
+      "file": "frontend/src/lib/blockscout-api.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-061",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/lib/inheritance-registry.ts has < 5% comment coverage across 467 lines.",
+      "file": "frontend/src/lib/inheritance-registry.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-062",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/lib/native-transfer.ts has < 5% comment coverage across 282 lines.",
+      "file": "frontend/src/lib/native-transfer.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-063",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/lib/riskguard-module.ts has < 5% comment coverage across 358 lines.",
+      "file": "frontend/src/lib/riskguard-module.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-064",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/lib/riskguard-smart-account.ts has < 5% comment coverage across 459 lines.",
+      "file": "frontend/src/lib/riskguard-smart-account.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-065",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/lib/wallet.ts has < 5% comment coverage across 236 lines.",
+      "file": "frontend/src/lib/wallet.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-066",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/integrations/somnia/inheritance-registry.client.ts has < 5% comment coverage across 136 lines.",
+      "file": "agent/src/integrations/somnia/inheritance-registry.client.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-067",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/integrations/somnia/somnia-agent-kit.client.test.ts has < 5% comment coverage across 110 lines.",
+      "file": "agent/src/integrations/somnia/somnia-agent-kit.client.test.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-068",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/integrations/somnia/somnia-agent-kit.client.ts has < 5% comment coverage across 350 lines.",
+      "file": "agent/src/integrations/somnia/somnia-agent-kit.client.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-069",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/integrations/telegram/callback-signing.ts has < 5% comment coverage across 135 lines.",
+      "file": "agent/src/integrations/telegram/callback-signing.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-071",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "agent/src/integrations/telegram/telegram.client.ts has < 5% comment coverage across 510 lines.",
+      "file": "agent/src/integrations/telegram/telegram.client.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-072",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/features/dashboard/riskguard-dashboard.tsx has < 5% comment coverage across 133 lines.",
+      "file": "frontend/src/features/dashboard/riskguard-dashboard.tsx",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-074",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/hooks/dashboard/use-account-assets.ts has < 5% comment coverage across 272 lines.",
+      "file": "frontend/src/hooks/dashboard/use-account-assets.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-075",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/hooks/dashboard/use-approval-scanner.ts has < 5% comment coverage across 495 lines.",
+      "file": "frontend/src/hooks/dashboard/use-approval-scanner.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-076",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/hooks/dashboard/use-riskguard-dashboard-helpers.ts has < 5% comment coverage across 456 lines.",
+      "file": "frontend/src/hooks/dashboard/use-riskguard-dashboard-helpers.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-079",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/hooks/dashboard/use-riskguard-dashboard.ts has < 5% comment coverage across 992 lines.",
+      "file": "frontend/src/hooks/dashboard/use-riskguard-dashboard.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-080",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/hooks/settings/use-inheritance-settings-form.ts has < 5% comment coverage across 399 lines.",
+      "file": "frontend/src/hooks/settings/use-inheritance-settings-form.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-081",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/lib/somnia/balance-stream.ts has < 5% comment coverage across 166 lines.",
+      "file": "frontend/src/lib/somnia/balance-stream.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-082",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/utils/dashboard/index.ts has < 5% comment coverage across 109 lines.",
+      "file": "frontend/src/utils/dashboard/index.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-083",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/utils/settings/inheritance-settings.ts has < 5% comment coverage across 313 lines.",
+      "file": "frontend/src/utils/settings/inheritance-settings.ts",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-084",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/features/dashboard/components/approvals-panel.tsx has < 5% comment coverage across 483 lines.",
+      "file": "frontend/src/features/dashboard/components/approvals-panel.tsx",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-086",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/features/dashboard/components/status-panels.tsx has < 5% comment coverage across 296 lines.",
+      "file": "frontend/src/features/dashboard/components/status-panels.tsx",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-087",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/features/dashboard/components/transfer-panel.tsx has < 5% comment coverage across 225 lines.",
+      "file": "frontend/src/features/dashboard/components/transfer-panel.tsx",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-090",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/features/settings/guardian-settings/index.tsx has < 5% comment coverage across 890 lines.",
+      "file": "frontend/src/features/settings/guardian-settings/index.tsx",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-091",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/features/settings/inheritance-settings-controls/index.tsx has < 5% comment coverage across 103 lines.",
+      "file": "frontend/src/features/settings/inheritance-settings-controls/index.tsx",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-092",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/features/settings/token-import-dialog/index.tsx has < 5% comment coverage across 102 lines.",
+      "file": "frontend/src/features/settings/token-import-dialog/index.tsx",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-093",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/features/dashboard/components/account/assets-panel.tsx has < 5% comment coverage across 104 lines.",
+      "file": "frontend/src/features/dashboard/components/account/assets-panel.tsx",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-094",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/features/dashboard/components/dashboard/navigation.tsx has < 5% comment coverage across 144 lines.",
+      "file": "frontend/src/features/dashboard/components/dashboard/navigation.tsx",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    },
+    {
+      "id": "QUA-095",
+      "category": "documentation",
+      "severity": "low",
+      "title": "Insufficient Documentation",
+      "description": "frontend/src/features/dashboard/components/dashboard/sections.tsx has < 5% comment coverage across 254 lines.",
+      "file": "frontend/src/features/dashboard/components/dashboard/sections.tsx",
+      "fix": "Add JSDoc/docstrings to exported functions, classes, and complex logic."
+    }
+  ],
+  "criticalCount": 0,
+  "highCount": 0,
+  "mediumCount": 21,
+  "lowCount": 74,
+  "aiPowered": false,
+  "durationMs": 403
+}

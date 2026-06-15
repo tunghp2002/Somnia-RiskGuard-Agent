@@ -1,9 +1,13 @@
-import { randomUUID } from "node:crypto";
+import { randomInt } from "node:crypto";
 
 import {
   TelegramAlertServiceError,
   type TelegramAlertService
-} from "./telegram-alert.service.js";
+} from "../telegram-alert/index.js";
+
+const connectCodeLength = 16;
+const connectCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const connectCodePattern = new RegExp(`^[${connectCodeAlphabet}]{${connectCodeLength}}$`);
 
 export interface TelegramConnectSession {
   walletAddress: string;
@@ -27,7 +31,7 @@ export class TelegramConnectService {
   }
 
   public start(walletAddress: string, smartAccountAddress?: string): TelegramConnectSession {
-    const code = randomUUID().slice(0, 8).toUpperCase();
+    const code = this.createUniqueCode();
     const session: TelegramConnectSession = {
       walletAddress,
       ...(smartAccountAddress ? { smartAccountAddress } : {}),
@@ -41,8 +45,10 @@ export class TelegramConnectService {
   }
 
   public latestForWallet(walletAddress: string): TelegramConnectSession | undefined {
+    const normalizedWallet = walletAddress.toLowerCase();
+
     return [...this.sessions.values()]
-      .filter((session) => session.walletAddress === walletAddress)
+      .filter((session) => session.walletAddress.toLowerCase() === normalizedWallet)
       .sort((left, right) => Date.parse(right.expiresAt) - Date.parse(left.expiresAt))[0];
   }
 
@@ -111,7 +117,7 @@ export class TelegramConnectService {
     telegramUsername?: string;
     telegramDisplayName?: string;
   }): Promise<{ ok: boolean; message: string }> {
-    const code = extractConnectCode(input.text) ?? this.getSingleWaitingSessionCode(input.text);
+    const code = extractConnectCode(input.text);
 
     if (!code) {
       return { ok: false, message: "Open Telegram Connect from the RiskGuard dashboard, then press Start here." };
@@ -153,17 +159,15 @@ export class TelegramConnectService {
     };
   }
 
-  private getSingleWaitingSessionCode(text: string): string | undefined {
-    if (!/^\/START(?:@\w+)?$/i.test(text.trim())) {
-      return undefined;
+  private createUniqueCode(): string {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const code = generateConnectCode();
+      if (!this.sessions.has(code)) {
+        return code;
+      }
     }
 
-    const waitingSessions = [...this.sessions.values()].filter((session) => (
-      session.status === "waiting" &&
-      Date.parse(session.expiresAt) > Date.now()
-    ));
-
-    return waitingSessions.length === 1 ? waitingSessions[0]?.code : undefined;
+    throw new Error("Could not allocate a Telegram Connect code");
   }
 }
 
@@ -189,8 +193,19 @@ function formatWallet(walletAddress: string) {
 
 function extractConnectCode(text: string): string | undefined {
   const trimmed = text.trim().toUpperCase();
-  const startPayload = trimmed.match(/^\/START(?:@\w+)?\s+([A-Z0-9]{8})$/)?.[1];
-  const bareCode = trimmed.match(/^[A-Z0-9]{8}$/)?.[0];
+  const startPayload = trimmed.match(/^\/START(?:@\w+)?\s+([A-Z2-9]+)$/)?.[1];
+  const bareCode = trimmed.match(/^[A-Z2-9]+$/)?.[0];
+  const code = startPayload ?? bareCode;
 
-  return startPayload ?? bareCode;
+  return code && connectCodePattern.test(code) ? code : undefined;
+}
+
+function generateConnectCode(): string {
+  let code = "";
+
+  for (let index = 0; index < connectCodeLength; index += 1) {
+    code += connectCodeAlphabet[randomInt(connectCodeAlphabet.length)];
+  }
+
+  return code;
 }

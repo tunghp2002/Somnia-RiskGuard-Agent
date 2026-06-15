@@ -13,7 +13,7 @@ import {
 } from "./config/env.js";
 import { createLogger } from "./config/logger.js";
 import { createAgentApiServer } from "./api/server.js";
-import { ApprovalScannerService } from "./services/approval-scanner.service.js";
+import { ApprovalScannerService } from "./services/approval-scanner/index.js";
 import { z } from "zod";
 
 import { AuditEventsRepository, auditEventsSchema } from "./persistence/audit-events.repository.js";
@@ -48,12 +48,12 @@ import { SetupService } from "./services/setup.service.js";
 import { DemoScenarioService } from "./services/demo-scenario.service.js";
 import { HeartbeatService } from "./services/heartbeat.service.js";
 import { RewardClaimService } from "./services/reward-claim.service.js";
-import { TelegramAlertService } from "./services/telegram-alert.service.js";
+import { TelegramAlertService } from "./services/telegram-alert/index.js";
 import { RiskGuardApprovalService } from "./services/riskguard-approval.service.js";
 import { RiskGuardPendingUserOpService } from "./services/riskguard-pending-userop.service.js";
 import { RiskGuardReviewBudgetService } from "./services/riskguard-review-budget.service.js";
 import { TelegramCheckInService } from "./services/telegram-check-in.service.js";
-import { TelegramConnectService } from "./services/telegram-connect.service.js";
+import { TelegramConnectService } from "./services/telegram-connect/index.js";
 import { SessionKeyService } from "./services/session-key.service.js";
 import { PortfolioService } from "./services/portfolio.service.js";
 import { PortfolioMonitorJob } from "./jobs/portfolio-monitor.job.js";

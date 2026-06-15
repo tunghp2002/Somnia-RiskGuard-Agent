@@ -44,7 +44,7 @@ export {
   TelegramAlertServiceError,
   telegramBindingRequestSchema,
   telegramCallbackRequestSchema
-} from "./services/telegram-alert.service.js";
+} from "./services/telegram-alert/index.js";
 export { PortfolioMonitorJob } from "./jobs/portfolio-monitor.job.js";
 export { HeartbeatJob } from "./jobs/heartbeat.job.js";
 export { RewardClaimJob } from "./jobs/reward-claim.job.js";

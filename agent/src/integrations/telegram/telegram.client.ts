@@ -256,49 +256,7 @@ export class TelegramBotApiClient implements TelegramClient {
 
       while (!stopped) {
         try {
-          const updates = await this.getUpdates(offset);
-          for (const update of updates) {
-            offset = Math.max(offset, update.update_id + 1);
-            const callbackUpdate = this.toCallbackUpdate(update);
-
-            if (callbackUpdate) {
-              const result = await options.handleCallback(callbackUpdate);
-              await this.answerCallbackQuery(
-                callbackUpdate.callbackQueryId,
-                result.message
-              );
-              continue;
-            }
-
-            const textUpdate = this.toTextUpdate(update);
-            if (textUpdate && options.handleTextMessage) {
-              const isCheckIn = /^\/checkin(?:@\w+)?$/i.test(textUpdate.text.trim());
-              const pending = isCheckIn
-                ? await this.sendMessage({
-                    chatId: textUpdate.chatId,
-                    text: "Checking in..."
-                  })
-                : undefined;
-              const result = await options.handleTextMessage(textUpdate);
-              if (pending?.messageId) {
-                try {
-                  await this.deleteMessage({
-                    chatId: textUpdate.chatId,
-                    messageId: pending.messageId
-                  });
-                } catch (error) {
-                  options.logger?.error(
-                    { error: error instanceof Error ? error.message : "delete checking message failed" },
-                    "telegram delete checking message failed"
-                  );
-                }
-              }
-              await this.sendMessage({
-                chatId: textUpdate.chatId,
-                text: result.message
-              });
-            }
-          }
+          offset = await this.processPollingBatch(offset, options);
         } catch (error) {
           options.logger?.error(
             { error: error instanceof Error ? error.message : "polling failed" },
@@ -319,6 +277,79 @@ export class TelegramBotApiClient implements TelegramClient {
         stopped = true;
       }
     };
+  }
+
+  private async processPollingBatch(
+    offset: number,
+    options: StartTelegramPollingOptions
+  ) {
+    const updates = await this.getUpdates(offset);
+    let nextOffset = offset;
+
+    for (const update of updates) {
+      nextOffset = Math.max(nextOffset, update.update_id + 1);
+      await this.handlePollingUpdate(update, options);
+    }
+
+    return nextOffset;
+  }
+
+  private async handlePollingUpdate(
+    update: TelegramRawUpdate,
+    options: StartTelegramPollingOptions
+  ) {
+    const callbackUpdate = this.toCallbackUpdate(update);
+
+    if (callbackUpdate) {
+      const result = await options.handleCallback(callbackUpdate);
+      await this.answerCallbackQuery(
+        callbackUpdate.callbackQueryId,
+        result.message
+      );
+      return;
+    }
+
+    const textUpdate = this.toTextUpdate(update);
+    const handleTextMessage = options.handleTextMessage;
+    if (!textUpdate || !handleTextMessage) {
+      return;
+    }
+
+    await this.handleTextPollingUpdate(textUpdate, handleTextMessage, options.logger);
+  }
+
+  private async handleTextPollingUpdate(
+    textUpdate: TelegramTextUpdate,
+    handleTextMessage: NonNullable<StartTelegramPollingOptions["handleTextMessage"]>,
+    logger: StartTelegramPollingOptions["logger"]
+  ) {
+    const isCheckIn = /^\/checkin(?:@\w+)?$/i.test(textUpdate.text.trim());
+    const pending = isCheckIn
+      ? await this.sendMessage({
+          chatId: textUpdate.chatId,
+          text: "Checking in..."
+        })
+      : undefined;
+
+    try {
+      const result = await handleTextMessage(textUpdate);
+      await this.sendMessage({
+        chatId: textUpdate.chatId,
+        text: result.message
+      });
+    } finally {
+      if (pending?.messageId) {
+        await this.deleteMessage({
+          chatId: textUpdate.chatId,
+          messageId: pending.messageId
+        }).catch((error) => {
+          logger?.error(
+            { error: error instanceof Error ? error.message : "delete checking message failed" },
+            "telegram delete checking message failed"
+          );
+        });
+      }
+    }
   }
 
   private async getUpdates(offset: number) {

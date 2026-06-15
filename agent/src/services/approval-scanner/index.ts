@@ -1,21 +1,54 @@
 import {
   Contract,
-  Interface,
   JsonRpcProvider,
   getAddress,
   id as keccakId,
   zeroPadValue
 } from "ethers";
-import { z } from "zod";
 
-import type { AgentConfig } from "../config/env.js";
-import { loadScanChains, type ScanChain } from "../config/public-chain.js";
-import { JsonStore, type RepositoryStore } from "../persistence/json-store.js";
+import type { AgentConfig } from "../../config/env.js";
+import { loadScanChains, type ScanChain } from "../../config/public-chain.js";
+import { JsonStore, type RepositoryStore } from "../../persistence/json-store.js";
+import {
+  buildLocalBatchStatus,
+  buildScanItem,
+  mapItemStatus,
+  normalizeScanItems
+} from "./analysis.js";
+import {
+  approvalScanCacheRecordSchema,
+  approvalScanCacheRecordsSchema,
+  erc20Interface,
+  MAX_ITEMS_PER_SCAN,
+  scannerInterface,
+  type ApprovalDiscoveryResult,
+  type ApprovalEntry,
+  type ApprovalScanCacheRecord,
+  type ApprovalScanChainProgress,
+  type ApprovalScanPrepareApproval,
+  type ItemTuple,
+  type ScanChainSummary,
+  type ScanItem,
+  type ScanItemStatus,
+  type ScanStatus,
+  type ScanTuple
+} from "./types.js";
+
+export {
+  approvalAnalyzePrepareRequestSchema,
+  approvalListRequestSchema,
+  approvalScanPrepareRequestSchema,
+  type ApprovalDiscoveryResult,
+  type ApprovalEntry,
+  type ApprovalScanChainProgress,
+  type ScanChainSummary,
+  type ScanItemStatus,
+  type ScanStatus
+} from "./types.js";
 
 const APPROVAL_EVENT_TOPIC = keccakId("Approval(address,address,uint256)");
 const APPROVAL_FOR_ALL_TOPIC = keccakId("ApprovalForAll(address,address,bool)");
 const UNLIMITED_THRESHOLD = (1n << 255n); // anything at/above this is treated as "unlimited"
-const MAX_ITEMS_PER_SCAN = 50;
 const EXPLORER_FETCH_RETRIES = 3;
 const EXPLORER_RETRY_BASE_DELAY_MS = process.env.NODE_ENV === "test" ? 1 : 800;
 const EXPLORER_CHUNK_SIZE_BLOCKS = 100_000_000;
@@ -27,181 +60,6 @@ interface ExplorerLog {
   topics: string[];
   data: string;
 }
-
-const erc20Interface = new Interface([
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function isApprovedForAll(address owner, address operator) view returns (bool)",
-  "function symbol() view returns (string)",
-  "function name() view returns (string)",
-  "function decimals() view returns (uint8)"
-]);
-
-const scannerInterface = new Interface([
-  "function STAGES_PER_SCAN() view returns (uint256)",
-  "function quoteScan(uint256 itemCount) view returns (uint256)",
-  "function requestScan(tuple(uint256 chainId, address spender, address token, string context, string explorerApiUrl, string explorerApiSelector, string explorerPageUrl)[] items) payable returns (uint256 scanId)",
-  "function getScan(uint256 scanId) view returns (tuple(address requester, uint256 escrow, uint256 agentDeposit, uint256 itemCount, uint256 completedCount, bool jsonReturned, bool webReturned, bool inferenceFired, bool inferenceSucceeded, string jsonFacts, string webFindings, string inferenceSummary, bool exists))",
-  "function getItem(uint256 scanId, uint256 itemIndex) view returns (tuple(uint256 chainId, address spender, address token, string context, bool jsonReturned, bool webReturned, bool inferenceFired, uint8 status, string jsonFacts, string webFindings, uint8 riskScore, string verdict))",
-  "function getScanResult(uint256 scanId) view returns (tuple(address requester, uint256 escrow, uint256 agentDeposit, uint256 itemCount, uint256 completedCount, bool jsonReturned, bool webReturned, bool inferenceFired, bool inferenceSucceeded, string jsonFacts, string webFindings, string inferenceSummary, bool exists) scan, tuple(uint256 chainId, address spender, address token, string context, bool jsonReturned, bool webReturned, bool inferenceFired, uint8 status, string jsonFacts, string webFindings, uint8 riskScore, string verdict)[] items)",
-  "function isScanComplete(uint256 scanId) view returns (bool)",
-  "event ScanRequested(uint256 indexed scanId, address indexed requester, uint256 itemCount, uint256 escrow)"
-]);
-
-export const approvalListRequestSchema = z.object({
-  walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  chainIds: z.array(z.number().int().positive()).min(1)
-});
-
-export const approvalScanPrepareRequestSchema = z.object({
-  walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  approvals: z
-    .array(
-      z.object({
-        chainId: z.number().int().positive(),
-        token: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-        spender: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-        name: z.string().optional(),
-        symbol: z.string().optional(),
-        standard: z.enum(["erc20", "erc721", "erc1155"]).optional(),
-        allowance: z.string().optional(),
-        isUnlimited: z.boolean().optional()
-      })
-    )
-    .min(1)
-    .max(MAX_ITEMS_PER_SCAN)
-});
-
-export const approvalAnalyzePrepareRequestSchema = z.object({
-  walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  chainIds: z.array(z.number().int().positive()).min(1),
-  mode: z.enum(["local", "onchain"]).optional()
-});
-
-export interface ApprovalEntry {
-  chainId: number;
-  chainName: string;
-  token: string;
-  symbol: string;
-  name: string;
-  standard: "erc20" | "erc721" | "erc1155";
-  spender: string;
-  allowance: string;
-  isUnlimited: boolean;
-  explorerSpenderUrl: string;
-}
-
-export interface ApprovalScanChainProgress {
-  chainId: number;
-  chainName: string;
-  latestBlock: number;
-  scannedFromBlock: number;
-  scannedToBlock: number;
-  targetFromBlock: number;
-  partial: boolean;
-  fromCache: boolean;
-  lastError?: string;
-  updatedAt: string;
-}
-
-export interface ApprovalDiscoveryResult {
-  approvals: ApprovalEntry[];
-  scanMeta: {
-    partial: boolean;
-    chains: ApprovalScanChainProgress[];
-  };
-}
-
-export interface ScanChainSummary {
-  id: string;
-  name: string;
-  chainId: number;
-  blockExplorerUrl: string;
-  nativeCurrencySymbol: string;
-  priority: number;
-}
-
-export interface ScanItemStatus {
-  itemIndex: number;
-  chainId: number;
-  spender: string;
-  token: string;
-  context: string;
-  status: "pending" | "inferring" | "complete";
-  riskScore: number;
-  verdict: string;
-  jsonFacts: string;
-  webFindings: string;
-}
-
-export interface ScanStatus {
-  scanId: number;
-  requester: string;
-  itemCount: number;
-  completedCount: number;
-  complete: boolean;
-  items: ScanItemStatus[];
-}
-
-interface ScanTuple {
-  requester: string;
-  escrow: bigint;
-  agentDeposit: bigint;
-  itemCount: bigint;
-  completedCount: bigint;
-  jsonReturned: boolean;
-  webReturned: boolean;
-  inferenceFired: boolean;
-  inferenceSucceeded: boolean;
-  jsonFacts: string;
-  webFindings: string;
-  inferenceSummary: string;
-  exists: boolean;
-}
-
-interface ItemTuple {
-  chainId: bigint;
-  spender: string;
-  token: string;
-  context: string;
-  jsonReturned: boolean;
-  webReturned: boolean;
-  inferenceFired: boolean;
-  status: bigint;
-  jsonFacts: string;
-  webFindings: string;
-  riskScore: bigint;
-  verdict: string;
-}
-
-const approvalEntrySchema = z.object({
-  chainId: z.number().int().positive(),
-  chainName: z.string(),
-  token: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  symbol: z.string(),
-  name: z.string(),
-  standard: z.enum(["erc20", "erc721", "erc1155"]),
-  spender: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  allowance: z.string(),
-  isUnlimited: z.boolean(),
-  explorerSpenderUrl: z.string()
-});
-
-const approvalScanCacheRecordSchema = z.object({
-  key: z.string(),
-  owner: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  chainId: z.number().int().positive(),
-  chainName: z.string(),
-  approvals: z.array(approvalEntrySchema),
-  scannedFromBlock: z.number().int().nonnegative(),
-  scannedToBlock: z.number().int().nonnegative(),
-  targetFromBlock: z.number().int().nonnegative(),
-  latestBlock: z.number().int().nonnegative(),
-  partial: z.boolean(),
-  lastError: z.string().optional(),
-  updatedAt: z.string()
-});
-
-type ApprovalScanCacheRecord = z.infer<typeof approvalScanCacheRecordSchema>;
 
 export class ApprovalScannerServiceError extends Error {
   public constructor(
@@ -229,7 +87,7 @@ export class ApprovalScannerService {
     this.chainsByChainId = new Map(chains.map((chain) => [chain.chainId, chain]));
     this.approvalScanStore = approvalScanStore ?? new JsonStore({
       filename: "approval-scan-cache.json",
-      schema: z.array(approvalScanCacheRecordSchema),
+      schema: approvalScanCacheRecordsSchema,
       defaultValue: []
     });
   }
@@ -448,6 +306,10 @@ export class ApprovalScannerService {
         lastError = this.cleanExplorerFailure(error);
         break;
       }
+    }
+
+    if (partial && !cached && erc20Pairs.size === 0 && operatorPairs.size === 0) {
+      throw new Error(`explorer logs unavailable (${lastError ?? "unknown explorer error"})`);
     }
 
     // Verify every candidate pair concurrently (live allowance / isApprovedForAll reads).
@@ -771,7 +633,7 @@ export class ApprovalScannerService {
   }
 
   public async prepareScan(
-    approvals: z.infer<typeof approvalScanPrepareRequestSchema>["approvals"]
+    approvals: ApprovalScanPrepareApproval[]
   ): Promise<{
     scannerAddress: string;
     calldata: string;
@@ -909,7 +771,7 @@ export class ApprovalScannerService {
       context: string;
     }>;
   } {
-    const scanStatus = this.buildLocalBatchStatus(walletAddress, selected, items);
+    const scanStatus = buildLocalBatchStatus(walletAddress, selected, items);
 
     return {
       analysisMode: "local",
@@ -993,14 +855,14 @@ export class ApprovalScannerService {
         spender: item.spender,
         token: item.token,
         context: item.context,
-        status: this.mapItemStatus(Number(item.status)),
+        status: mapItemStatus(Number(item.status)),
         riskScore: Number(item.riskScore),
         verdict: item.verdict,
         jsonFacts: item.jsonFacts,
         webFindings: item.webFindings
       });
     }
-    const normalizedItems = this.normalizeScanItems(items);
+    const normalizedItems = normalizeScanItems(items);
 
     return {
       scanId,
@@ -1012,96 +874,9 @@ export class ApprovalScannerService {
     };
   }
 
-  private normalizeScanItems(items: ScanItemStatus[]): ScanItemStatus[] {
-    const spenderCounts = new Map<string, number>();
-    for (const item of items) {
-      const spender = item.spender.toLowerCase();
-      spenderCounts.set(spender, (spenderCounts.get(spender) ?? 0) + 1);
-    }
-
-    return items.map((item) => {
-      const deterministic = this.classifyContextRisk(
-        item.context,
-        spenderCounts.get(item.spender.toLowerCase()) ?? 1
-      );
-      const needsDeterministicRisk = /INFERENCE_FAILED|UNKNOWN/i.test(item.verdict)
-        || /batch inference failed/i.test(item.webFindings);
-      return {
-        ...item,
-        riskScore: needsDeterministicRisk ? deterministic.riskScore : item.riskScore,
-        verdict: needsDeterministicRisk ? deterministic.verdict : item.verdict,
-        jsonFacts: this.isUnavailableFact(item.jsonFacts)
-          ? `Active approval context: ${item.context}`
-          : item.jsonFacts,
-        webFindings: this.isUnavailableFinding(item.webFindings)
-          ? deterministic.batchNotes
-          : item.webFindings
-      };
-    });
-  }
-
-  private isUnavailableFact(value: string): boolean {
-    return !value.trim() || /source facts unavailable|Unavailable/i.test(value);
-  }
-
-  private isUnavailableFinding(value: string): boolean {
-    return !value.trim()
-      || /batch inference failed|website findings unavailable|review manually|Unavailable/i.test(value);
-  }
-
-  private classifyContextRisk(
-    context: string,
-    spenderExposureCount: number
-  ): { riskScore: number; verdict: "LOW" | "MEDIUM" | "HIGH"; batchNotes: string } {
-    const isNftOperator = /standard=erc721|standard=erc1155/i.test(context);
-    const isUnlimited = /allowance=unlimited|allowance=all/i.test(context);
-    const repeatedSpender = spenderExposureCount >= 3;
-    const reasons: string[] = [];
-
-    if (isNftOperator) {
-      reasons.push("NFT operator approval can move collection assets");
-    }
-    if (isUnlimited) {
-      reasons.push("unlimited allowance is active");
-    }
-    if (repeatedSpender) {
-      reasons.push(`same spender appears on ${spenderExposureCount} active approvals`);
-    }
-
-    if (isNftOperator || (isUnlimited && repeatedSpender)) {
-      return {
-        riskScore: 80,
-        verdict: "HIGH",
-        batchNotes: reasons.join("; ")
-      };
-    }
-    if (isUnlimited) {
-      return {
-        riskScore: 50,
-        verdict: "MEDIUM",
-        batchNotes: reasons.join("; ")
-      };
-    }
-    return {
-      riskScore: 20,
-      verdict: "LOW",
-      batchNotes: reasons.length > 0
-        ? reasons.join("; ")
-        : "limited approval with no repeated spender in this batch"
-    };
-  }
-
   private toScanItem(
-    approval: z.infer<typeof approvalScanPrepareRequestSchema>["approvals"][number]
-  ): {
-    chainId: number;
-    spender: string;
-    token: string;
-    context: string;
-    explorerApiUrl: string;
-    explorerApiSelector: string;
-    explorerPageUrl: string;
-  } {
+    approval: ApprovalScanPrepareApproval
+  ): ScanItem {
     const chain = this.chainsByChainId.get(approval.chainId);
     if (!chain) {
       throw new ApprovalScannerServiceError(
@@ -1109,145 +884,7 @@ export class ApprovalScannerService {
         `Chain ${approval.chainId} is not a supported scan chain`
       );
     }
-    const spender = getAddress(approval.spender);
-    const token = getAddress(approval.token);
-    const allowanceLabel = approval.isUnlimited
-      ? "unlimited"
-      : approval.allowance ?? "unknown";
-    const tokenLabel = `${approval.symbol ?? "TOKEN"}${
-      approval.name ? ` / ${approval.name}` : ""
-    }`;
-    const context = `token=${tokenLabel} (${token}); standard=${
-      approval.standard ?? "erc20"
-    }; allowance=${allowanceLabel}; chainId=${approval.chainId}; riskTarget=spender contract; tokenReputationDoesNotMakeUnknownSpenderSafe=true`;
-
-    return {
-      chainId: approval.chainId,
-      spender,
-      token,
-      context,
-      explorerApiUrl: chain.explorerApiUrlTemplate.replace("{spender}", spender),
-      explorerApiSelector: chain.explorerApiSelector,
-      explorerPageUrl: chain.explorerPageUrlTemplate.replace("{spender}", spender)
-    };
-  }
-
-  private mapItemStatus(status: number): ScanItemStatus["status"] {
-    switch (status) {
-      case 3:
-        return "complete";
-      case 2:
-        return "inferring";
-      default:
-        return "pending";
-    }
-  }
-
-  private buildLocalBatchStatus(
-    requester: string,
-    approvals: ApprovalEntry[],
-    items: Array<{
-      chainId: number;
-      spender: string;
-      token: string;
-      context: string;
-    }>
-  ): ScanStatus {
-    const spenderCounts = new Map<string, number>();
-    for (const approval of approvals) {
-      const spender = approval.spender.toLowerCase();
-      spenderCounts.set(spender, (spenderCounts.get(spender) ?? 0) + 1);
-    }
-
-    return {
-      scanId: 0,
-      requester,
-      itemCount: approvals.length,
-      completedCount: approvals.length,
-      complete: true,
-      items: approvals.map((approval, index) => {
-        const analysis = this.classifyApprovalRisk(
-          approval,
-          spenderCounts.get(approval.spender.toLowerCase()) ?? 1
-        );
-        const item = items[index];
-        return {
-          itemIndex: index,
-          chainId: item?.chainId ?? approval.chainId,
-          spender: item?.spender ?? approval.spender,
-          token: item?.token ?? approval.token,
-          context: item?.context ?? "",
-          status: "complete",
-          riskScore: analysis.riskScore,
-          verdict: analysis.verdict,
-          jsonFacts: analysis.onChainFacts,
-          webFindings: analysis.batchNotes
-        };
-      })
-    };
-  }
-
-  private classifyApprovalRisk(
-    approval: ApprovalEntry,
-    spenderExposureCount: number
-  ): {
-    riskScore: number;
-    verdict: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-    onChainFacts: string;
-    batchNotes: string;
-  } {
-    const allowance = this.parseAllowance(approval.allowance);
-    const isNftOperator = approval.standard === "erc721" || approval.standard === "erc1155";
-    const isLargeLimitedAllowance = allowance !== null && allowance > 10n ** 24n;
-    const repeatedSpender = spenderExposureCount >= 3;
-    const reasons: string[] = [];
-
-    if (isNftOperator) {
-      reasons.push("operator approval can move collection assets");
-    }
-    if (approval.isUnlimited) {
-      reasons.push("unlimited allowance");
-    }
-    if (isLargeLimitedAllowance) {
-      reasons.push("large active allowance");
-    }
-    if (repeatedSpender) {
-      reasons.push(`same spender appears on ${spenderExposureCount} approvals in this scan`);
-    }
-
-    let verdict: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" = "LOW";
-    if (isNftOperator || (repeatedSpender && (approval.isUnlimited || isLargeLimitedAllowance))) {
-      verdict = "HIGH";
-    } else if (approval.isUnlimited || isLargeLimitedAllowance) {
-      verdict = "MEDIUM";
-    }
-
-    const riskScore = verdict === "HIGH" ? 80 : verdict === "MEDIUM" ? 50 : 20;
-    const allowanceLabel = approval.isUnlimited ? "unlimited" : approval.allowance || "active";
-    const onChainFacts = `${approval.standard.toUpperCase()} approval is active on ${
-      approval.chainName
-    }: ${allowanceLabel} ${approval.symbol || "TOKEN"} allowance to ${approval.spender}.`;
-    const batchNotes = reasons.length > 0
-      ? reasons.join("; ")
-      : "limited approval with no repeated spender in this batch";
-
-    return {
-      riskScore,
-      verdict,
-      onChainFacts,
-      batchNotes
-    };
-  }
-
-  private parseAllowance(value: string): bigint | null {
-    if (!/^\d+$/.test(value)) {
-      return null;
-    }
-    try {
-      return BigInt(value);
-    } catch {
-      return null;
-    }
+    return buildScanItem(approval, chain);
   }
 
   private requireScannerAddress(): string {

@@ -30,7 +30,7 @@ import {
   telegramUnlinkRequestSchema,
   TelegramAlertServiceError,
   type TelegramAlertService
-} from "../services/telegram-alert.service.js";
+} from "../services/telegram-alert/index.js";
 import { riskGuardPendingApprovalRequestSchema } from "../services/riskguard-approval.service.js";
 import {
   riskGuardPendingUserOpRequestSchema,
@@ -40,7 +40,7 @@ import {
   riskGuardReviewBudgetRequestSchema,
   type RiskGuardReviewBudgetService
 } from "../services/riskguard-review-budget.service.js";
-import { TelegramConnectService } from "../services/telegram-connect.service.js";
+import { TelegramConnectService } from "../services/telegram-connect/index.js";
 import {
   deadmanPolicyRequestSchema,
   heartbeatCheckInRequestSchema,
@@ -63,7 +63,7 @@ import {
   approvalScanPrepareRequestSchema,
   ApprovalScannerServiceError,
   type ApprovalScannerService
-} from "../services/approval-scanner.service.js";
+} from "../services/approval-scanner/index.js";
 
 const defaultMaxBodyBytes = 1_048_576;
 const sensitiveResponseKeyPattern =

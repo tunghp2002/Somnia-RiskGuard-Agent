@@ -9,12 +9,11 @@ import {
 } from "@/lib/blockscout-api";
 
 import { useAccountAssets } from "@/hooks/dashboard";
-import { formatAddress } from "@/utils/dashboard";
+import { formatAddress, type AssetTab } from "@/utils/dashboard";
 import { NftDetailModal } from "../nft-detail-modal";
 import { NftAssetList, TokenAssetList } from "./asset-lists";
 import { PanelHeading } from "../common";
 
-import type { AssetTab } from "@/utils/dashboard";
 import type { PublicChainMetadata } from "@/lib/agent-api";
 
 export function AccountAssetsPanel({
