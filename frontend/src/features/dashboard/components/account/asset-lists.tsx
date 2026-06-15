@@ -7,8 +7,8 @@ import {
   type NftAssetBalance,
 } from "@/lib/blockscout-api";
 
-import { compactAmount } from "./account-assets-utils";
-import { AssetImage } from "./common";
+import { compactAmount } from "@/utils/dashboard";
+import { AssetImage } from "../common";
 
 export function TokenAssetList({
   assets,

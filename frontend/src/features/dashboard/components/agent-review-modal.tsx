@@ -3,9 +3,9 @@ import { ExternalLink, Send, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Modal, ModalActions } from "@/components/ui/modal";
 
-import { formatAddress } from "../utils";
+import { formatAddress } from "@/utils/dashboard";
 
-import type { AgentReviewRequestModal } from "../types";
+import type { AgentReviewRequestModal } from "@/types/dashboard";
 
 export function AgentReviewRequestModal({
   review,

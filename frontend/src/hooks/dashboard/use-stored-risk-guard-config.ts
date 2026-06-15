@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { GuardRuleId, RiskGuardConfig } from "../types";
+import type { GuardRuleId, RiskGuardConfig } from "@/types/dashboard";
 
 const storageKey = "riskguard-policy-config";
 const changeEventName = "riskguard-policy-config-change";

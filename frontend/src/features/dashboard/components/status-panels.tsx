@@ -13,10 +13,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalActions } from "@/components/ui/modal";
 
-import { formatAddress } from "../utils";
+import { formatAddress } from "@/utils/dashboard";
 import { PanelHeading } from "./common";
 
-import type { GuardRuleId, RiskGuardConfig, RiskGuardRule } from "../types";
+import type { GuardRuleId, RiskGuardConfig, RiskGuardRule } from "@/types/dashboard";
 import type { Mode, Readiness } from "@/lib/agent-api";
 import type { BrowserWalletState } from "@/lib/wallet";
 

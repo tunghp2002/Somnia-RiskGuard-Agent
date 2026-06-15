@@ -3,14 +3,14 @@ import { Loader2, LogOut, RefreshCw, Shield, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-import { navItems } from "../config";
-import { formatAddress } from "../utils";
+import { formatAddress } from "@/utils/dashboard";
+import { navItems } from "../../config";
 
-import type { DashboardSection } from "../types";
+import type { DashboardSection } from "@/types/dashboard";
 import type { PublicChainMetadata } from "@/lib/agent-api";
 import type { BrowserWalletState } from "@/lib/wallet";
 import { somguardLogoUrl } from "@/lib/blockscout-api";
-import { AssetImage } from "./common";
+import { AssetImage } from "../common";
 
 type NavigationProps = {
   activeSection: DashboardSection;

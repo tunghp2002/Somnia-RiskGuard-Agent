@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, ModalActions } from "@/components/ui/modal";
 
-import { classForStatus, formatAddress, formatDate, formatUsd, hasOkFlag, readableMetadata } from "../utils";
-import { HealthRow, PanelHeading } from "./common";
+import { classForStatus, formatAddress, formatDate, formatUsd, hasOkFlag, readableMetadata } from "@/utils/dashboard";
+import { HealthRow, PanelHeading } from "../common";
 
 import type {
   PortfolioSnapshot,

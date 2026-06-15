@@ -1,4 +1,4 @@
-import type { BeneficiaryDraft, DurationDraft, TokenDraft } from "./inheritance-settings.types";
+import type { BeneficiaryDraft, DurationDraft, TokenDraft } from "@/types/settings";
 import type { InheritancePlanStatus } from "@/lib/agent-api";
 
 export const initialBeneficiaries: BeneficiaryDraft[] = [

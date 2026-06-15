@@ -3,7 +3,7 @@ import { Copy, ExternalLink, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Modal, ModalActions } from "@/components/ui/modal";
 
-import { copyText } from "./account-assets-utils";
+import { copyText } from "@/utils/dashboard";
 import { AssetImage } from "./common";
 
 import type { NftAssetBalance } from "@/lib/blockscout-api";

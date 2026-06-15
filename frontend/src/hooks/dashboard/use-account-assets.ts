@@ -10,9 +10,9 @@ import {
   readCachedAccountAssets,
   writeCachedAccountAssets,
 } from "@/lib/account-assets-cache";
-import { subscribeSomniaBalanceStream } from "@/lib/somnia-balance-stream";
+import { subscribeSomniaBalanceStream } from "@/lib/somnia";
 
-import { scopeAccounts } from "./account-assets-utils";
+import { scopeAccounts } from "@/utils/dashboard";
 
 import type { PublicChainMetadata } from "@/lib/agent-api";
 

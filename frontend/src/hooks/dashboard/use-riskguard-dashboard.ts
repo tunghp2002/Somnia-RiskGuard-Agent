@@ -55,7 +55,7 @@ import {
   errorMessage,
   formatAddress,
   readableMetadata,
-} from "../utils";
+} from "@/utils/dashboard";
 import { useStoredRiskGuardConfig } from "./use-stored-risk-guard-config";
 
 import type {
@@ -67,7 +67,7 @@ import type {
   NativeTransferInput,
   RiskGuardConfig,
   RiskGuardRule,
-} from "../types";
+} from "@/types/dashboard";
 import type {
   AccountOption,
   BlockscoutAccountScope,

@@ -16,9 +16,9 @@ import {
   secondsToDuration,
   tokensFromPlan,
   walletAddressPattern
-} from "./inheritance-settings.utils";
+} from "@/utils/settings";
 
-import type { BeneficiaryDraft, DurationDraft, TokenDraft } from "./inheritance-settings.types";
+import type { BeneficiaryDraft, DurationDraft, TokenDraft } from "@/types/settings";
 import type { InheritancePlanStatus } from "@/lib/agent-api";
 import type { SmartAccountCandidate } from "@/lib/inheritance-registry";
 

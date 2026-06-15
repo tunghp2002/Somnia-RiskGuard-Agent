@@ -3,10 +3,10 @@ import { Dialog as DialogPrimitive } from "radix-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-import { Field } from "./inheritance-settings-controls";
-import { clampNumber } from "./inheritance-settings.utils";
+import { Field } from "../inheritance-settings-controls";
+import { clampNumber } from "@/utils/settings";
 
-import type { TokenDraft } from "./inheritance-settings.types";
+import type { TokenDraft } from "@/types/settings";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 
 export function TokenImportDialog({

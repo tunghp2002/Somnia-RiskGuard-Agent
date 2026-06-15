@@ -26,7 +26,7 @@ import { EIP1193, smartWallet, type Wallet } from "thirdweb/wallets";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import publicChains from "../../../../config/public-chains.json";
+import publicChains from "../../../../../config/public-chains.json";
 import { agentApi, type InheritancePlanStatus, type SessionKeyActionPermission } from "@/lib/agent-api";
 import {
     createThirdwebAccountAbstraction,
@@ -35,8 +35,8 @@ import {
     thirdwebClient
 } from "@/lib/thirdweb-client";
 
-import { CheckInAuthorizationModal } from "./check-in-authorization-modal";
-import { DurationField, Field, InfoHint } from "./inheritance-settings-controls";
+import { CheckInAuthorizationModal } from "../check-in-authorization-modal";
+import { DurationField, Field, InfoHint } from "../inheritance-settings-controls";
 import {
     formatAddressPreview,
     formatDurationPreview,
@@ -46,12 +46,12 @@ import {
     getBeneficiaryAddressError,
     getBeneficiaryShareError,
     getRecipientColor,
-} from "./inheritance-settings.utils";
-import { readCachedSmartAccount, cacheSmartAccount } from "./smart-account-cache";
-import { TokenImportDialog } from "./token-import-dialog";
-import { useInheritanceSettingsForm } from "./use-inheritance-settings-form";
+} from "@/utils/settings";
+import { readCachedSmartAccount, cacheSmartAccount } from "@/utils/settings";
+import { TokenImportDialog } from "../token-import-dialog";
+import { useInheritanceSettingsForm } from "@/hooks/settings";
 
-import type { Notice } from "@/features/dashboard/types";
+import type { Notice } from "@/types/dashboard";
 
 export function InheritanceSettings({
     actionLoading,

@@ -1,24 +1,22 @@
 "use client";
 
-import { InheritanceSettings } from "@/features/settings/guardian-settings";
+import { InheritanceSettings } from "@/features/settings";
 
-import { AccountAssetsPanel } from "./components/account-assets-panel";
+import { AccountAssetsPanel } from "./components/account";
 import { AgentReviewRequestModal } from "./components/agent-review-modal";
 import { ApprovalsPanel } from "./components/approvals-panel";
 import {
   DashboardHeader,
+  DashboardNoticeToast,
   DashboardSidebar,
-  MobileDashboardNav
-} from "./components/dashboard-navigation";
-import { DashboardNoticeToast } from "./components/dashboard-notice-toast";
-import {
+  MobileDashboardNav,
   ProfilePanel
-} from "./components/dashboard-sections";
+} from "./components/dashboard";
 import {
   RiskPolicyGuard
 } from "./components/status-panels";
 import { TransferPanel } from "./components/transfer-panel";
-import { useRiskGuardDashboard } from "./hooks/use-riskguard-dashboard";
+import { useRiskGuardDashboard } from "@/hooks/dashboard";
 
 export function RiskGuardDashboard() {
   const { state, actions } = useRiskGuardDashboard();

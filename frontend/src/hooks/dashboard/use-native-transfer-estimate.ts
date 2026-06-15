@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type {
   NativeTransferEstimate,
   NativeTransferInput,
-} from "../types";
+} from "@/types/dashboard";
 
 export type TransferEstimateState = {
   error: string | null;

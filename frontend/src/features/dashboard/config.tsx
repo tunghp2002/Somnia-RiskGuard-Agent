@@ -6,7 +6,7 @@ import {
   Wallet
 } from "lucide-react";
 
-import type { DashboardSection } from "./types";
+import type { DashboardSection } from "@/types/dashboard";
 import type { ReactNode } from "react";
 
 export const navItems: Array<{ id: DashboardSection; label: string; icon: ReactNode; primaryMobile?: boolean }> = [

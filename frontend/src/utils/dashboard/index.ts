@@ -1,5 +1,7 @@
 import { AgentApiError, type AuditEvent } from "@/lib/agent-api";
 
+export * from "./account-assets";
+
 export function formatAddress(address?: string) {
   if (!address) {
     return "not set";

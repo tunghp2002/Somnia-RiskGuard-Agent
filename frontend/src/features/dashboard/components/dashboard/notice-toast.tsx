@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
-import type { Notice } from "../types";
+import type { Notice } from "@/types/dashboard";
 
 const dashboardNoticeToastIdPrefix = "dashboard-notice";
 
