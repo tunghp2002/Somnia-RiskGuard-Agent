@@ -86,7 +86,7 @@ const booleanFromString = z
     }
 
     context.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       message: "Must be either true or false"
     });
     return z.NEVER;
@@ -152,7 +152,7 @@ const rawEnvSchema = z
   .superRefine((env, context) => {
     if (!env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "TELEGRAM_BOT_TOKEN must be set when TELEGRAM_CHAT_ID is configured",
         path: ["TELEGRAM_BOT_TOKEN"]
       });
@@ -160,7 +160,7 @@ const rawEnvSchema = z
 
     if (env.TELEGRAM_BOT_TOKEN && !env.TELEGRAM_BOT_USERNAME) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "TELEGRAM_BOT_USERNAME must be set when TELEGRAM_BOT_TOKEN is configured",
         path: ["TELEGRAM_BOT_USERNAME"]
       });

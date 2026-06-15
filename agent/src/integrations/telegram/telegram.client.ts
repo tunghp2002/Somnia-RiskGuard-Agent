@@ -32,6 +32,14 @@ export interface TelegramEditMessageReplyMarkupInput {
   buttons?: TelegramInlineButton[];
 }
 
+export interface TelegramEditMessageTextInput {
+  chatId: string;
+  messageId: string;
+  text: string;
+  buttons?: TelegramInlineButton[];
+  parseMode?: "HTML" | "MarkdownV2";
+}
+
 export interface TelegramCallbackUpdate {
   updateId: number;
   callbackQueryId: string;
@@ -67,6 +75,7 @@ export interface TelegramClient {
   sendMessage(input: TelegramSendMessageInput): Promise<TelegramSendMessageResult>;
   deleteMessage?(input: TelegramDeleteMessageInput): Promise<void>;
   editMessageReplyMarkup?(input: TelegramEditMessageReplyMarkupInput): Promise<void>;
+  editMessageText?(input: TelegramEditMessageTextInput): Promise<void>;
   startPolling?(options: StartTelegramPollingOptions): TelegramPollingHandle;
 }
 
@@ -88,6 +97,10 @@ export class DisabledTelegramClient implements TelegramClient {
   }
 
   public async editMessageReplyMarkup(): Promise<void> {
+    throw new Error("Telegram is not configured");
+  }
+
+  public async editMessageText(): Promise<void> {
     throw new Error("Telegram is not configured");
   }
 }
@@ -185,6 +198,42 @@ export class TelegramBotApiClient implements TelegramClient {
         })
       }
     );
+  }
+
+  public async editMessageText(input: TelegramEditMessageTextInput): Promise<void> {
+    if (!this.config.enabled || !this.config.botToken) {
+      throw new Error("Telegram is not configured");
+    }
+
+    const response = await fetch(
+      `https://api.telegram.org/bot${this.config.botToken}/editMessageText`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chat_id: input.chatId,
+          message_id: input.messageId,
+          text: input.text,
+          parse_mode: input.parseMode,
+          reply_markup: {
+            inline_keyboard: input.buttons?.length
+              ? input.buttons.map((button) => [
+                  { text: button.text, callback_data: button.callbackData }
+                ])
+              : []
+          }
+        })
+      }
+    );
+
+    const payload = (await response.json()) as {
+      ok?: boolean;
+      description?: string;
+    };
+
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.description ?? "Telegram editMessageText failed");
+    }
   }
 
   public startPolling(options: StartTelegramPollingOptions): TelegramPollingHandle {

@@ -1,5 +1,17 @@
-import publicChains from "../../../config/public-chains.json";
 import { signWalletMessage } from "./wallet";
+import publicChains from "../../../config/public-chains.json";
+
+const signedWalletSessionTtlMs = 10 * 60 * 1000;
+const signedWalletSessionRefreshWindowMs = 30 * 1000;
+
+type SignedWalletSession = {
+  expiresAt: number;
+  message: string;
+  signature: string;
+};
+
+const signedWalletSessions = new Map<string, SignedWalletSession>();
+const pendingSignedWalletSessions = new Map<string, Promise<SignedWalletSession>>();
 
 export interface AgentEnvelope<T> {
   data: T;
@@ -419,16 +431,58 @@ function walletQuery(walletAddress?: string) {
   return walletAddress ? `?walletAddress=${encodeURIComponent(walletAddress)}` : "";
 }
 
-async function signedWalletFields(action: string, walletAddress: string) {
+async function signedWalletFields(_action: string, walletAddress: string) {
+  const normalizedWallet = walletAddress.toLowerCase();
+  const cached = signedWalletSessions.get(normalizedWallet);
+  if (cached && cached.expiresAt - Date.now() > signedWalletSessionRefreshWindowMs) {
+    return {
+      message: cached.message,
+      signature: cached.signature
+    };
+  }
+
+  const pending = pendingSignedWalletSessions.get(normalizedWallet);
+  if (pending) {
+    const session = await pending;
+    return {
+      message: session.message,
+      signature: session.signature
+    };
+  }
+
+  const sessionPromise = createSignedWalletSession(walletAddress);
+  pendingSignedWalletSessions.set(normalizedWallet, sessionPromise);
+
+  try {
+    const session = await sessionPromise;
+    signedWalletSessions.set(normalizedWallet, session);
+
+    return {
+      message: session.message,
+      signature: session.signature
+    };
+  } finally {
+    pendingSignedWalletSessions.delete(normalizedWallet);
+  }
+}
+
+async function createSignedWalletSession(walletAddress: string): Promise<SignedWalletSession> {
+  const issuedAt = new Date();
+  const expiresAt = new Date(issuedAt.getTime() + signedWalletSessionTtlMs);
   const message = [
-    "SomGuard signed wallet mutation",
-    `Action: ${action}`,
+    "SomGuard signed wallet session",
+    "Scope: agent mutations",
     `Wallet: ${walletAddress}`,
-    `Issued At: ${new Date().toISOString()}`
+    `Issued At: ${issuedAt.toISOString()}`,
+    `Expires At: ${expiresAt.toISOString()}`
   ].join("\n");
   const signature = await signWalletMessage(message);
 
-  return { message, signature };
+  return {
+    expiresAt: expiresAt.getTime(),
+    message,
+    signature
+  };
 }
 
 export const agentApi = {

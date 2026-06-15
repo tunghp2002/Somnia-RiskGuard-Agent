@@ -39,7 +39,7 @@ export const setupWalletRequestSchema = z
       recoveredAddress = verifyMessage(input.message, input.signature);
     } catch {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "Signature must be a valid signed-message proof",
         path: ["signature"]
       });
@@ -48,7 +48,7 @@ export const setupWalletRequestSchema = z
 
     if (getAddress(recoveredAddress) !== input.walletAddress) {
       context.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         message: "Signature must recover the submitted wallet address",
         path: ["signature"]
       });

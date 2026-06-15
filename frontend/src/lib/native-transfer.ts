@@ -7,7 +7,10 @@ import {
 } from "ethers";
 import { estimateGasCost, prepareTransaction } from "thirdweb";
 
-import { sendRiskGuardedSmartTransaction } from "@/lib/riskguard-smart-account";
+import {
+  SomniaAgentReviewRequestedError,
+  sendRiskGuardedSmartTransaction,
+} from "@/lib/riskguard-smart-account";
 import { somniaThirdwebChain, thirdwebClient } from "@/lib/thirdweb-client";
 
 import type { NativeTransferEstimate, NativeTransferInput } from "@/features/dashboard/types";
@@ -265,6 +268,10 @@ export async function sendNativeTransferFromSmartAccount(
     ...(options.riskGuardValidatorAddress ? { riskGuardValidatorAddress: options.riskGuardValidatorAddress } : {}),
     ...(options.walletAddress ? { walletAddress: options.walletAddress } : {}),
   }).catch((error: unknown) => {
+    if (error instanceof SomniaAgentReviewRequestedError) {
+      throw error;
+    }
+
     throw new Error(normalizeNativeTransferError(error, {
       phase: "send",
       source: input.source,

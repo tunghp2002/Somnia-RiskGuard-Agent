@@ -13,6 +13,7 @@ import { TelegramBindingsRepository } from "../persistence/telegram-bindings.rep
 import { UsersRepository } from "../persistence/users.repository.js";
 import type {
   TelegramClient,
+  TelegramEditMessageTextInput,
   TelegramSendMessageInput
 } from "../integrations/telegram/telegram.client.js";
 import {
@@ -20,10 +21,15 @@ import {
 } from "../integrations/telegram/callback-signing.js";
 import { createTestConfig } from "../test-helpers/env.js";
 import { AuditService } from "./audit.service.js";
-import { TelegramAlertService } from "./telegram-alert.service.js";
+import {
+  TelegramAlertService,
+  type RiskGuardApprovalSubmitter
+} from "./telegram-alert.service.js";
+import type { RiskGuardPendingUserOpService } from "./riskguard-pending-userop.service.js";
 
 class FakeTelegramClient implements TelegramClient {
   public messages: TelegramSendMessageInput[] = [];
+  public editedMessages: TelegramEditMessageTextInput[] = [];
   public failNextSend = false;
 
   public constructor(private readonly ok = true) {}
@@ -43,6 +49,10 @@ class FakeTelegramClient implements TelegramClient {
     this.messages.push(input);
     return { messageId: `${this.messages.length}` };
   }
+
+  public async editMessageText(input: TelegramEditMessageTextInput) {
+    this.editedMessages.push(input);
+  }
 }
 
 let dataDirectory: string;
@@ -56,7 +66,11 @@ let audit: AuditService;
 let telegram: FakeTelegramClient;
 let wallet: Wallet;
 
-function buildService(client = telegram) {
+function buildService(options: {
+  client?: TelegramClient;
+  approvals?: RiskGuardApprovalSubmitter;
+  pendingUserOps?: Pick<RiskGuardPendingUserOpService, "replayApproved">;
+} = {}) {
   return new TelegramAlertService(
     createTestConfig(),
     users,
@@ -64,9 +78,16 @@ function buildService(client = telegram) {
     alerts,
     nonces,
     portfolios,
-    client,
-    audit
+    options.client ?? telegram,
+    audit,
+    options.approvals,
+    options.pendingUserOps as RiskGuardPendingUserOpService | undefined
   );
+}
+
+function testCallbackSecret() {
+  const config = createTestConfig();
+  return config.telegram.webhookSecret ?? config.telegram.botToken ?? "";
 }
 
 beforeEach(async () => {
@@ -153,7 +174,7 @@ describe("TelegramAlertService", () => {
     });
     const callbackData = createCompactTelegramCallbackData(
       nonce.actionNonce,
-      createTestConfig().telegram.webhookSecret ?? ""
+      testCallbackSecret()
     );
 
     const accepted = await service.processCallback({
@@ -191,7 +212,7 @@ describe("TelegramAlertService", () => {
     });
     const data = createCompactTelegramCallbackData(
       nonce.actionNonce,
-      createTestConfig().telegram.webhookSecret ?? ""
+      testCallbackSecret()
     );
 
     const result = await service.processCallback({ chatId: "987654321", data });
@@ -224,7 +245,7 @@ describe("TelegramAlertService", () => {
     });
     const data = createCompactTelegramCallbackData(
       nonce.actionNonce,
-      createTestConfig().telegram.webhookSecret ?? ""
+      testCallbackSecret()
     );
 
     const result = await service.processCallback({ chatId: "987654321", data });
@@ -234,5 +255,183 @@ describe("TelegramAlertService", () => {
       allowed: false,
       policyId: "telegram.safe-action.unsupported"
     });
+  });
+
+  it("edits the reviewing RiskGuard message when the agent returns a decision", async () => {
+    const user = await users.upsertMonitoredWallet(wallet.address);
+    const smartAccountAddress = Wallet.createRandom().address;
+    await bindings.upsert({
+      userId: user.userId,
+      walletAddress: wallet.address,
+      smartAccountAddress,
+      chatId: "987654321"
+    });
+    const service = buildService();
+    const guardedTxHash = `0x${"11".repeat(32)}`;
+    const requestTxHash = `0x${"22".repeat(32)}`;
+
+    await service.sendRiskGuardAgentReviewRequested({
+      walletAddress: wallet.address,
+      smartAccountAddress,
+      guardedTxHash,
+      requestTxHash
+    });
+    await service.sendRiskGuardAgentReviewDecision({
+      walletAddress: wallet.address,
+      smartAccountAddress,
+      txHash: guardedTxHash,
+      approved: true,
+      reason: "APPROVE: Simple native transfer."
+    });
+
+    expect(telegram.messages).toHaveLength(1);
+    expect(telegram.editedMessages).toHaveLength(1);
+    expect(telegram.editedMessages[0]).toMatchObject({
+      chatId: "987654321",
+      messageId: "1"
+    });
+    expect(telegram.editedMessages[0]?.text).toContain("Status: 🟢 Agent recommends approval");
+    expect(telegram.editedMessages[0]?.buttons).toHaveLength(2);
+  });
+
+  it("updates the existing RiskGuard review message when review start is repeated", async () => {
+    const user = await users.upsertMonitoredWallet(wallet.address);
+    const smartAccountAddress = Wallet.createRandom().address;
+    await bindings.upsert({
+      userId: user.userId,
+      walletAddress: wallet.address,
+      smartAccountAddress,
+      chatId: "987654321"
+    });
+    const service = buildService();
+    const guardedTxHash = `0x${"11".repeat(32)}`;
+
+    await service.sendRiskGuardAgentReviewRequested({
+      walletAddress: wallet.address,
+      smartAccountAddress,
+      guardedTxHash,
+      requestTxHash: `0x${"22".repeat(32)}`
+    });
+    await service.sendRiskGuardAgentReviewRequested({
+      walletAddress: wallet.address,
+      smartAccountAddress,
+      guardedTxHash,
+      requestTxHash: `0x${"33".repeat(32)}`
+    });
+
+    expect(telegram.messages).toHaveLength(1);
+    expect(telegram.editedMessages).toHaveLength(1);
+    expect(telegram.editedMessages[0]).toMatchObject({
+      chatId: "987654321",
+      messageId: "1"
+    });
+    expect(telegram.editedMessages[0]?.text).toContain(`0x${"33".repeat(32)}`);
+  });
+
+  it("edits the RiskGuard message after approval without sending another message", async () => {
+    const user = await users.upsertMonitoredWallet(wallet.address);
+    const smartAccountAddress = Wallet.createRandom().address;
+    await bindings.upsert({
+      userId: user.userId,
+      walletAddress: wallet.address,
+      smartAccountAddress,
+      chatId: "987654321",
+      telegramUserId: "12345"
+    });
+    const approvals: RiskGuardApprovalSubmitter = {
+      async submitApproval() {
+        return {
+          txHash: `0x${"44".repeat(32)}`,
+          approvalStore: Wallet.createRandom().address
+        };
+      }
+    };
+    const pendingUserOps: Pick<RiskGuardPendingUserOpService, "replayApproved"> = {
+      async replayApproved() {
+        return {
+          replayed: true as const,
+          txHash: `0x${"55".repeat(32)}`,
+          userOpHash: `0x${"66".repeat(32)}`
+        };
+      }
+    };
+    const service = buildService({ approvals, pendingUserOps });
+    const guardedTxHash = `0x${"11".repeat(32)}`;
+    await service.sendRiskGuardAgentReviewRequested({
+      walletAddress: wallet.address,
+      smartAccountAddress,
+      guardedTxHash,
+      requestTxHash: `0x${"22".repeat(32)}`
+    });
+    await service.sendRiskGuardAgentReviewDecision({
+      walletAddress: wallet.address,
+      smartAccountAddress,
+      txHash: guardedTxHash,
+      approved: true,
+      reason: "APPROVE: Simple native transfer."
+    });
+
+    const approveButton = telegram.editedMessages[0]?.buttons?.[0];
+    expect(approveButton).toBeDefined();
+    const result = await service.processCallback({
+      chatId: "987654321",
+      messageId: "1",
+      telegramUserId: "12345",
+      data: approveButton?.callbackData ?? ""
+    });
+
+    expect(result.ok).toBe(true);
+    expect(telegram.messages).toHaveLength(1);
+    expect(telegram.editedMessages).toHaveLength(3);
+    expect(telegram.editedMessages.at(-1)).toMatchObject({
+      chatId: "987654321",
+      messageId: "1"
+    });
+    expect(telegram.editedMessages.at(-1)?.text).toContain("Status: 🟢 Success");
+  });
+
+  it("edits the RiskGuard message after decline without sending another message", async () => {
+    const user = await users.upsertMonitoredWallet(wallet.address);
+    const smartAccountAddress = Wallet.createRandom().address;
+    await bindings.upsert({
+      userId: user.userId,
+      walletAddress: wallet.address,
+      smartAccountAddress,
+      chatId: "987654321",
+      telegramUserId: "12345"
+    });
+    const service = buildService();
+    const guardedTxHash = `0x${"11".repeat(32)}`;
+    await service.sendRiskGuardAgentReviewRequested({
+      walletAddress: wallet.address,
+      smartAccountAddress,
+      guardedTxHash,
+      requestTxHash: `0x${"22".repeat(32)}`
+    });
+    await service.sendRiskGuardAgentReviewDecision({
+      walletAddress: wallet.address,
+      smartAccountAddress,
+      txHash: guardedTxHash,
+      approved: true,
+      reason: "APPROVE: Simple native transfer."
+    });
+
+    const declineButton = telegram.editedMessages[0]?.buttons?.[1];
+    expect(declineButton).toBeDefined();
+    const result = await service.processCallback({
+      chatId: "987654321",
+      messageId: "1",
+      telegramUserId: "12345",
+      data: declineButton?.callbackData ?? ""
+    });
+
+    expect(result.ok).toBe(true);
+    expect(telegram.messages).toHaveLength(1);
+    expect(telegram.editedMessages).toHaveLength(2);
+    expect(telegram.editedMessages.at(-1)).toMatchObject({
+      chatId: "987654321",
+      messageId: "1"
+    });
+    expect(telegram.editedMessages.at(-1)?.text).toContain("Status: 🔴 Rejected");
   });
 });

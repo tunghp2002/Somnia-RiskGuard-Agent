@@ -12,7 +12,10 @@ import {
   verifyCompactTelegramCallbackData,
   type TelegramActionType
 } from "../integrations/telegram/callback-signing.js";
-import type { TelegramClient } from "../integrations/telegram/telegram.client.js";
+import type {
+  TelegramClient,
+  TelegramInlineButton
+} from "../integrations/telegram/telegram.client.js";
 import {
   evaluateTelegramSafeActionApproval,
   type PolicyDecision
@@ -107,7 +110,7 @@ function validateSignedWalletMutation(
     recoveredAddress = verifyMessage(input.message, input.signature);
   } catch {
     context.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       message: "Signature must be a valid signed-message proof",
       path: ["signature"]
     });
@@ -116,7 +119,7 @@ function validateSignedWalletMutation(
 
   if (getAddress(recoveredAddress) !== input.walletAddress) {
     context.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       message: "Signature must recover the submitted wallet address",
       path: ["signature"]
     });
@@ -124,7 +127,7 @@ function validateSignedWalletMutation(
 
   if (!input.message.toLowerCase().includes(input.walletAddress.toLowerCase())) {
     context.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       message: "Signed message must include the submitted wallet address",
       path: ["message"]
     });
@@ -153,6 +156,12 @@ export interface RiskGuardApprovalSubmitter {
     smartAccountAddress: string;
     txHash: string;
   }): Promise<{ txHash: string; approvalStore: string }>;
+}
+
+interface RiskGuardTelegramMessageRef {
+  chatId?: string;
+  telegramMessageId?: string;
+  requestTxHash?: string;
 }
 
 function summarizeReason(explanation: string): string {
@@ -298,33 +307,51 @@ export class TelegramAlertService {
       );
     }
 
-    const sent = await this.telegram.sendMessage({
-      chatId: binding.chatId,
-      text: [
-        "<b>Somnia Agent review requested</b>",
-        "Status: 🟡 Reviewing",
-        `Smart Account: <code>${escapeHtml(parsed.smartAccountAddress)}</code>`,
-        `Guarded Tx: ${this.txLink(parsed.guardedTxHash)}`,
-        `Request Tx: ${this.txLink(parsed.requestTxHash)}`,
-        "This status message will disappear after the Somnia callback finalizes."
-      ].join("\n"),
-      parseMode: "HTML"
+    const existing = await this.findRiskGuardMessage(
+      parsed.smartAccountAddress,
+      parsed.guardedTxHash
+    );
+    const text = this.formatRiskGuardAgentReviewMessage({
+      status: "reviewing",
+      smartAccountAddress: parsed.smartAccountAddress,
+      guardedTxHash: parsed.guardedTxHash,
+      requestTxHash: parsed.requestTxHash
     });
+    const chatId = existing?.chatId ?? binding.chatId;
+    const updated = existing?.telegramMessageId
+      ? await this.editRiskGuardMessage({
+          chatId,
+          messageId: existing.telegramMessageId,
+          text
+        })
+      : false;
+    const sent = existing?.telegramMessageId
+      ? { messageId: existing.telegramMessageId, delivered: updated, operation: "updated" }
+      : {
+          ...await this.telegram.sendMessage({
+            chatId,
+            text,
+            parseMode: "HTML"
+          }),
+          delivered: true,
+          operation: "sent"
+        };
 
     await this.audit.record({
       eventType: "riskguard.agent-review.requested.telegram.sent",
-      status: "succeeded",
+      status: sent.delivered ? "succeeded" : "skipped",
       metadata: {
         walletAddress: parsed.walletAddress,
         smartAccountAddress: parsed.smartAccountAddress,
         guardedTxHash: parsed.guardedTxHash,
         requestTxHash: parsed.requestTxHash,
         telegramMessageId: sent.messageId,
-        chatId: binding.chatId
+        chatId,
+        operation: sent.operation
       }
     });
 
-    return { sent: true };
+    return { sent: sent.delivered, chatId, telegramMessageId: sent.messageId };
   }
 
   public async sendRiskGuardAgentReviewDecision(input: {
@@ -337,13 +364,6 @@ export class TelegramAlertService {
     const smartAccountAddress = getAddress(input.smartAccountAddress);
     const walletAddress = getAddress(input.walletAddress);
     const pending = await this.findPendingAgentReviewRequest(smartAccountAddress, input.txHash);
-
-    if (pending?.chatId && pending.telegramMessageId && this.telegram.deleteMessage) {
-      await this.telegram.deleteMessage({
-        chatId: pending.chatId,
-        messageId: pending.telegramMessageId
-      }).catch(() => undefined);
-    }
 
     const binding = await this.bindings.latestForSmartAccount(smartAccountAddress)
       ?? await this.bindings.latestForWallet(walletAddress);
@@ -360,38 +380,54 @@ export class TelegramAlertService {
       || "Somnia Agent did not return a detailed analysis.";
     const riskScore = input.approved ? "Low" : "High";
     const buttons = await this.buildRiskGuardButtons(binding, smartAccountAddress, input.txHash);
-
-    const sent = await this.telegram.sendMessage({
-      chatId: binding.chatId,
-      text: [
-        "<b>Somnia Agent RiskGuard Review</b>",
-        `Status: ${input.approved ? "🟢 Agent recommends approval" : "🔴 Agent recommends rejection"}`,
-        `Agent Recommendation: ${input.approved ? "Approve" : "Decline"}`,
-        `Smart Account: <code>${escapeHtml(smartAccountAddress)}</code>`,
-        `Guarded Tx: ${this.txLink(input.txHash)}`,
-        pending?.requestTxHash ? `Request Tx: ${this.txLink(pending.requestTxHash)}` : undefined,
-        `Risk Score: ${riskScore}`,
-        `Analysis: ${escapeHtml(analysis)}`,
-        "Advice: Choose Approve to submit a one-time approval and continue without another agent review. Choose Decline to reject execution."
-      ].filter(Boolean).join("\n"),
-      buttons,
-      parseMode: "HTML"
+    const messageRef = await this.findRiskGuardMessage(smartAccountAddress, input.txHash);
+    const message = this.formatRiskGuardAgentReviewMessage({
+      status: input.approved ? "approval-recommended" : "rejection-recommended",
+      smartAccountAddress,
+      guardedTxHash: input.txHash,
+      requestTxHash: pending?.requestTxHash ?? messageRef?.requestTxHash,
+      agentRecommendation: input.approved ? "Approve" : "Decline",
+      riskScore,
+      analysis,
+      advice: "Choose Approve to submit a one-time approval and continue without another agent review. Choose Decline to reject execution."
     });
+    const target = {
+      chatId: pending?.chatId ?? messageRef?.chatId ?? binding.chatId,
+      telegramMessageId: pending?.telegramMessageId ?? messageRef?.telegramMessageId
+    };
+    const updated = target.telegramMessageId
+      ? await this.editRiskGuardMessage({
+          chatId: target.chatId,
+          messageId: target.telegramMessageId,
+          text: message,
+          buttons
+        })
+      : false;
+    const sent = target.telegramMessageId
+      ? { messageId: target.telegramMessageId, delivered: updated, operation: "updated" }
+      : await this.telegram.sendMessage({
+          chatId: binding.chatId,
+          text: message,
+          buttons,
+          parseMode: "HTML"
+        }).then((result) => ({ ...result, delivered: true, operation: "sent" }));
 
     await this.audit.record({
       eventType: "riskguard.agent-review.decision.telegram.sent",
-      status: "succeeded",
+      status: sent.delivered ? "succeeded" : "skipped",
       metadata: {
         walletAddress,
         smartAccountAddress,
         guardedTxHash: input.txHash,
         requestTxHash: pending?.requestTxHash,
         approved: input.approved,
-        telegramMessageId: sent.messageId
+        telegramMessageId: sent.messageId,
+        chatId: target.chatId,
+        operation: sent.operation
       }
     });
 
-    return { sent: true };
+    return { sent: sent.delivered };
   }
 
   public async sendRiskGuardApprovalRequest(input: RiskGuardPendingApprovalRequest) {
@@ -432,27 +468,46 @@ export class TelegramAlertService {
       parsed.smartAccountAddress,
       parsed.txHash
     );
-    const sent = await this.telegram.sendMessage({
-      chatId: binding.chatId,
-      text: this.formatRiskGuardApprovalMessage(parsed),
-      buttons
-    });
+    const existing = await this.findRiskGuardMessage(parsed.smartAccountAddress, parsed.txHash);
+    const text = this.formatRiskGuardApprovalMessage(parsed);
+    const chatId = existing?.chatId ?? binding.chatId;
+    const updated = existing?.telegramMessageId
+      ? await this.editRiskGuardMessage({
+          chatId,
+          messageId: existing.telegramMessageId,
+          text,
+          buttons
+        })
+      : false;
+    const sent = existing?.telegramMessageId
+      ? { messageId: existing.telegramMessageId, delivered: updated, operation: "updated" }
+      : {
+          ...await this.telegram.sendMessage({
+            chatId,
+            text,
+            buttons
+          }),
+          delivered: true,
+          operation: "sent"
+        };
 
     await this.audit.record({
       eventType: "riskguard.approval.requested",
-      status: "succeeded",
+      status: sent.delivered ? "succeeded" : "skipped",
       metadata: {
         userId: binding.userId,
         walletAddress: binding.walletAddress,
         smartAccountAddress: parsed.smartAccountAddress,
         txHash: parsed.txHash,
-        telegramMessageId: sent.messageId
+        telegramMessageId: sent.messageId,
+        chatId,
+        operation: sent.operation
       }
     });
 
     return {
-      sent: true,
-      chatId: binding.chatId,
+      sent: sent.delivered,
+      chatId,
       telegramMessageId: sent.messageId
     };
   }
@@ -516,6 +571,19 @@ export class TelegramAlertService {
     });
 
     if (!nonce.ok) {
+      if (
+        nonce.reason === "expired" &&
+        (callbackRecord.actionType === "approve_riskguard_tx" ||
+          callbackRecord.actionType === "decline_riskguard_tx")
+      ) {
+        await this.markRiskGuardMessageExpired({
+          chatId: parsed.chatId,
+          messageId: parsed.messageId,
+          smartAccountAddress: callbackRecord.smartAccountAddress,
+          guardedTxHash: callbackRecord.txHash
+        });
+      }
+
       return this.rejectCallback("telegram.callback.rejected", {
         userId: callbackRecord.userId,
         reason: nonce.reason ?? "invalid_nonce"
@@ -531,13 +599,11 @@ export class TelegramAlertService {
     }
 
     if (callbackRecord.actionType === "approve_riskguard_tx") {
-      await this.clearCallbackButtons(parsed.chatId, parsed.messageId);
-      return this.approveRiskGuardTx(callbackRecord, binding);
+      return this.approveRiskGuardTx(callbackRecord, binding, parsed.messageId);
     }
 
     if (callbackRecord.actionType === "decline_riskguard_tx") {
-      await this.clearCallbackButtons(parsed.chatId, parsed.messageId);
-      return this.declineRiskGuardTx(callbackRecord, binding.chatId);
+      return this.declineRiskGuardTx(callbackRecord, binding.chatId, parsed.messageId);
     }
 
     return this.approveSafeAction(callbackRecord.safeAction, callbackRecord.userId);
@@ -602,6 +668,141 @@ export class TelegramAlertService {
         ? event.metadata.requestTxHash
         : undefined
     };
+  }
+
+  private async findRiskGuardMessage(
+    smartAccountAddress: string,
+    txHash: string
+  ): Promise<RiskGuardTelegramMessageRef | undefined> {
+    const events = await this.audit.list();
+    const messageEvents = new Set([
+      "riskguard.approval.requested",
+      "riskguard.agent-review.requested.telegram.sent",
+      "riskguard.agent-review.decision.telegram.sent"
+    ]);
+    const event = events
+      .filter((item) => messageEvents.has(item.eventType))
+      .reverse()
+      .find((item) => {
+        const metadataSmartAccount = item.metadata.smartAccountAddress;
+        const metadataTxHash = item.metadata.guardedTxHash ?? item.metadata.txHash;
+
+        return typeof metadataSmartAccount === "string"
+          && typeof metadataTxHash === "string"
+          && metadataSmartAccount.toLowerCase() === smartAccountAddress.toLowerCase()
+          && metadataTxHash.toLowerCase() === txHash.toLowerCase()
+          && typeof item.metadata.telegramMessageId === "string";
+      });
+
+    if (!event) {
+      return undefined;
+    }
+
+    const telegramMessageId = event.metadata.telegramMessageId;
+    if (typeof telegramMessageId !== "string") {
+      return undefined;
+    }
+
+    return {
+      telegramMessageId,
+      ...(typeof event.metadata.chatId === "string" ? { chatId: event.metadata.chatId } : {}),
+      ...(typeof event.metadata.requestTxHash === "string"
+        ? { requestTxHash: event.metadata.requestTxHash }
+        : {})
+    };
+  }
+
+  private formatRiskGuardAgentReviewMessage(input: {
+    status:
+      | "reviewing"
+      | "approval-recommended"
+      | "rejection-recommended"
+      | "submitting"
+      | "success"
+      | "rejected"
+      | "failed"
+      | "expired";
+    smartAccountAddress?: string | undefined;
+    guardedTxHash?: string | undefined;
+    requestTxHash?: string | undefined;
+    approvalTxHash?: string | undefined;
+    submittedTxHash?: string | undefined;
+    userOpHash?: string | undefined;
+    agentRecommendation?: "Approve" | "Decline" | undefined;
+    riskScore?: string | undefined;
+    analysis?: string | undefined;
+    advice?: string | undefined;
+    failureReason?: string | undefined;
+  }) {
+    const statusLabel = {
+      reviewing: "🟡 Reviewing",
+      "approval-recommended": "🟢 Agent recommends approval",
+      "rejection-recommended": "🔴 Agent recommends rejection",
+      submitting: "🟠 Submitting",
+      success: "🟢 Success",
+      rejected: "🔴 Rejected",
+      failed: "⚠️ Failed",
+      expired: "⚫ Expired"
+    }[input.status];
+
+    return [
+      "<b>Somnia Agent RiskGuard Review</b>",
+      `Status: ${statusLabel}`,
+      input.agentRecommendation ? `Agent Recommendation: ${input.agentRecommendation}` : undefined,
+      input.smartAccountAddress ? `Smart Account: <code>${escapeHtml(input.smartAccountAddress)}</code>` : undefined,
+      input.guardedTxHash ? `Guarded Tx: ${this.txLink(input.guardedTxHash)}` : undefined,
+      input.requestTxHash ? `Request Tx: ${this.txLink(input.requestTxHash)}` : undefined,
+      input.approvalTxHash ? `Approval Tx: ${this.txLink(input.approvalTxHash)}` : undefined,
+      input.submittedTxHash ? `Submitted Tx: ${this.txLink(input.submittedTxHash)}` : undefined,
+      input.userOpHash ? `UserOp Hash: <code>${escapeHtml(input.userOpHash)}</code>` : undefined,
+      input.riskScore ? `Risk Score: ${escapeHtml(input.riskScore)}` : undefined,
+      input.analysis ? `Analysis: ${escapeHtml(input.analysis)}` : undefined,
+      input.failureReason ? `Failure: ${escapeHtml(input.failureReason)}` : undefined,
+      input.advice ? `Advice: ${escapeHtml(input.advice)}` : undefined
+    ].filter(Boolean).join("\n");
+  }
+
+  private async editRiskGuardMessage(input: {
+    chatId: string;
+    messageId?: string | undefined;
+    text: string;
+    buttons?: TelegramInlineButton[] | undefined;
+  }) {
+    if (!input.messageId || !this.telegram.editMessageText) {
+      return false;
+    }
+
+    try {
+      await this.telegram.editMessageText({
+        chatId: input.chatId,
+        messageId: input.messageId,
+        text: input.text,
+        buttons: input.buttons ?? [],
+        parseMode: "HTML"
+      });
+
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async markRiskGuardMessageExpired(input: {
+    chatId: string;
+    messageId?: string | undefined;
+    smartAccountAddress?: string | undefined;
+    guardedTxHash?: string | undefined;
+  }) {
+    await this.editRiskGuardMessage({
+      chatId: input.chatId,
+      messageId: input.messageId,
+      text: this.formatRiskGuardAgentReviewMessage({
+        status: "expired",
+        smartAccountAddress: input.smartAccountAddress,
+        guardedTxHash: input.guardedTxHash,
+        advice: "This approval request expired. Request a new RiskGuard review to continue."
+      })
+    });
   }
 
   private async createCallbackData(input: {
@@ -711,7 +912,8 @@ export class TelegramAlertService {
       smartAccountAddress?: string | undefined;
       txHash?: string | undefined;
     },
-    binding: { userId: string; chatId: string; walletAddress: string }
+    binding: { userId: string; chatId: string; walletAddress: string },
+    messageId?: string
   ): Promise<TelegramCallbackResult> {
     if (!this.riskGuardApprovals || !callbackRecord.smartAccountAddress || !callbackRecord.txHash) {
       return this.rejectCallback("riskguard.approval.rejected", {
@@ -720,7 +922,27 @@ export class TelegramAlertService {
       });
     }
 
+    const messageRef = messageId
+      ? { chatId: binding.chatId, telegramMessageId: messageId }
+      : await this.findRiskGuardMessage(
+          callbackRecord.smartAccountAddress,
+          callbackRecord.txHash
+        );
+    const targetChatId = messageRef?.chatId ?? binding.chatId;
+    const targetMessageId = messageRef?.telegramMessageId;
+
     try {
+      await this.editRiskGuardMessage({
+        chatId: targetChatId,
+        messageId: targetMessageId,
+        text: this.formatRiskGuardAgentReviewMessage({
+          status: "submitting",
+          smartAccountAddress: callbackRecord.smartAccountAddress,
+          guardedTxHash: callbackRecord.txHash,
+          advice: "Approval accepted. RiskGuard is submitting the one-time approval and replaying the signed transaction."
+        })
+      });
+
       const receipt = await this.riskGuardApprovals.submitApproval({
         smartAccountAddress: callbackRecord.smartAccountAddress,
         txHash: callbackRecord.txHash
@@ -731,21 +953,35 @@ export class TelegramAlertService {
             guardedTxHash: callbackRecord.txHash
           })
         : { replayed: false as const, reason: "pending_userop_service_not_configured" };
-      const replayMessage = replay.replayed
-        ? [
-            `Submitted Tx: ${this.txLink(replay.txHash)}`,
-            `UserOp Hash: <code>${escapeHtml(replay.userOpHash)}</code>`,
-            "Original transaction submitted automatically."
-          ].join("\n")
-        : "No stored signed UserOp was found, so the app must submit the original transaction again.";
-      await this.telegram.sendMessage({
-        chatId: binding.chatId,
-        text: [
-          "🟢 RiskGuard approval succeeded.",
-          `Approval Tx: ${this.txLink(receipt.txHash)}`,
-          replayMessage
-        ].join("\n"),
-        parseMode: "HTML"
+      const text = replay.replayed
+        ? this.formatRiskGuardAgentReviewMessage({
+            status: "success",
+            smartAccountAddress: callbackRecord.smartAccountAddress,
+            guardedTxHash: callbackRecord.txHash,
+            approvalTxHash: receipt.txHash,
+            submittedTxHash: replay.txHash,
+            userOpHash: replay.userOpHash,
+            advice: "Approval accepted and the original transaction was submitted automatically."
+          })
+        : this.formatRiskGuardAgentReviewMessage({
+            status: "submitting",
+            smartAccountAddress: callbackRecord.smartAccountAddress,
+            guardedTxHash: callbackRecord.txHash,
+            approvalTxHash: receipt.txHash,
+            advice: "Approval submitted. No stored signed transaction was found, so reopen the app flow to submit the original transaction."
+          });
+      const edited = await this.editRiskGuardMessage({
+        chatId: targetChatId,
+        messageId: targetMessageId,
+        text
+      });
+      await this.recordRiskGuardMessageEdit("riskguard.approval.message.updated", edited, {
+        userId: callbackRecord.userId,
+        smartAccountAddress: callbackRecord.smartAccountAddress,
+        txHash: callbackRecord.txHash,
+        chatId: targetChatId,
+        telegramMessageId: targetMessageId,
+        status: replay.replayed ? "success" : "submitting"
       });
 
       return { ok: true, message: "RiskGuard approval submitted." };
@@ -761,9 +997,24 @@ export class TelegramAlertService {
           reason
         }
       });
-      await this.telegram.sendMessage({
-        chatId: binding.chatId,
-        text: `⚠️ RiskGuard approval failed: ${summarizeRiskGuardApprovalFailure(reason)}`
+      const text = this.formatRiskGuardAgentReviewMessage({
+        status: "failed",
+        smartAccountAddress: callbackRecord.smartAccountAddress,
+        guardedTxHash: callbackRecord.txHash,
+        failureReason: summarizeRiskGuardApprovalFailure(reason)
+      });
+      const edited = await this.editRiskGuardMessage({
+        chatId: targetChatId,
+        messageId: targetMessageId,
+        text
+      });
+      await this.recordRiskGuardMessageEdit("riskguard.approval.message.updated", edited, {
+        userId: callbackRecord.userId,
+        smartAccountAddress: callbackRecord.smartAccountAddress,
+        txHash: callbackRecord.txHash,
+        chatId: targetChatId,
+        telegramMessageId: targetMessageId,
+        status: "failed"
       });
       return { ok: false, message: "RiskGuard approval failed." };
     }
@@ -775,7 +1026,8 @@ export class TelegramAlertService {
       smartAccountAddress?: string | undefined;
       txHash?: string | undefined;
     },
-    chatId: string
+    chatId: string,
+    messageId?: string
   ): Promise<TelegramCallbackResult> {
     await this.audit.record({
       eventType: "riskguard.approval.declined",
@@ -786,12 +1038,44 @@ export class TelegramAlertService {
         txHash: callbackRecord.txHash
       }
     });
-    await this.telegram.sendMessage({
-      chatId,
-      text: "🔴 RiskGuard transaction rejected. No on-chain approval was submitted."
+    const text = this.formatRiskGuardAgentReviewMessage({
+      status: "rejected",
+      smartAccountAddress: callbackRecord.smartAccountAddress,
+      guardedTxHash: callbackRecord.txHash,
+      advice: "No on-chain approval was submitted."
+    });
+    const messageRef = !messageId && callbackRecord.smartAccountAddress && callbackRecord.txHash
+      ? await this.findRiskGuardMessage(callbackRecord.smartAccountAddress, callbackRecord.txHash)
+      : undefined;
+    const targetChatId = messageRef?.chatId ?? chatId;
+    const targetMessageId = messageId ?? messageRef?.telegramMessageId;
+    const edited = await this.editRiskGuardMessage({
+      chatId: targetChatId,
+      messageId: targetMessageId,
+      text
+    });
+    await this.recordRiskGuardMessageEdit("riskguard.approval.message.updated", edited, {
+      userId: callbackRecord.userId,
+      smartAccountAddress: callbackRecord.smartAccountAddress,
+      txHash: callbackRecord.txHash,
+      chatId: targetChatId,
+      telegramMessageId: targetMessageId,
+      status: "rejected"
     });
 
     return { ok: true, message: "RiskGuard transaction declined." };
+  }
+
+  private async recordRiskGuardMessageEdit(
+    eventType: string,
+    edited: boolean,
+    metadata: Record<string, unknown>
+  ) {
+    await this.audit.record({
+      eventType,
+      status: edited ? "succeeded" : "skipped",
+      metadata
+    });
   }
 
   private async clearCallbackButtons(chatId: string, messageId: string | undefined) {

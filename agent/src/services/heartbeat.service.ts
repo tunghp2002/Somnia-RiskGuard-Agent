@@ -30,7 +30,7 @@ function verifySignedProof(
     recoveredAddress = verifyMessage(input.message, input.signature);
   } catch {
     context.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       message: "Signature must be a valid signed-message proof",
       path: [path]
     });
@@ -39,7 +39,7 @@ function verifySignedProof(
 
   if (getAddress(recoveredAddress) !== input.address) {
     context.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: "custom",
       message: "Signature must recover the submitted address",
       path: [path]
     });
