@@ -37,6 +37,7 @@ import {
   connectRiskGuardBootstrapSmartAccount,
   connectRiskGuardSmartAccount,
   connectUserPaidThirdwebSmartAccount,
+  readRiskGuardPolicyStatus,
 } from "@/lib/riskguard-module";
 import { SomniaAgentReviewRequestedError } from "@/lib/riskguard-smart-account";
 import {
@@ -47,8 +48,8 @@ import {
   subscribeBrowserWalletChanges,
   type BrowserWalletState,
 } from "@/lib/wallet";
+import { errorMessage } from "@/utils/dashboard";
 
-import { errorMessage, formatAddress } from "@/utils/dashboard";
 import {
   buildAccountOptions,
   buildAgentReviewModal,
@@ -69,6 +70,10 @@ import {
 import { useStoredRiskGuardConfig } from "./use-stored-risk-guard-config";
 
 import type {
+  AccountOption,
+  BlockscoutAccountScope,
+} from "@/lib/blockscout-api";
+import type {
   AccountStatus,
   AgentReviewRequestModal,
   DashboardSection,
@@ -77,10 +82,6 @@ import type {
   NativeTransferInput,
   RiskGuardConfig,
 } from "@/types/dashboard";
-import type {
-  AccountOption,
-  BlockscoutAccountScope,
-} from "@/lib/blockscout-api";
 
 export function useRiskGuardDashboard() {
   const thirdwebSmartAccount = useActiveAccount();
@@ -105,6 +106,7 @@ export function useRiskGuardDashboard() {
   const [selectedAssetAccountScope, setSelectedAssetAccountScope] =
     useState<BlockscoutAccountScope>("all");
   const [riskGuardConfig, persistRiskGuardConfig] = useStoredRiskGuardConfig();
+  const [riskGuardModuleReady, setRiskGuardModuleReady] = useState(false);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [telegramSession, setTelegramSession] =
     useState<TelegramConnectSession | null>(null);
@@ -115,6 +117,7 @@ export function useRiskGuardDashboard() {
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const loadRequestRef = useRef(0);
+  const riskGuardStatusRequestRef = useRef(0);
   const agentReviewPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoSmartAccountAttemptRef = useRef<string | null>(null);
 
@@ -126,7 +129,6 @@ export function useRiskGuardDashboard() {
   const guardianReady = Boolean(
     readiness?.sessionKey.ready && readiness.monitoredWallet.ready,
   );
-  const riskGuardModuleReady = riskGuardConfig.enabled;
   const riskGuardRules = useMemo(
     () => buildRiskGuardRules(riskGuardConfig, riskGuardModuleReady),
     [riskGuardConfig, riskGuardModuleReady],
@@ -176,12 +178,50 @@ export function useRiskGuardDashboard() {
 
   const receipts = useMemo(() => buildReceipts(events), [events]);
 
+  const refreshRiskGuardModuleStatus = useCallback(async (smartAccountAddressOverride?: string) => {
+    const requestId = riskGuardStatusRequestRef.current + 1;
+    riskGuardStatusRequestRef.current = requestId;
+    const smartAccountAddress = smartAccountAddressOverride ?? activeInheritanceSmartAccount;
+    const approvalStoreAddress = publicChain?.contracts.riskGuardApprovalStore;
+    const guardModuleAddress =
+      publicChain?.contracts.riskGuardValidatorModule ?? publicChain?.contracts.riskGuardHookModule;
+
+    if (!smartAccountAddress || !approvalStoreAddress || !guardModuleAddress) {
+      if (requestId === riskGuardStatusRequestRef.current) {
+        setRiskGuardModuleReady(false);
+      }
+      return;
+    }
+
+    try {
+      const status = await readRiskGuardPolicyStatus({
+        approvalStoreAddress,
+        guardModuleAddress,
+        smartAccountAddress,
+      });
+
+      if (requestId === riskGuardStatusRequestRef.current) {
+        setRiskGuardModuleReady(status.ready);
+      }
+    } catch {
+      if (requestId === riskGuardStatusRequestRef.current) {
+        setRiskGuardModuleReady(false);
+      }
+    }
+  }, [
+    activeInheritanceSmartAccount,
+    publicChain?.contracts.riskGuardApprovalStore,
+    publicChain?.contracts.riskGuardHookModule,
+    publicChain?.contracts.riskGuardValidatorModule,
+  ]);
+
   const clearWalletScopedState = useCallback(() => {
     setPortfolio(null);
     setInheritancePlan(null);
     setEvents([]);
     setTelegramSession(null);
     setUserProfile(null);
+    setRiskGuardModuleReady(false);
   }, []);
 
   const showNotice = useCallback((nextNotice: Notice) => {
@@ -317,26 +357,38 @@ export function useRiskGuardDashboard() {
     }
 
     let cancelled = false;
-    setInheritancePlanLoading(true);
+    const id = window.setTimeout(() => {
+      if (cancelled) {
+        return;
+      }
 
-    agentApi
-      .getInheritancePlan(activeInheritanceSmartAccount)
-      .then((plan) => {
-        if (!cancelled) {
-          setInheritancePlan(plan);
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) {
-          setInheritancePlanLoading(false);
-        }
-      });
+      setInheritancePlanLoading(true);
+
+      agentApi
+        .getInheritancePlan(activeInheritanceSmartAccount)
+        .then((plan) => {
+          if (!cancelled) {
+            setInheritancePlan(plan);
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (!cancelled) {
+            setInheritancePlanLoading(false);
+          }
+        });
+    }, 0);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(id);
     };
   }, [activeInheritanceSmartAccount]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => void refreshRiskGuardModuleStatus(), 0);
+    return () => window.clearTimeout(id);
+  }, [refreshRiskGuardModuleStatus]);
 
   useEffect(() => {
     let mounted = true;
@@ -759,6 +811,7 @@ export function useRiskGuardDashboard() {
             : "RiskGuard policy was already disabled on-chain; local setup state was cleared.",
         ...(txAction ? { action: txAction } : {}),
       });
+      await refreshRiskGuardModuleStatus(riskGuardSmartAccount.address);
       await loadData();
       return true;
     } catch (error) {

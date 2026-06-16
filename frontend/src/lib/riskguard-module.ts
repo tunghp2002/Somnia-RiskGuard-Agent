@@ -21,12 +21,16 @@ import type { RiskGuardConfig } from "@/types/dashboard";
 
 const moduleTypeValidator = 1n;
 const zeroAddress = "0x0000000000000000000000000000000000000000";
+
 const installValidatorGasLimit = 2_500_000n;
 const setValidatorConfigGasLimit = 500_000n;
 const registerApprovalRouteGasLimit = 500_000n;
+
 const approvalSessionKeyFundingWei = parseUnits("0.03", 18);
+
 type HexAddress = `0x${string}`;
 type SmartAccountValidator = "default" | "riskguard";
+
 const riskGuardValidatorInterface = new Interface([
   "error PendingApprovalRequired(address smartAccount, bytes32 txHash, address signer, bytes riskContext)",
 ]);
@@ -208,6 +212,86 @@ export interface ConfigureRiskGuardPolicyResult {
   configTxHash: string;
   installTxHash: string;
   registerTxHash: string;
+}
+
+export interface RiskGuardPolicyStatusInput {
+  approvalStoreAddress: string;
+  guardModuleAddress: string;
+  smartAccountAddress: string;
+}
+
+export interface RiskGuardPolicyStatus {
+  approvalRouteReady: boolean;
+  enabled: boolean;
+  initialized: boolean;
+  installed: boolean;
+  ready: boolean;
+  registeredAgent: string;
+}
+
+export async function readRiskGuardPolicyStatus({
+  approvalStoreAddress,
+  guardModuleAddress,
+  smartAccountAddress,
+}: RiskGuardPolicyStatusInput): Promise<RiskGuardPolicyStatus> {
+  if (!thirdwebClient) {
+    throw new Error("Set NEXT_PUBLIC_THIRDWEB_CLIENT_ID before reading RiskGuard status.");
+  }
+
+  const smartAccountContract = getContract({
+    address: smartAccountAddress as HexAddress,
+    chain: somniaThirdwebChain,
+    client: thirdwebClient,
+  });
+
+  const approvalStoreContract = getContract({
+    address: approvalStoreAddress as HexAddress,
+    chain: somniaThirdwebChain,
+    client: thirdwebClient,
+  });
+
+  const guardModuleContract = getContract({
+    address: guardModuleAddress as HexAddress,
+    chain: somniaThirdwebChain,
+    client: thirdwebClient,
+  });
+
+  const installed = await readContract({
+    contract: smartAccountContract,
+    method: "function isModuleInstalled(uint256 moduleTypeId,address module,bytes additionalContext) view returns (bool)",
+    params: [moduleTypeValidator, guardModuleAddress as HexAddress, "0x"],
+  }).catch(() => false);
+
+  const initialized = await readContract({
+    contract: guardModuleContract,
+    method: "function isInitialized(address smartAccount) view returns (bool)",
+    params: [smartAccountAddress as HexAddress],
+  }).catch(() => false);
+
+  const enabled = initialized
+    ? await readContract({
+        contract: guardModuleContract,
+        method: "function configs(address smartAccount) view returns (bool initialized,bool enabled,uint8 mode,uint256 thresholdValue,address balanceToken)",
+        params: [smartAccountAddress as HexAddress],
+      }).then((configResult) => Boolean(configResult[1])).catch(() => false)
+    : false;
+
+  const registeredAgent = await readContract({
+    contract: approvalStoreContract,
+    method: "function registeredAgent(address smartAccount) view returns (address)",
+    params: [smartAccountAddress as HexAddress],
+  }).catch(() => zeroAddress);
+
+  const approvalRouteReady = getAddress(registeredAgent) !== getAddress(zeroAddress);
+
+  return {
+    approvalRouteReady,
+    enabled,
+    initialized,
+    installed,
+    ready: installed && initialized && enabled && approvalRouteReady,
+    registeredAgent,
+  };
 }
 
 export async function configureRiskGuardPolicyWithThirdweb({

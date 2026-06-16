@@ -10,7 +10,40 @@ import {
 } from "thirdweb";
 import { privateKeyToAccount, smartWallet } from "thirdweb/wallets";
 import { Config } from "thirdweb/wallets/smart";
+import { Contract, JsonRpcProvider } from "ethers";
 import type { SessionKeyService } from "./session-key.service.js";
+
+const riskGuardAccountSalt = "riskguard-v2-2026-06-01";
+
+const inheritanceRegistryCheckInAbi = [
+  {
+    type: "function",
+    name: "checkIn",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  { type: "error", name: "NoActivePlan", inputs: [] },
+  { type: "error", name: "DeadManSwitchActive", inputs: [] },
+  { type: "error", name: "NotSmartAccount", inputs: [] },
+] as const;
+
+const registryErrorSelectors = {
+  "0xa562fe00": "NoActivePlan",
+  "0x95ea8dfb": "DeadManSwitchActive",
+  "0xaf9aa1e0": "NotSmartAccount",
+} as const;
+
+const registryErrorMessages = {
+  NoActivePlan:
+    "No active inheritance plan is configured for this smart account. Open RiskGuard settings, select this smart account, and create or approve a heartbeat plan before using /checkin.",
+  NoActivePlanForWrongSender:
+    "The linked smart account has an active plan, but the check-in transaction reached the registry from a different sender. Re-authorize Telegram check-in for this smart account, then retry /checkin.",
+  DeadManSwitchActive:
+    "The heartbeat grace period has already expired, so check-in is no longer available for this plan.",
+  NotSmartAccount:
+    "The check-in was not executed from the linked smart account. Reconnect Telegram after selecting your smart account, then authorize Telegram check-in again.",
+} as const;
 
 export class TelegramCheckInService {
   public constructor(
@@ -50,7 +83,15 @@ export class TelegramCheckInService {
       };
     }
 
+    let linkedSmartAccountHasActivePlan: boolean | undefined;
+
     try {
+      linkedSmartAccountHasActivePlan =
+        await this.hasActivePlan(smartAccount);
+      if (!linkedSmartAccountHasActivePlan) {
+        throw new Error(registryErrorMessages.NoActivePlan);
+      }
+
       const { record, privateKey } =
         await this.sessionKeys.getPrivateKeyForSmartAccount(
           smartAccount,
@@ -81,7 +122,11 @@ export class TelegramCheckInService {
         ].join("\n"),
       };
     } catch (error) {
-      const reason = formatCheckInError(error);
+      const reason = formatCheckInError(error, {
+        ...(linkedSmartAccountHasActivePlan === undefined
+          ? {}
+          : { linkedSmartAccountHasActivePlan }),
+      });
       await this.audit?.record({
         eventType: "telegram.checkin.failed",
         status: "failed",
@@ -97,6 +142,38 @@ export class TelegramCheckInService {
         message: `Check-in failed for ${formatWallet(smartAccount)}: ${reason}`,
       };
     }
+  }
+
+  private async hasActivePlan(smartAccountAddress: string) {
+    const registryAddress =
+      this.config.publicChain.contracts.inheritanceRegistry;
+
+    if (!registryAddress) {
+      throw new Error(
+        "Inheritance Registry is not deployed/configured for this chain yet.",
+      );
+    }
+
+    const provider = new JsonRpcProvider(
+      this.config.publicChain.rpcUrl,
+      this.config.publicChain.chainId,
+    );
+    const registry = new Contract(
+      registryAddress,
+      [
+        "function getPlan(address smartAccount) view returns ((address smartAccount,uint256 heartbeatInterval,uint256 gracePeriod,uint256 timelockPeriod,uint256 lastHeartbeatAt,uint256 createdAt,uint256 updatedAt,uint256 executedAt,uint8 state),(address addr,uint256 shareBps)[],(address token)[])",
+      ],
+      provider,
+    );
+    const [plan] = (await registry.getFunction("getPlan")(
+      smartAccountAddress,
+    )) as [
+      { state: bigint | number },
+      unknown[],
+      unknown[],
+    ];
+
+    return BigInt(plan.state) === 1n;
   }
 
   private async submitCheckInUserOperation(
@@ -136,11 +213,12 @@ export class TelegramCheckInService {
     const factoryAddress =
       this.config.publicChain.contracts.riskGuardModularAccountFactory;
     const validatorAddress =
+      this.config.publicChain.contracts.riskGuardValidatorModule ??
       this.config.publicChain.contracts.riskGuardDefaultValidator;
 
     if (!factoryAddress || !validatorAddress) {
       throw new Error(
-        "ERC-7579 modular account factory and default validator are not configured for this chain.",
+        "ERC-7579 modular account factory and validator are not configured for this chain.",
       );
     }
 
@@ -150,6 +228,7 @@ export class TelegramCheckInService {
       sponsorGas: true,
       validatorAddress,
       overrides: {
+        accountSalt: riskGuardAccountSalt,
         accountAddress: smartAccountAddress,
       },
     }));
@@ -157,14 +236,22 @@ export class TelegramCheckInService {
       client,
       personalAccount: sessionKeyAccount,
     });
+
+    if (account.address.toLowerCase() !== smartAccountAddress.toLowerCase()) {
+      throw new Error(
+        `Telegram check-in resolved smart account ${formatWallet(account.address)} but expected ${formatWallet(smartAccountAddress)}. Re-authorize Telegram check-in from the selected smart account.`,
+      );
+    }
+
     const registry = getContract({
       address: registryAddress,
+      abi: inheritanceRegistryCheckInAbi,
       chain,
       client,
     });
     const transaction = prepareContractCall({
       contract: registry,
-      method: "function checkIn()",
+      method: "checkIn",
       params: [],
     });
 
@@ -191,9 +278,24 @@ function formatTxLink(explorerUrl: string, txHash: string) {
   return `${formatTx(txHash)} (${explorerUrl.replace(/\/$/, "")}/tx/${txHash})`;
 }
 
-function formatCheckInError(error: unknown) {
+export function formatCheckInError(
+  error: unknown,
+  context: { linkedSmartAccountHasActivePlan?: boolean } = {},
+) {
   const message =
     error instanceof Error ? error.message : "check-in transaction failed";
+
+  const registryError = getRegistryErrorName(message);
+  if (registryError) {
+    if (
+      registryError === "NoActivePlan" &&
+      context.linkedSmartAccountHasActivePlan
+    ) {
+      return registryErrorMessages.NoActivePlanForWrongSender;
+    }
+
+    return registryErrorMessages[registryError];
+  }
 
   if (
     message.includes("thirdweb_getUserOperationGasPrice") &&
@@ -208,4 +310,22 @@ function formatCheckInError(error: unknown) {
   }
 
   return message;
+}
+
+function getRegistryErrorName(
+  message: string,
+): keyof typeof registryErrorMessages | undefined {
+  for (const errorName of Object.keys(
+    registryErrorMessages,
+  ) as Array<keyof typeof registryErrorMessages>) {
+    if (message.includes(`${errorName}()`) || message.includes(errorName)) {
+      return errorName;
+    }
+  }
+
+  const selector = message
+    .match(/Encoded error signature "(0x[a-fA-F0-9]{8})"/)?.[1]
+    ?.toLowerCase() as keyof typeof registryErrorSelectors | undefined;
+
+  return selector ? registryErrorSelectors[selector] : undefined;
 }
