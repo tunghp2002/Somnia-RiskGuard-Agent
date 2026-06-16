@@ -246,24 +246,29 @@ export class TelegramCheckInService {
       );
     }
 
-    const accountWallet = smartWallet(Config.erc7579({
-      chain,
-      factoryAddress,
-      sponsorGas: true,
-      sessionKey: {
-        address: sessionKeyAddress,
-        permissions: sessionKeyPermissions,
-      },
-      validatorAddress,
-      overrides: {
-        accountSalt: riskGuardAccountSalt,
-        accountAddress: smartAccountAddress,
-      },
-    }));
-    const account = await accountWallet.connect({
-      client,
-      personalAccount: sessionKeyAccount,
-    });
+    const connectAccount = async (sponsorGas: boolean) => {
+      const accountWallet = smartWallet(Config.erc7579({
+        chain,
+        factoryAddress,
+        sponsorGas,
+        sessionKey: {
+          address: sessionKeyAddress,
+          permissions: sessionKeyPermissions,
+        },
+        validatorAddress,
+        overrides: {
+          accountSalt: riskGuardAccountSalt,
+          accountAddress: smartAccountAddress,
+        },
+      }));
+
+      return accountWallet.connect({
+        client,
+        personalAccount: sessionKeyAccount,
+      });
+    };
+
+    let account = await connectAccount(true);
 
     if (account.address.toLowerCase() !== smartAccountAddress.toLowerCase()) {
       throw new Error(
@@ -283,10 +288,22 @@ export class TelegramCheckInService {
       params: [],
     });
 
-    return sendAndConfirmTransaction({
-      account,
-      transaction,
-    });
+    try {
+      return await sendAndConfirmTransaction({
+        account,
+        transaction,
+      });
+    } catch (error) {
+      if (!isPaymasterServerError(error)) {
+        throw error;
+      }
+
+      account = await connectAccount(false);
+      return sendAndConfirmTransaction({
+        account,
+        transaction,
+      });
+    }
   }
 }
 
@@ -338,6 +355,19 @@ export function formatCheckInError(
   }
 
   return message;
+}
+
+export function isPaymasterServerError(error: unknown) {
+  const message =
+    error instanceof Error ? error.message : String(error ?? "");
+
+  return (
+    /paymaster/i.test(message) &&
+    (
+      /\b500\b/.test(message) ||
+      /internal server error/i.test(message)
+    )
+  );
 }
 
 function getRegistryErrorName(

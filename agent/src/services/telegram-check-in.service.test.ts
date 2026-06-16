@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCheckInError } from "./telegram-check-in.service.js";
+import {
+  formatCheckInError,
+  isPaymasterServerError,
+} from "./telegram-check-in.service.js";
 
 describe("formatCheckInError", () => {
   it("explains registry NoActivePlan selector errors", () => {
@@ -32,5 +35,21 @@ describe("formatCheckInError", () => {
         new Error("thirdweb_getUserOperationGasPrice failed. Status: 401"),
       ),
     ).toContain("Backend THIRDWEB_SECRET_KEY is invalid");
+  });
+});
+
+describe("isPaymasterServerError", () => {
+  it("detects paymaster 500 errors for user-paid retry", () => {
+    expect(
+      isPaymasterServerError(
+        new Error(
+          'Paymaster error: 500 - {"error":"Internal server error","code":500}',
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not treat unrelated errors as paymaster server failures", () => {
+    expect(isPaymasterServerError(new Error("NoActivePlan()"))).toBe(false);
   });
 });
