@@ -13,12 +13,12 @@ import { RiskSnapshotsRepository } from "../persistence/risk-snapshots.repositor
 import { AuditService } from "../services/audit.service.js";
 import { DemoScenarioService } from "../services/demo-scenario.service.js";
 import { SetupService } from "../services/setup.service.js";
-import type { SessionKeyService } from "../services/session-key.service.js";
+import type { SessionKeyService } from "../services/session-key/index.js";
 import type { TelegramAlertService } from "../services/telegram-alert/index.js";
 import { HeartbeatsRepository } from "../persistence/heartbeats.repository.js";
-import { HeartbeatService } from "../services/heartbeat.service.js";
+import { HeartbeatService } from "../services/heartbeat/index.js";
 import { RewardClaimsRepository } from "../persistence/reward-claims.repository.js";
-import { RewardClaimService } from "../services/reward-claim.service.js";
+import { RewardClaimService } from "../services/reward-claim/index.js";
 import { UsersRepository } from "../persistence/users.repository.js";
 import { createTestConfig } from "../test-helpers/env.js";
 

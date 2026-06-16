@@ -26,9 +26,9 @@ export {
   deadmanPolicyRequestSchema,
   heartbeatCheckInRequestSchema,
   heartbeatSettingsRequestSchema
-} from "./services/heartbeat.service.js";
-export { TelegramHeartbeatReminderNotifier } from "./services/heartbeat-reminder-notifier.js";
-export { TelegramRewardClaimNotifier } from "./services/reward-claim-notifier.js";
+} from "./services/heartbeat/index.js";
+export { TelegramHeartbeatReminderNotifier } from "./services/heartbeat/reminder-notifier.js";
+export { TelegramRewardClaimNotifier } from "./services/reward-claim/notifier.js";
 export { PortfolioService } from "./services/portfolio.service.js";
 export {
   RewardClaimService,
@@ -38,7 +38,7 @@ export {
   rewardRunRequestSchema,
   rewardSettingsRequestSchema,
   type RewardClaimNotifier
-} from "./services/reward-claim.service.js";
+} from "./services/reward-claim/index.js";
 export {
   TelegramAlertService,
   TelegramAlertServiceError,

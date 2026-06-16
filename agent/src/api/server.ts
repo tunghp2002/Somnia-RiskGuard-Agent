@@ -10,7 +10,7 @@ import {
   setupWalletRequestSchema,
   userProfileUpdateRequestSchema
 } from "../services/setup.service.js";
-import { sessionKeyActionSchema } from "../services/session-key-actions.js";
+import { sessionKeyActionSchema } from "../services/session-key/actions.js";
 import {
   signedWalletProofFields,
   validateSignedWalletProof
@@ -47,7 +47,7 @@ import {
   HeartbeatServiceError,
   heartbeatSettingsRequestSchema,
   type HeartbeatService
-} from "../services/heartbeat.service.js";
+} from "../services/heartbeat/index.js";
 import {
   rewardFixtureRequestSchema,
   RewardClaimServiceError,
@@ -55,7 +55,7 @@ import {
   rewardRunSignedRequestSchema,
   rewardSettingsSignedRequestSchema,
   type RewardClaimService
-} from "../services/reward-claim.service.js";
+} from "../services/reward-claim/index.js";
 import { InheritanceRegistryClient } from "../integrations/somnia/inheritance-registry.client.js";
 import {
   approvalAnalyzePrepareRequestSchema,

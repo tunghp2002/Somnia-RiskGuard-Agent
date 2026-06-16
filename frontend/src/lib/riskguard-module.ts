@@ -310,27 +310,33 @@ export async function configureRiskGuardPolicyWithThirdweb({
     chain: somniaThirdwebChain,
     client: thirdwebClient,
   });
+
   const approvalStoreContract = getContract({
     address: approvalStoreAddress as HexAddress,
     chain: somniaThirdwebChain,
     client: thirdwebClient,
   });
+
   const guardModuleContract = getContract({
     address: guardModuleAddress as HexAddress,
     chain: somniaThirdwebChain,
     client: thirdwebClient,
   });
+
   const threshold = thresholdConfig(config);
+
   const isValidatorInstalled = await readContract({
     contract: smartAccountContract,
     method: "function isModuleInstalled(uint256 moduleTypeId,address module,bytes additionalContext) view returns (bool)",
     params: [moduleTypeValidator, guardModuleAddress as HexAddress, "0x"],
   }).catch(() => false);
+
   const isValidatorInitialized = await readContract({
     contract: guardModuleContract,
     method: "function isInitialized(address smartAccount) view returns (bool)",
     params: [account.address as HexAddress],
   }).catch(() => false);
+
   const isGuardEnabled = isValidatorInitialized
     ? await readContract({
         contract: guardModuleContract,
@@ -367,6 +373,7 @@ export async function configureRiskGuardPolicyWithThirdweb({
     gas: installValidatorGasLimit,
     params: [moduleTypeValidator, guardModuleAddress as HexAddress, "0x"],
   });
+
   const setConfigTransaction = prepareContractCall({
     contract: guardModuleContract,
     method: "function setConfig(bool enabled,uint8 mode,uint256 thresholdValue,address balanceToken)",
@@ -389,18 +396,21 @@ export async function configureRiskGuardPolicyWithThirdweb({
       gas: registerApprovalRouteGasLimit,
       params: [agentAddress as HexAddress, guardModuleAddress as HexAddress],
     });
+
     const fundApprovalSessionTransaction = prepareTransaction({
       chain: somniaThirdwebChain,
       client: thirdwebClient,
       to: agentAddress as HexAddress,
       value: approvalSessionKeyFundingWei,
     });
+
     const setupTransactions = [
       ...(isValidatorInstalled ? [] : [installValidatorTransaction]),
       registerRouteTransaction,
       fundApprovalSessionTransaction,
       setConfigTransaction,
     ];
+
     const setupReceipt = await sendWithUserPaidFallback(account, (sender) =>
       sendBatchAndConfirm(sender, setupTransactions),
       "default",

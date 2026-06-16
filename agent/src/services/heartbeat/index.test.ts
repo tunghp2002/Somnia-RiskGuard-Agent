@@ -5,12 +5,12 @@ import { tmpdir } from "node:os";
 import { Wallet } from "ethers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { HeartbeatJob } from "../jobs/heartbeat.job.js";
-import { HeartbeatsRepository } from "../persistence/heartbeats.repository.js";
-import { AuditEventsRepository } from "../persistence/audit-events.repository.js";
-import { AuditService } from "./audit.service.js";
-import { HeartbeatService } from "./heartbeat.service.js";
-import { createTestConfig } from "../test-helpers/env.js";
+import { HeartbeatJob } from "../../jobs/heartbeat.job.js";
+import { HeartbeatsRepository } from "../../persistence/heartbeats.repository.js";
+import { AuditEventsRepository } from "../../persistence/audit-events.repository.js";
+import { AuditService } from "../audit.service.js";
+import { HeartbeatService } from "./index.js";
+import { createTestConfig } from "../../test-helpers/env.js";
 
 let dataDirectory: string;
 let now: Date;

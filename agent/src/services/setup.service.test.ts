@@ -10,7 +10,7 @@ import { SetupService } from "./setup.service.js";
 import { AuditEventsRepository } from "../persistence/audit-events.repository.js";
 import { UsersRepository } from "../persistence/users.repository.js";
 import { createTestConfig } from "../test-helpers/env.js";
-import type { SessionKeyService } from "./session-key.service.js";
+import type { SessionKeyService } from "./session-key/index.js";
 
 let dataDirectory: string;
 let wallet: Wallet;

@@ -1,4 +1,4 @@
-import type { RewardClaimService, RewardRunResult } from "../services/reward-claim.service.js";
+import type { RewardClaimService, RewardRunResult } from "../services/reward-claim/index.js";
 
 export class RewardClaimJob {
   public constructor(private readonly rewards: RewardClaimService) {}

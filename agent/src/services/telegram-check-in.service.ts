@@ -11,7 +11,12 @@ import {
 import { privateKeyToAccount, smartWallet } from "thirdweb/wallets";
 import { Config } from "thirdweb/wallets/smart";
 import { Contract, JsonRpcProvider } from "ethers";
-import type { SessionKeyService } from "./session-key.service.js";
+import type { SessionKeyService } from "./session-key/index.js";
+import {
+  getSessionKeyActionTargets,
+  toSessionKeyActionPermission,
+  toThirdwebSessionKeyPermissions,
+} from "./session-key/actions.js";
 
 const riskGuardAccountSalt = "riskguard-v2-2026-06-01";
 
@@ -99,6 +104,8 @@ export class TelegramCheckInService {
         );
       const receipt = await this.submitCheckInUserOperation(
         smartAccount,
+        record.walletAddress,
+        record.sessionKeyAddress,
         privateKey,
       );
       await this.sessionKeys.markUsed(record.sessionKeyId);
@@ -178,6 +185,8 @@ export class TelegramCheckInService {
 
   private async submitCheckInUserOperation(
     smartAccountAddress: string,
+    walletAddress: string,
+    sessionKeyAddress: string,
     privateKey: string,
   ) {
     const registryAddress =
@@ -193,9 +202,23 @@ export class TelegramCheckInService {
       );
     }
 
+    const sessionKeyPermissions = toThirdwebSessionKeyPermissions(
+      toSessionKeyActionPermission({
+        action: "checkin",
+        walletAddress,
+        smartAccountAddress,
+        sessionKeyAddress,
+        approvedTargets: getSessionKeyActionTargets({
+          action: "checkin",
+          inheritanceRegistryAddress: registryAddress,
+        }),
+      }),
+    );
+
     const client = createThirdwebClient({
       secretKey: this.config.thirdweb.secretKey,
     });
+
     const chain = defineChain({
       id: this.config.publicChain.chainId,
       name: this.config.publicChain.name,
@@ -209,6 +232,7 @@ export class TelegramCheckInService {
       ],
       testnet: true,
     });
+
     const sessionKeyAccount = privateKeyToAccount({ client, privateKey });
     const factoryAddress =
       this.config.publicChain.contracts.riskGuardModularAccountFactory;
@@ -226,6 +250,10 @@ export class TelegramCheckInService {
       chain,
       factoryAddress,
       sponsorGas: true,
+      sessionKey: {
+        address: sessionKeyAddress,
+        permissions: sessionKeyPermissions,
+      },
       validatorAddress,
       overrides: {
         accountSalt: riskGuardAccountSalt,

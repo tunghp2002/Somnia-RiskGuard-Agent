@@ -2,8 +2,8 @@ import { getAddress, verifyMessage } from "ethers";
 import { z } from "zod";
 
 import type { AgentConfig } from "../config/env.js";
-import type { SessionKeyService } from "./session-key.service.js";
-import type { SessionKeyAction } from "./session-key-actions.js";
+import type { SessionKeyService } from "./session-key/index.js";
+import type { SessionKeyAction } from "./session-key/actions.js";
 import type { AuditService } from "./audit.service.js";
 import {
   signedWalletProofFields,

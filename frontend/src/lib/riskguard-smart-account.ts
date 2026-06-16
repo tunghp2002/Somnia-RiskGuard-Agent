@@ -271,19 +271,23 @@ async function requestSomniaAgentReview(options: {
   executeParams: ExecuteParams;
 }) {
   await ensureBrowserChain(somniaChainIdHex, somniaBrowserChainConfig);
+
   const browserProvider = new BrowserProvider(getEthereumProvider());
   const readProvider = new JsonRpcProvider(somniaRpcUrl, Number(somniaThirdwebChain.id));
   const signer = await browserProvider.getSigner();
+
   const validatorReader = new Contract(
     options.riskGuardValidatorAddress,
     riskGuardValidatorInterface,
     readProvider
   );
+
   const validatorWriter = new Contract(
     options.riskGuardValidatorAddress,
     riskGuardValidatorInterface,
     signer
   );
+
   const agentPlatform = getAddress(
     await validatorReader.getFunction("agentPlatform").staticCall()
   );
@@ -293,12 +297,14 @@ async function requestSomniaAgentReview(options: {
   }
 
   const platform = new Contract(agentPlatform, agentRequesterInterface, readProvider);
+
   const [requestDeposit, rewardPerCall, subcommitteeSize, currentBudget] = await Promise.all([
     platform.getFunction("getRequestDeposit").staticCall(),
     validatorReader.getFunction("riskAgentRewardPerCall").staticCall(),
     validatorReader.getFunction("AGENT_SUBCOMMITTEE_SIZE").staticCall(),
     validatorReader.getFunction("agentBudgetOf").staticCall(options.smartAccountAddress),
   ]) as [bigint, bigint, bigint, bigint];
+
   const requiredBudget = requestDeposit + (rewardPerCall * subcommitteeSize);
 
   if (currentBudget < requiredBudget) {

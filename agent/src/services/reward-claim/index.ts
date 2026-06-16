@@ -1,22 +1,22 @@
 import { getAddress } from "ethers";
 import { z } from "zod";
 
-import type { AgentConfig } from "../config/env.js";
-import type { SomniaAgentKitClient } from "../integrations/somnia/somnia-agent-kit.client.js";
-import { evaluateRewardClaimPolicy } from "../policies/reward-claim-policy.js";
-import type { PolicyDecision } from "../policies/execution-policy.js";
-import type { UsersRepository } from "../persistence/users.repository.js";
+import type { AgentConfig } from "../../config/env.js";
+import type { SomniaAgentKitClient } from "../../integrations/somnia/somnia-agent-kit.client.js";
+import { evaluateRewardClaimPolicy } from "../../policies/reward-claim-policy.js";
+import type { PolicyDecision } from "../../policies/execution-policy.js";
+import type { UsersRepository } from "../../persistence/users.repository.js";
 import {
   RewardClaimsRepository,
   type RewardClaimRecord,
   type RewardFixtureRecord,
   type RewardSettingsRecord
-} from "../persistence/reward-claims.repository.js";
-import type { AuditService } from "./audit.service.js";
+} from "../../persistence/reward-claims.repository.js";
+import type { AuditService } from "../audit.service.js";
 import {
   signedWalletProofFields,
   validateSignedWalletProof
-} from "./signed-wallet-proof.js";
+} from "../signed-wallet-proof.js";
 
 const addressSchema = z
   .string()

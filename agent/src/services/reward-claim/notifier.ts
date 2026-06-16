@@ -1,7 +1,7 @@
-import type { TelegramClient } from "../integrations/telegram/telegram.client.js";
-import type { TelegramBindingsRepository } from "../persistence/telegram-bindings.repository.js";
-import type { RewardClaimRecord } from "../persistence/reward-claims.repository.js";
-import type { AuditService } from "./audit.service.js";
+import type { TelegramClient } from "../../integrations/telegram/telegram.client.js";
+import type { TelegramBindingsRepository } from "../../persistence/telegram-bindings.repository.js";
+import type { RewardClaimRecord } from "../../persistence/reward-claims.repository.js";
+import type { AuditService } from "../audit.service.js";
 
 export class TelegramRewardClaimNotifier {
   public constructor(

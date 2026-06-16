@@ -1,6 +1,6 @@
-import type { TelegramBindingsRepository } from "../persistence/telegram-bindings.repository.js";
-import type { TelegramClient } from "../integrations/telegram/telegram.client.js";
-import type { HeartbeatReminderNotifier } from "./heartbeat.service.js";
+import type { TelegramBindingsRepository } from "../../persistence/telegram-bindings.repository.js";
+import type { TelegramClient } from "../../integrations/telegram/telegram.client.js";
+import type { HeartbeatReminderNotifier } from "./index.js";
 
 export class TelegramHeartbeatReminderNotifier implements HeartbeatReminderNotifier {
   public constructor(

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { getAddress } from "ethers";
 
-import type { SessionKeyAction } from "../services/session-key-actions.js";
+import type { SessionKeyAction } from "../services/session-key/actions.js";
 
 export interface SessionKeyRecord {
   sessionKeyId: string;

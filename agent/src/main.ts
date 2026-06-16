@@ -42,19 +42,19 @@ import {
   type SomniaAgentKitClient,
 } from "./integrations/somnia/somnia-agent-kit.client.js";
 import { AuditService } from "./services/audit.service.js";
-import { TelegramHeartbeatReminderNotifier } from "./services/heartbeat-reminder-notifier.js";
-import { TelegramRewardClaimNotifier } from "./services/reward-claim-notifier.js";
+import { TelegramHeartbeatReminderNotifier } from "./services/heartbeat/reminder-notifier.js";
+import { TelegramRewardClaimNotifier } from "./services/reward-claim/notifier.js";
 import { SetupService } from "./services/setup.service.js";
 import { DemoScenarioService } from "./services/demo-scenario.service.js";
-import { HeartbeatService } from "./services/heartbeat.service.js";
-import { RewardClaimService } from "./services/reward-claim.service.js";
+import { HeartbeatService } from "./services/heartbeat/index.js";
+import { RewardClaimService } from "./services/reward-claim/index.js";
 import { TelegramAlertService } from "./services/telegram-alert/index.js";
 import { RiskGuardApprovalService } from "./services/riskguard-approval.service.js";
 import { RiskGuardPendingUserOpService } from "./services/riskguard-pending-userop.service.js";
 import { RiskGuardReviewBudgetService } from "./services/riskguard-review-budget.service.js";
 import { TelegramCheckInService } from "./services/telegram-check-in.service.js";
 import { TelegramConnectService } from "./services/telegram-connect/index.js";
-import { SessionKeyService } from "./services/session-key.service.js";
+import { SessionKeyService } from "./services/session-key/index.js";
 import { PortfolioService } from "./services/portfolio.service.js";
 import { PortfolioMonitorJob } from "./jobs/portfolio-monitor.job.js";
 import { HeartbeatJob } from "./jobs/heartbeat.job.js";
@@ -100,8 +100,10 @@ export async function startAgentRuntime(
     config.supabase.url,
     config.supabase.serviceRoleKey,
   );
+
   const auditEvents = new AuditEventsRepository(undefined, createMemoryStore(auditEventsSchema, []));
   const audit = new AuditService(auditEvents, logger);
+
   const portfolioSnapshots = new PortfolioSnapshotsRepository(undefined, createMemoryStore(portfolioSnapshotsSchema, []));
   const riskSnapshots = new RiskSnapshotsRepository(undefined, createMemoryStore(z.array(riskSnapshotSchema), []));
   const telegramBindings = new TelegramBindingsRepository(undefined, undefined, users);
@@ -111,27 +113,34 @@ export async function startAgentRuntime(
     fixtures: [],
     claims: [],
   }));
+
   const alerts = new AlertsRepository(undefined, createMemoryStore(alertsSchema, []));
   const actionNonces = new ActionNoncesRepository(undefined, createMemoryStore(z.array(actionNonceSchema), []));
+
   const riskGuardPendingUserOpsRepository = new RiskGuardPendingUserOpsRepository(
     undefined,
     createSupabaseStore(config, "riskguard-pending-userops.json", riskGuardPendingUserOpsSchema, [])
   );
+
   const sessionKeysRepository = new SupabaseSessionKeysRepository(
     config.supabase.url,
     config.supabase.serviceRoleKey,
   );
+
   const sessionKeys = new SessionKeyService(config, sessionKeysRepository);
   const telegramClient = options.telegramClient ?? createTelegramClient(config);
   const somnia = options.somniaClient ?? createSomniaAgentKitClient(config);
+
   const riskGuardPendingUserOps = new RiskGuardPendingUserOpService(
     config,
     riskGuardPendingUserOpsRepository,
     audit,
   );
+
   const riskGuardApprovals = new RiskGuardApprovalService(config, audit, sessionKeys);
   const riskGuardReviewBudget = new RiskGuardReviewBudgetService(config, audit, sessionKeys);
   const approvalScanner = new ApprovalScannerService(config);
+
   const telegramAlerts = new TelegramAlertService(
     config,
     users,
@@ -150,22 +159,27 @@ export async function startAgentRuntime(
       ? { botUsername: config.telegram.botUsername }
       : {},
   );
+
   const telegramCheckIn = new TelegramCheckInService(
     config,
     telegramBindings,
     sessionKeys,
     audit,
   );
+
   const setupService = new SetupService(users, config, audit, sessionKeys);
+
   const heartbeatReminderNotifier = new TelegramHeartbeatReminderNotifier(
     telegramBindings,
     telegramClient,
   );
+
   const rewardClaimNotifier = new TelegramRewardClaimNotifier(
     telegramBindings,
     telegramClient,
     audit,
   );
+
   const heartbeats = new HeartbeatService(
     heartbeatsRepository,
     config,
@@ -173,6 +187,7 @@ export async function startAgentRuntime(
     undefined,
     heartbeatReminderNotifier,
   );
+
   const rewards = new RewardClaimService(
     rewardClaims,
     config,
@@ -181,6 +196,7 @@ export async function startAgentRuntime(
     rewardClaimNotifier,
     users,
   );
+
   const portfolioService = new PortfolioService(
     users,
     portfolioSnapshots,
@@ -188,9 +204,11 @@ export async function startAgentRuntime(
     undefined,
     { demoMode: true },
   );
+
   const portfolioMonitorJob = new PortfolioMonitorJob(portfolioService);
   const heartbeatJob = new HeartbeatJob(heartbeats);
   const rewardClaimJob = new RewardClaimJob(rewards);
+
   const riskGuardAgentReviewJob = new RiskGuardAgentReviewJob(
     config,
     telegramBindings,
@@ -198,6 +216,7 @@ export async function startAgentRuntime(
     audit,
     telegramAlerts,
   );
+
   const demoScenarios = new DemoScenarioService(
     users,
     portfolioSnapshots,

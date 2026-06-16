@@ -5,13 +5,13 @@ import { tmpdir } from "node:os";
 import { Wallet } from "ethers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AuditService } from "./audit.service.js";
-import { RewardClaimService, type RewardClaimNotifier } from "./reward-claim.service.js";
-import { SomniaAgentKitClient, type SomniaAgentKitAdapter } from "../integrations/somnia/somnia-agent-kit.client.js";
-import { AuditEventsRepository } from "../persistence/audit-events.repository.js";
-import { RewardClaimsRepository, type RewardFixtureRecord } from "../persistence/reward-claims.repository.js";
-import { UsersRepository } from "../persistence/users.repository.js";
-import { createTestConfig } from "../test-helpers/env.js";
+import { AuditService } from "../audit.service.js";
+import { RewardClaimService, type RewardClaimNotifier } from "./index.js";
+import { SomniaAgentKitClient, type SomniaAgentKitAdapter } from "../../integrations/somnia/somnia-agent-kit.client.js";
+import { AuditEventsRepository } from "../../persistence/audit-events.repository.js";
+import { RewardClaimsRepository, type RewardFixtureRecord } from "../../persistence/reward-claims.repository.js";
+import { UsersRepository } from "../../persistence/users.repository.js";
+import { createTestConfig } from "../../test-helpers/env.js";
 
 let dataDirectory: string;
 let wallet: Wallet;

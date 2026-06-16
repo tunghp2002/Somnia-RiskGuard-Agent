@@ -1,4 +1,4 @@
-import type { HeartbeatReminderResult, HeartbeatService } from "../services/heartbeat.service.js";
+import type { HeartbeatReminderResult, HeartbeatService } from "../services/heartbeat/index.js";
 
 export class HeartbeatJob {
   public constructor(private readonly heartbeats: HeartbeatService) {}

@@ -14,6 +14,13 @@ export interface SessionKeyActionPermission {
   permissionEndTimestamp: string;
 }
 
+export interface ThirdwebSessionKeyPermissions {
+  approvedTargets: string[];
+  nativeTokenLimitPerTransaction: string;
+  permissionStartTimestamp: Date;
+  permissionEndTimestamp: Date;
+}
+
 const permanentPermissionEnd = "9999-12-31T23:59:59.000Z";
 
 export function getSessionKeyActionTargets(input: {
@@ -56,5 +63,22 @@ export function toSessionKeyActionPermission(input: {
     nativeTokenLimitPerTransaction: "0",
     permissionStartTimestamp: new Date(0).toISOString(),
     permissionEndTimestamp: permanentPermissionEnd
+  };
+}
+
+export function toThirdwebSessionKeyPermissions(
+  permission: Pick<
+    SessionKeyActionPermission,
+    | "approvedTargets"
+    | "nativeTokenLimitPerTransaction"
+    | "permissionStartTimestamp"
+    | "permissionEndTimestamp"
+  >
+): ThirdwebSessionKeyPermissions {
+  return {
+    approvedTargets: permission.approvedTargets,
+    nativeTokenLimitPerTransaction: permission.nativeTokenLimitPerTransaction,
+    permissionStartTimestamp: new Date(permission.permissionStartTimestamp),
+    permissionEndTimestamp: new Date(permission.permissionEndTimestamp)
   };
 }

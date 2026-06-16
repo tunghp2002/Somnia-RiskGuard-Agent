@@ -140,10 +140,10 @@ below for the canonical list.
 - `reward-claim.job.ts` — every 60s: `RewardClaimService.run()`; auto-claims eligible rewards under policy.
 - `riskguard-agent-review.job.ts` — every 15s: polls `RiskGuardValidator` `RiskAgentReviewCompleted` events and notifies the bound Telegram chat of the on-chain agent decision; tracks `lastScannedBlock`.
 
-**Services** (`agent/src/services/`): `portfolio`, `heartbeat`, `reward-claim`,
+**Services** (`agent/src/services/`): `portfolio`, `heartbeat/`, `reward-claim/`,
 `telegram-alert` (binding, callbacks, signed buttons, RiskGuard approval/agent-
 review alerts), `telegram-connect` (link state machine), `telegram-check-in`,
-`session-key` (+ `session-key-crypto`, `session-key-actions`), `setup`,
+`session-key/` (`index`, `crypto`, `actions`), `setup`,
 `riskguard-approval` (submits approvals to the approval store via session-key
 signer), `audit`, `demo-scenario`, plus reminder/claim notifier adapters. There
 is no off-chain risk-scoring service — risk decisions come from the on-chain
@@ -391,7 +391,7 @@ single-call `sendRiskGuardedSmartTransaction`.
 | On-chain risk gate | ERC-7579 validator | `validateUserOp` blocks risky txs with `PendingApprovalRequired`; no synchronous external/LLM calls in validation |
 | Approval freshness | TTL + one-time use | ApprovalStore 10-min TTL; agent approvals expire; consumed once |
 | Wallet separation | Browser vs agent | Frontend never holds private keys; agent signer + session keys are env/Supabase-encrypted |
-| Session keys | AES encryption at rest | `session-key-crypto` + `SESSION_KEY_ENCRYPTION_KEY` (32-byte); stored encrypted in Supabase |
+| Session keys | AES encryption at rest | `services/session-key/crypto` + `SESSION_KEY_ENCRYPTION_KEY` (32-byte); stored encrypted in Supabase |
 | Telegram actions | Signed callbacks | HMAC-SHA256, nonce, TTL, wallet↔chat binding; replays fail closed |
 | Policy gates | Deterministic, pre-sign | Every state-changing action carries signer, chainId, target, calldata summary |
 | Dead-man-switch | On-chain timelock | Activation requires on-chain expiry + timelock, not off-chain judgement; non-custodial |

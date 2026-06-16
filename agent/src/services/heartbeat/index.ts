@@ -1,15 +1,15 @@
 import { getAddress, verifyMessage } from "ethers";
 import { z } from "zod";
 
-import type { AgentConfig } from "../config/env.js";
-import { evaluateDeadmanExecutionPolicy } from "../policies/deadman-policy.js";
-import type { PolicyDecision } from "../policies/execution-policy.js";
+import type { AgentConfig } from "../../config/env.js";
+import { evaluateDeadmanExecutionPolicy } from "../../policies/deadman-policy.js";
+import type { PolicyDecision } from "../../policies/execution-policy.js";
 import {
   HeartbeatsRepository,
   type HeartbeatContractState,
   type HeartbeatRecord
-} from "../persistence/heartbeats.repository.js";
-import type { AuditService } from "./audit.service.js";
+} from "../../persistence/heartbeats.repository.js";
+import type { AuditService } from "../audit.service.js";
 
 const addressSchema = z
   .string()

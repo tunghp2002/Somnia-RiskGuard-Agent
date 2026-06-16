@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import type { AgentConfig } from "../config/env.js";
 import type { AuditService } from "./audit.service.js";
-import type { SessionKeyService } from "./session-key.service.js";
+import type { SessionKeyService } from "./session-key/index.js";
 import {
   signedWalletProofFields,
   validateSignedWalletProof

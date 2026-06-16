@@ -1,14 +1,14 @@
 import { Wallet, getAddress } from "ethers";
 
-import type { AgentConfig } from "../config/env.js";
-import type { SessionKeyRecord, SessionKeysRepository } from "../persistence/session-keys.repository.js";
-import { decryptSecret, encryptSecret } from "./session-key-crypto.js";
+import type { AgentConfig } from "../../config/env.js";
+import type { SessionKeyRecord, SessionKeysRepository } from "../../persistence/session-keys.repository.js";
+import { decryptSecret, encryptSecret } from "./crypto.js";
 import {
   getSessionKeyActionTargets,
   toSessionKeyActionPermission,
   type SessionKeyAction,
   type SessionKeyActionPermission
-} from "./session-key-actions.js";
+} from "./actions.js";
 
 export class SessionKeyService {
   public constructor(
