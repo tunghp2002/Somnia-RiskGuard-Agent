@@ -75,6 +75,7 @@ export interface PublicChainMetadata {
     riskGuardApprovalStore?: string;
     riskGuardHookModule?: string;
     riskGuardValidatorModule?: string;
+    riskGuardCheckInValidatorModule?: string;
     riskGuardModularAccountFactory?: string;
     riskGuardDefaultValidator?: string;
   };

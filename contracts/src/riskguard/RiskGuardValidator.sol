@@ -54,6 +54,7 @@ contract RiskGuardValidator {
     uint256 private constant ADMIN_ROLE = 1 << 0;
 
     bytes4 public constant ERC7579_EXECUTE_SELECTOR = bytes4(keccak256("execute(bytes32,bytes)"));
+    bytes4 public constant INHERITANCE_CHECK_IN_SELECTOR = bytes4(keccak256("checkIn()"));
     bytes4 public constant ERC1271_MAGICVALUE = 0x1626ba7e;
     bytes4 public constant ERC1271_INVALID = 0xffffffff;
 
@@ -96,6 +97,7 @@ contract RiskGuardValidator {
     }
 
     IRiskGuardApprovalStoreForValidator public immutable approvalStore;
+    address public immutable inheritanceRegistry;
     address public admin;
     IAgentRequester public agentPlatform;
     uint256 public riskAssessmentAgentId;
@@ -153,9 +155,11 @@ contract RiskGuardValidator {
         string reason
     );
 
-    constructor(address approvalStore_) {
+    constructor(address approvalStore_, address inheritanceRegistry_) {
         if (approvalStore_ == address(0)) revert ZeroAddress();
+        if (inheritanceRegistry_ == address(0)) revert ZeroAddress();
         approvalStore = IRiskGuardApprovalStoreForValidator(approvalStore_);
+        inheritanceRegistry = inheritanceRegistry_;
         admin = msg.sender;
     }
 
@@ -379,8 +383,11 @@ contract RiskGuardValidator {
 
         (address[] memory targets, uint256[] memory values, bytes[] memory data) =
             _decodeExecution(callData);
-        bool needs = _isBatch(callData, targets)
-            || _needsAgentReview(smartAccount, config, targets, values, data);
+        bool needs = !_isAllowlistedCheckIn(targets, values, data)
+            && (
+                _isBatch(callData, targets)
+                    || _needsAgentReview(smartAccount, config, targets, values, data)
+            );
 
         return (needs, needs ? keccak256(callData) : bytes32(0));
     }
@@ -395,8 +402,11 @@ contract RiskGuardValidator {
             _decodeExecution(callData);
 
         bytes32 txHash = keccak256(callData);
-        bool needsReview = _isBatch(callData, targets)
-            || _needsAgentReview(smartAccount, config, targets, values, data);
+        bool needsReview = !_isAllowlistedCheckIn(targets, values, data)
+            && (
+                _isBatch(callData, targets)
+                    || _needsAgentReview(smartAccount, config, targets, values, data)
+            );
 
         if (!needsReview) {
             emit TxAllowedByThreshold(
@@ -517,6 +527,24 @@ contract RiskGuardValidator {
         if (_hasCode(targets[0])) return true;
 
         return values[0] >= _resolveThreshold(smartAccount, config);
+    }
+
+    function _isAllowlistedCheckIn(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory data
+    ) internal view returns (bool) {
+        if (targets.length != 1 || values.length != 1 || data.length != 1) return false;
+        if (targets[0] != inheritanceRegistry || values[0] != 0) return false;
+        if (data[0].length != 4) return false;
+
+        bytes4 selector;
+        bytes memory callData = data[0];
+        assembly {
+            selector := mload(add(callData, 32))
+        }
+
+        return selector == INHERITANCE_CHECK_IN_SELECTOR;
     }
 
     function _resolveThreshold(address smartAccount, Config storage config)

@@ -33,6 +33,7 @@ const publicChainSchema = z.object({
     riskGuardApprovalStore: optionalAddressSchema,
     riskGuardHookModule: optionalAddressSchema,
     riskGuardValidatorModule: optionalAddressSchema,
+    riskGuardCheckInValidatorModule: optionalAddressSchema,
     riskGuardModularAccountFactory: optionalAddressSchema,
     riskGuardDefaultValidator: optionalAddressSchema,
     approvalRiskScanner: optionalAddressSchema

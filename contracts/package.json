@@ -8,6 +8,8 @@
     "format": "node scripts/foundry.mjs fmt",
     "clean": "node scripts/foundry.mjs clean",
     "deploy:inheritance": "node scripts/deploy-inheritance-registry.mjs",
+    "deploy:riskguard-validator": "node scripts/deploy-riskguard-validator.mjs",
+    "deploy:telegram-check-in-validator": "node scripts/deploy-telegram-check-in-validator.mjs",
     "inheritance:reactivity-balance": "node scripts/manage-inheritance-reactivity-budget.mjs balance",
     "inheritance:reactivity-fund": "node scripts/manage-inheritance-reactivity-budget.mjs fund",
     "inheritance:reactivity-withdraw": "node scripts/manage-inheritance-reactivity-budget.mjs withdraw",

@@ -50,6 +50,16 @@ describe("isPaymasterServerError", () => {
     ).toBe(true);
   });
 
+  it("detects paymaster AA36 verification-gas errors for user-paid retry", () => {
+    expect(
+      isPaymasterServerError(
+        new Error(
+          'eth_sendUserOperation error: {"message":"UserOperation reverted with reason: AA36 over paymasterVerificationGasLimit","code":-32500}',
+        ),
+      ),
+    ).toBe(true);
+  });
+
   it("does not treat unrelated errors as paymaster server failures", () => {
     expect(isPaymasterServerError(new Error("NoActivePlan()"))).toBe(false);
   });

@@ -12,11 +12,6 @@ import { privateKeyToAccount, smartWallet } from "thirdweb/wallets";
 import { Config } from "thirdweb/wallets/smart";
 import { Contract, JsonRpcProvider } from "ethers";
 import type { SessionKeyService } from "./session-key/index.js";
-import {
-  getSessionKeyActionTargets,
-  toSessionKeyActionPermission,
-  toThirdwebSessionKeyPermissions,
-} from "./session-key/actions.js";
 
 const riskGuardAccountSalt = "riskguard-v2-2026-06-01";
 
@@ -104,8 +99,6 @@ export class TelegramCheckInService {
         );
       const receipt = await this.submitCheckInUserOperation(
         smartAccount,
-        record.walletAddress,
-        record.sessionKeyAddress,
         privateKey,
       );
       await this.sessionKeys.markUsed(record.sessionKeyId);
@@ -185,8 +178,6 @@ export class TelegramCheckInService {
 
   private async submitCheckInUserOperation(
     smartAccountAddress: string,
-    walletAddress: string,
-    sessionKeyAddress: string,
     privateKey: string,
   ) {
     const registryAddress =
@@ -201,19 +192,6 @@ export class TelegramCheckInService {
         "Inheritance Registry is not deployed/configured for this chain yet.",
       );
     }
-
-    const sessionKeyPermissions = toThirdwebSessionKeyPermissions(
-      toSessionKeyActionPermission({
-        action: "checkin",
-        walletAddress,
-        smartAccountAddress,
-        sessionKeyAddress,
-        approvedTargets: getSessionKeyActionTargets({
-          action: "checkin",
-          inheritanceRegistryAddress: registryAddress,
-        }),
-      }),
-    );
 
     const client = createThirdwebClient({
       secretKey: this.config.thirdweb.secretKey,
@@ -237,12 +215,11 @@ export class TelegramCheckInService {
     const factoryAddress =
       this.config.publicChain.contracts.riskGuardModularAccountFactory;
     const validatorAddress =
-      this.config.publicChain.contracts.riskGuardValidatorModule ??
-      this.config.publicChain.contracts.riskGuardDefaultValidator;
+      this.config.publicChain.contracts.riskGuardCheckInValidatorModule;
 
     if (!factoryAddress || !validatorAddress) {
       throw new Error(
-        "ERC-7579 modular account factory and validator are not configured for this chain.",
+        "ERC-7579 modular account factory and Telegram check-in validator are not configured for this chain.",
       );
     }
 
@@ -251,14 +228,11 @@ export class TelegramCheckInService {
         chain,
         factoryAddress,
         sponsorGas,
-        sessionKey: {
-          address: sessionKeyAddress,
-          permissions: sessionKeyPermissions,
-        },
         validatorAddress,
         overrides: {
           accountSalt: riskGuardAccountSalt,
           accountAddress: smartAccountAddress,
+          predictAddress: async () => smartAccountAddress,
         },
       }));
 
@@ -397,7 +371,9 @@ export function isPaymasterServerError(error: unknown) {
     /paymaster/i.test(message) &&
     (
       /\b500\b/.test(message) ||
-      /internal server error/i.test(message)
+      /internal server error/i.test(message) ||
+      /aa36/i.test(message) ||
+      /over paymasterverificationgaslimit/i.test(message)
     )
   );
 }

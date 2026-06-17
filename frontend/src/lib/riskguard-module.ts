@@ -1,4 +1,4 @@
-import { Interface, getAddress, parseUnits } from "ethers";
+import { AbiCoder, Interface, getAddress, parseUnits } from "ethers";
 import {
   getContract,
   prepareTransaction,
@@ -25,6 +25,7 @@ const zeroAddress = "0x0000000000000000000000000000000000000000";
 const installValidatorGasLimit = 2_500_000n;
 const setValidatorConfigGasLimit = 500_000n;
 const registerApprovalRouteGasLimit = 500_000n;
+const installCheckInValidatorGasLimit = 500_000n;
 
 const approvalSessionKeyFundingWei = parseUnits("0.03", 18);
 
@@ -227,6 +228,88 @@ export interface RiskGuardPolicyStatus {
   installed: boolean;
   ready: boolean;
   registeredAgent: string;
+}
+
+export interface ConfigureTelegramCheckInValidatorInput {
+  account: Account;
+  checkInSignerAddress: string;
+  validatorAddress: string;
+}
+
+export async function configureTelegramCheckInValidator({
+  account,
+  checkInSignerAddress,
+  validatorAddress,
+}: ConfigureTelegramCheckInValidatorInput): Promise<{ installed: boolean; txHash: string; updated: boolean }> {
+  if (!thirdwebClient) {
+    throw new Error("Set NEXT_PUBLIC_THIRDWEB_CLIENT_ID before configuring Telegram check-in.");
+  }
+
+  const smartAccountContract = getContract({
+    address: account.address as HexAddress,
+    chain: somniaThirdwebChain,
+    client: thirdwebClient,
+  });
+  const validatorContract = getContract({
+    address: validatorAddress as HexAddress,
+    chain: somniaThirdwebChain,
+    client: thirdwebClient,
+  });
+
+  const isValidatorInstalled = await readContract({
+    contract: smartAccountContract,
+    method: "function isModuleInstalled(uint256 moduleTypeId,address module,bytes additionalContext) view returns (bool)",
+    params: [moduleTypeValidator, validatorAddress as HexAddress, "0x"],
+  }).catch(() => false);
+
+  if (isValidatorInstalled) {
+    const configuredSigner = await readContract({
+      contract: validatorContract,
+      method: "function checkInSignerOf(address smartAccount) view returns (address)",
+      params: [account.address as HexAddress],
+    }).catch(() => zeroAddress);
+
+    if (getAddress(configuredSigner) === getAddress(checkInSignerAddress)) {
+      return { installed: false, txHash: "", updated: false };
+    }
+
+    const updateSignerTransaction = prepareContractCall({
+      contract: validatorContract,
+      method: "function setCheckInSigner(address checkInSigner)",
+      gas: installCheckInValidatorGasLimit,
+      params: [checkInSignerAddress as HexAddress],
+    });
+    const receipt = await sendWithUserPaidFallback(account, (sender) =>
+      sendAndConfirmTransaction({
+        account: sender,
+        transaction: updateSignerTransaction,
+      }),
+      "default",
+    );
+
+    return { installed: false, txHash: receipt.transactionHash, updated: true };
+  }
+
+  const initData = AbiCoder.defaultAbiCoder().encode(
+    ["address"],
+    [checkInSignerAddress],
+  ) as HexAddress;
+  const installValidatorTransaction = prepareContractCall({
+    contract: smartAccountContract,
+    method: "function installModule(uint256 moduleTypeId,address module,bytes initData)",
+    gas: installCheckInValidatorGasLimit,
+    params: [moduleTypeValidator, validatorAddress as HexAddress, initData],
+  });
+
+  const receipt = await sendWithUserPaidFallback(account, (sender) =>
+    sendAndConfirmTransaction({
+      account: sender,
+      transaction: installValidatorTransaction,
+    }),
+    "default",
+  );
+
+  return { installed: true, txHash: receipt.transactionHash, updated: false };
 }
 
 export async function readRiskGuardPolicyStatus({

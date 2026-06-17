@@ -51,16 +51,20 @@ RiskGuard hook approval gate deployment on Somnia Testnet:
 
 - `RiskGuardApprovalStore`: `0xaCdBb69cb283Cb0feDA1a0D1a3a657D74c35e1e3`
 - `RiskGuardHookModule`: `0x296Dc049b35447Aaf9Ea8996667eFB289F257289`
-- `RiskGuardValidator`: `0x99eAD10e154693c137B61cEFEB5487db136A342F`
+- `RiskGuardValidator`: `0xAc80322a018c4e3c310eB1a01d0F952E94679b4a`
+- `TelegramCheckInValidator`: `0x83d3404aa108134FE6C1cFa0316509CC4E24d27F`
 - deployer: `0x64769A00fB002b7ED192834443C9c819565Ab702`
 - `RiskGuardApprovalStore` transaction: `0xbbfd38bbbea451e59769df617d235a24e2d57ef4ec37bebe8b50c07c02c64f0d`
 - `RiskGuardHookModule` transaction: `0x1c98522de5cf3741d05330df2be6f721cac3577de95bbdeca91950e9cd2255d2`
-- `RiskGuardValidator` transaction: `0x7239be53bb71cfe2eef72a2b8bf96c9bb955dbecacd48371123deed9dc36c566`
+- `RiskGuardValidator` transaction: `0x3f2c551f9c12c797feaa0cd00cecfa0e7b9b616449b46cabccfa3c6dc016b38b`
+- `TelegramCheckInValidator` transaction: `0xc7fe9384681891ad4135ea4b9516cb6db4fe21e3e0aacd28c37588416ef6da66`
 - deployed: `2026-06-02`
 - Somnia LLM Inference agent configured: `12847293847561029384`
-- Somnia agent configuration transaction: `0xa16b06471a3e3232d7dc752bcd58a226e34d0da3cb8efb089d540c55bd3f45dc`
+- Somnia agent configuration transaction: `0x0dbd4e3b0359f650122ee6df3f2666ebcd26c90d73103e6fb3ee2e2b18e6541a`
 - Somnia agent reward per call: `0.1 STT`
-- Somnia agent reward configuration transaction: `0xa73254fff006f30449782671ad80629f07685b35f493c952f574c46e521ce48f`
+- Somnia agent reward configuration transaction: `0x1bf8a4e36f12e96a7de1fcb34eb9681aac3dae42e47e9b0597cd9c559e322d37`
+- note: `RiskGuardValidator` allows the configured `RiskGuardInheritanceRegistry.checkIn()` call without agent review so heartbeat renewal can pass through RiskGuard policy.
+- note: `TelegramCheckInValidator` is the production Telegram check-in path. It is installed once per smart account with `abi.encode(checkInSigner)` and validates only zero-value `RiskGuardInheritanceRegistry.checkIn()` UserOps from that signer.
 - note: `RiskGuardValidator` is the active guard path for Thirdweb ERC-7579 accounts. It validates owner/admin signatures and gates ERC-7579 `execute(bytes32,bytes)` UserOps during `validateUserOp`, including native transfers. `RiskGuardHookModule` is kept for hook experiments, but Thirdweb's published `ModularAccount` does not run hooks on its primary `execute(...)` path.
 - note: no Thirdweb contract is forked. The account factory and account implementation stay Thirdweb-published; RiskGuard is installed as a separate ERC-7579 validator module.
 
@@ -69,7 +73,7 @@ For a smart account test install, register the approval route after installing t
 ```solidity
 RiskGuardApprovalStore(0xaCdBb69cb283Cb0feDA1a0D1a3a657D74c35e1e3).registerAgentAndHook(
   agentAddress,
-  0x99eAD10e154693c137B61cEFEB5487db136A342F
+  0xAc80322a018c4e3c310eB1a01d0F952E94679b4a
 );
 ```
 
@@ -83,6 +87,8 @@ smartWallet(Config.erc7579({
   validatorAddress: riskGuardValidatorModule,
 }));
 ```
+
+Telegram check-in uses the same Thirdweb ERC-7579 account preset but with `validatorAddress: riskGuardCheckInValidatorModule` and without Thirdweb `sessionKey` permissions. That avoids the Thirdweb `IAccountPermissions` API, which this deployed account implementation does not support.
 
 RiskGuard hybrid approval flow:
 

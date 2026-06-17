@@ -111,6 +111,7 @@ contract RiskGuardValidatorTest {
 
     uint256 private constant OWNER_KEY = 0xA11CE;
     address private owner;
+    address private constant INHERITANCE_REGISTRY = address(0xBEEF);
 
     MockRiskGuardApprovalStore private store;
     RiskGuardValidator private validator;
@@ -120,7 +121,7 @@ contract RiskGuardValidatorTest {
     function setUp() public {
         store = new MockRiskGuardApprovalStore();
         owner = vm.addr(OWNER_KEY);
-        validator = new RiskGuardValidator(address(store));
+        validator = new RiskGuardValidator(address(store), INHERITANCE_REGISTRY);
         smartAccount = new MockRiskGuardSmartAccount(owner);
         platform = new MockRiskAgentPlatform();
 
@@ -173,6 +174,45 @@ contract RiskGuardValidatorTest {
         assert(!consumed);
     }
 
+    function testAllowlistedInheritanceCheckInDoesNotRequireReview() public {
+        bytes memory callData = _singleExecute(
+            INHERITANCE_REGISTRY,
+            0,
+            abi.encodeWithSignature("checkIn()")
+        );
+        bytes32 userOpHash = keccak256("riskguard checkin user op");
+        PackedUserOperation memory userOp = _signedUserOp(callData, userOpHash);
+
+        (bool needsReview, bytes32 txHash) =
+            validator.wouldRequireReview(address(smartAccount), callData);
+        assert(!needsReview);
+        assert(txHash == bytes32(0));
+
+        vm.prank(address(smartAccount));
+        uint256 validationData = validator.validateUserOp(userOp, userOpHash);
+
+        assert(validationData == validator.VALIDATION_SUCCESS());
+    }
+
+    function testNonCheckInContractCallStillRequiresReview() public {
+        bytes memory callData = _singleExecute(
+            INHERITANCE_REGISTRY,
+            0,
+            abi.encodeWithSignature("cancelPlan()")
+        );
+        bytes32 userOpHash = keccak256("riskguard non-checkin user op");
+        PackedUserOperation memory userOp = _signedUserOp(callData, userOpHash);
+
+        (bool needsReview, bytes32 txHash) =
+            validator.wouldRequireReview(address(smartAccount), callData);
+        assert(needsReview);
+        assert(txHash == keccak256(callData));
+
+        vm.expectRevert();
+        vm.prank(address(smartAccount));
+        validator.validateUserOp(userOp, userOpHash);
+    }
+
     function _signedUserOp(bytes memory callData, bytes32 userOpHash)
         private
         returns (PackedUserOperation memory userOp)
@@ -183,5 +223,15 @@ contract RiskGuardValidatorTest {
         userOp.sender = address(smartAccount);
         userOp.callData = callData;
         userOp.signature = abi.encodePacked(r, s, v);
+    }
+
+    function _singleExecute(address target, uint256 value, bytes memory innerCallData)
+        private
+        pure
+        returns (bytes memory)
+    {
+        bytes32 singleMode = bytes32(0);
+        bytes memory executionCalldata = abi.encodePacked(target, value, innerCallData);
+        return abi.encodeWithSignature("execute(bytes32,bytes)", singleMode, executionCalldata);
     }
 }

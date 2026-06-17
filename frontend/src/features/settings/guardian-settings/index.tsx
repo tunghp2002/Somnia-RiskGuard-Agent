@@ -34,6 +34,7 @@ import {
     somniaThirdwebChain,
     thirdwebClient
 } from "@/lib/thirdweb-client";
+import { configureTelegramCheckInValidator } from "@/lib/riskguard-module";
 
 import { CheckInAuthorizationModal } from "../check-in-authorization-modal";
 import { DurationField, Field, InfoHint } from "../inheritance-settings-controls";
@@ -251,22 +252,9 @@ export function InheritanceSettings({
                     chain: somniaThirdwebChain,
                     client
                 });
-                const accountWallet = smartWallet(checkInPermission
-                    ? createThirdwebAccountAbstraction({
-                        overrides: { accountSalt: riskGuardAccountSalt },
-                        sessionKey: {
-                            address: checkInPermission.sessionKeyAddress,
-                            permissions: {
-                                approvedTargets: checkInPermission.approvedTargets,
-                                nativeTokenLimitPerTransaction: checkInPermission.nativeTokenLimitPerTransaction,
-                                permissionStartTimestamp: new Date(checkInPermission.permissionStartTimestamp),
-                                permissionEndTimestamp: new Date(checkInPermission.permissionEndTimestamp)
-                            }
-                        }
-                    })
-                    : createThirdwebAccountAbstraction({
-                        overrides: { accountSalt: riskGuardAccountSalt }
-                    }));
+                const accountWallet = smartWallet(createThirdwebAccountAbstraction({
+                    overrides: { accountSalt: riskGuardAccountSalt }
+                }));
 
                 const connectedAccount = await accountWallet.connect({
                     client,
@@ -287,10 +275,24 @@ export function InheritanceSettings({
 
             cacheSmartAccount(walletAddress, smartAccount);
             if (shouldGrantCheckIn) {
-                await agentApi.ensureSessionKeyAction({
+                const permission = await agentApi.ensureSessionKeyAction({
                     walletAddress,
                     smartAccountAddress: smartAccount,
                     action: "checkin"
+                });
+                const checkInValidatorAddress =
+                    publicChains.chains[publicChains.defaultChain as keyof typeof publicChains.chains]
+                        .contracts.riskGuardCheckInValidatorModule;
+                if (!checkInValidatorAddress) {
+                    throw new Error("Telegram check-in validator is not configured for this chain.");
+                }
+                if (!connectedWallet?.getAccount()) {
+                    throw new Error("Smart account connection was not available for Telegram check-in setup.");
+                }
+                await configureTelegramCheckInValidator({
+                    account: connectedWallet.getAccount()!,
+                    checkInSignerAddress: permission.sessionKeyAddress,
+                    validatorAddress: checkInValidatorAddress
                 });
             }
             registerConnectedThirdwebSmartAccount(smartAccount);

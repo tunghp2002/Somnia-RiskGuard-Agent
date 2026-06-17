@@ -16,7 +16,8 @@
         "inheritanceRegistry": "0x355D81e993Bc423C81b8fe348fEEe659E738710E",
         "riskGuardApprovalStore": "0xaCdBb69cb283Cb0feDA1a0D1a3a657D74c35e1e3",
         "riskGuardHookModule": "0x296Dc049b35447Aaf9Ea8996667eFB289F257289",
-        "riskGuardValidatorModule": "0x99eAD10e154693c137B61cEFEB5487db136A342F",
+        "riskGuardValidatorModule": "0xAc80322a018c4e3c310eB1a01d0F952E94679b4a",
+        "riskGuardCheckInValidatorModule": "0x83d3404aa108134FE6C1cFa0316509CC4E24d27F",
         "riskGuardModularAccountFactory": "0xE5B5897f84AfE449B2Afc962AD8164425C89AD8D",
         "riskGuardDefaultValidator": "0x60A206E8927d8e2e02c48e4CdD499fCe66eB82a5",
         "approvalRiskScanner": "0xC35634383b0489aC8A3DD0DD396AF5373231a446"
