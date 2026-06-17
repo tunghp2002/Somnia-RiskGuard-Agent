@@ -236,6 +236,57 @@ export interface ConfigureTelegramCheckInValidatorInput {
   validatorAddress: string;
 }
 
+export interface TelegramCheckInValidatorStatusInput {
+  smartAccountAddress: string;
+  validatorAddress: string;
+}
+
+export interface TelegramCheckInValidatorStatus {
+  enabled: boolean;
+  installed: boolean;
+  initialized: boolean;
+  signerAddress: string;
+}
+
+export async function readTelegramCheckInValidatorStatus({
+  smartAccountAddress,
+  validatorAddress,
+}: TelegramCheckInValidatorStatusInput): Promise<TelegramCheckInValidatorStatus> {
+  if (!thirdwebClient) {
+    throw new Error("Set NEXT_PUBLIC_THIRDWEB_CLIENT_ID before reading Telegram check-in status.");
+  }
+
+  const smartAccountContract = getContract({
+    address: smartAccountAddress as HexAddress,
+    chain: somniaThirdwebChain,
+    client: thirdwebClient,
+  });
+  const validatorContract = getContract({
+    address: validatorAddress as HexAddress,
+    chain: somniaThirdwebChain,
+    client: thirdwebClient,
+  });
+
+  const installed = await readContract({
+    contract: smartAccountContract,
+    method: "function isModuleInstalled(uint256 moduleTypeId,address module,bytes additionalContext) view returns (bool)",
+    params: [moduleTypeValidator, validatorAddress as HexAddress, "0x"],
+  }).catch(() => false);
+  const signerAddress = await readContract({
+    contract: validatorContract,
+    method: "function checkInSignerOf(address smartAccount) view returns (address)",
+    params: [smartAccountAddress as HexAddress],
+  }).catch(() => zeroAddress);
+  const initialized = getAddress(signerAddress) !== getAddress(zeroAddress);
+
+  return {
+    enabled: installed && initialized,
+    installed,
+    initialized,
+    signerAddress,
+  };
+}
+
 export async function configureTelegramCheckInValidator({
   account,
   checkInSignerAddress,
@@ -310,6 +361,49 @@ export async function configureTelegramCheckInValidator({
   );
 
   return { installed: true, txHash: receipt.transactionHash, updated: false };
+}
+
+export async function disableTelegramCheckInValidator({
+  account,
+  validatorAddress,
+}: {
+  account: Account;
+  validatorAddress: string;
+}): Promise<{ disabled: boolean; txHash: string }> {
+  if (!thirdwebClient) {
+    throw new Error("Set NEXT_PUBLIC_THIRDWEB_CLIENT_ID before disabling Telegram check-in.");
+  }
+
+  const smartAccountContract = getContract({
+    address: account.address as HexAddress,
+    chain: somniaThirdwebChain,
+    client: thirdwebClient,
+  });
+  const isValidatorInstalled = await readContract({
+    contract: smartAccountContract,
+    method: "function isModuleInstalled(uint256 moduleTypeId,address module,bytes additionalContext) view returns (bool)",
+    params: [moduleTypeValidator, validatorAddress as HexAddress, "0x"],
+  }).catch(() => false);
+
+  if (!isValidatorInstalled) {
+    return { disabled: false, txHash: "" };
+  }
+
+  const uninstallValidatorTransaction = prepareContractCall({
+    contract: smartAccountContract,
+    method: "function uninstallModule(uint256 moduleTypeId,address module,bytes deInitData)",
+    gas: installCheckInValidatorGasLimit,
+    params: [moduleTypeValidator, validatorAddress as HexAddress, "0x"],
+  });
+  const receipt = await sendWithUserPaidFallback(account, (sender) =>
+    sendAndConfirmTransaction({
+      account: sender,
+      transaction: uninstallValidatorTransaction,
+    }),
+    "default",
+  );
+
+  return { disabled: true, txHash: receipt.transactionHash };
 }
 
 export async function readRiskGuardPolicyStatus({

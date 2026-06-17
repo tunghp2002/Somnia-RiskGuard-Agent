@@ -34,10 +34,14 @@ import {
 } from "@/lib/native-transfer";
 import {
   configureRiskGuardPolicyWithThirdweb,
+  configureTelegramCheckInValidator,
   connectRiskGuardBootstrapSmartAccount,
   connectRiskGuardSmartAccount,
   connectUserPaidThirdwebSmartAccount,
+  disableTelegramCheckInValidator,
   readRiskGuardPolicyStatus,
+  readTelegramCheckInValidatorStatus,
+  type TelegramCheckInValidatorStatus,
 } from "@/lib/riskguard-module";
 import { SomniaAgentReviewRequestedError } from "@/lib/riskguard-smart-account";
 import {
@@ -107,6 +111,8 @@ export function useRiskGuardDashboard() {
     useState<BlockscoutAccountScope>("all");
   const [riskGuardConfig, persistRiskGuardConfig] = useStoredRiskGuardConfig();
   const [riskGuardModuleReady, setRiskGuardModuleReady] = useState(false);
+  const [telegramCheckInStatus, setTelegramCheckInStatus] =
+    useState<TelegramCheckInValidatorStatus | null>(null);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [telegramSession, setTelegramSession] =
     useState<TelegramConnectSession | null>(null);
@@ -118,6 +124,7 @@ export function useRiskGuardDashboard() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const loadRequestRef = useRef(0);
   const riskGuardStatusRequestRef = useRef(0);
+  const telegramCheckInStatusRequestRef = useRef(0);
   const agentReviewPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoSmartAccountAttemptRef = useRef<string | null>(null);
 
@@ -215,6 +222,38 @@ export function useRiskGuardDashboard() {
     publicChain?.contracts.riskGuardValidatorModule,
   ]);
 
+  const refreshTelegramCheckInStatus = useCallback(async (smartAccountAddressOverride?: string) => {
+    const requestId = telegramCheckInStatusRequestRef.current + 1;
+    telegramCheckInStatusRequestRef.current = requestId;
+    const smartAccountAddress = smartAccountAddressOverride ?? activeInheritanceSmartAccount;
+    const validatorAddress = publicChain?.contracts.riskGuardCheckInValidatorModule;
+
+    if (!smartAccountAddress || !validatorAddress) {
+      if (requestId === telegramCheckInStatusRequestRef.current) {
+        setTelegramCheckInStatus(null);
+      }
+      return;
+    }
+
+    try {
+      const status = await readTelegramCheckInValidatorStatus({
+        smartAccountAddress,
+        validatorAddress,
+      });
+
+      if (requestId === telegramCheckInStatusRequestRef.current) {
+        setTelegramCheckInStatus(status);
+      }
+    } catch {
+      if (requestId === telegramCheckInStatusRequestRef.current) {
+        setTelegramCheckInStatus(null);
+      }
+    }
+  }, [
+    activeInheritanceSmartAccount,
+    publicChain?.contracts.riskGuardCheckInValidatorModule,
+  ]);
+
   const clearWalletScopedState = useCallback(() => {
     setPortfolio(null);
     setInheritancePlan(null);
@@ -222,6 +261,7 @@ export function useRiskGuardDashboard() {
     setTelegramSession(null);
     setUserProfile(null);
     setRiskGuardModuleReady(false);
+    setTelegramCheckInStatus(null);
   }, []);
 
   const showNotice = useCallback((nextNotice: Notice) => {
@@ -389,6 +429,11 @@ export function useRiskGuardDashboard() {
     const id = window.setTimeout(() => void refreshRiskGuardModuleStatus(), 0);
     return () => window.clearTimeout(id);
   }, [refreshRiskGuardModuleStatus]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => void refreshTelegramCheckInStatus(), 0);
+    return () => window.clearTimeout(id);
+  }, [refreshTelegramCheckInStatus]);
 
   useEffect(() => {
     let mounted = true;
@@ -748,6 +793,114 @@ export function useRiskGuardDashboard() {
     }
   }
 
+  async function handleTelegramCheckInEnable() {
+    const validatorAddress = publicChain?.contracts.riskGuardCheckInValidatorModule;
+    if (!validatorAddress) {
+      setNotice({
+        tone: "warn",
+        message: "Telegram check-in validator is not configured for this chain yet.",
+      });
+      return;
+    }
+
+    if (!telegramSession?.connected) {
+      setNotice({
+        tone: "warn",
+        message: "Connect Telegram before enabling Telegram check-in.",
+      });
+      return;
+    }
+
+    setActionLoading("telegram-checkin");
+    try {
+      const connectedWallet = wallet ?? await connectBrowserWallet();
+      if (!wallet) {
+        setWallet(connectedWallet);
+        setAccountStatus("connected");
+      }
+
+      const smartAccount =
+        activeInheritanceSmartAccount
+          ? await getSelectedInheritanceSetupAccount(activeInheritanceSmartAccount)
+          : await connectRiskGuardBootstrapSmartAccount();
+      if (!smartAccount) {
+        throw new Error("Could not connect the selected smart account.");
+      }
+
+      setSelectedSmartAccountAddress(smartAccount.address);
+      const permission = await agentApi.ensureSessionKeyAction({
+        walletAddress: connectedWallet.address,
+        smartAccountAddress: smartAccount.address,
+        action: "checkin",
+      });
+      const result = await configureTelegramCheckInValidator({
+        account: smartAccount,
+        checkInSignerAddress: permission.sessionKeyAddress,
+        validatorAddress,
+      });
+      const txHash = result.txHash;
+      if (txHash) {
+        openTransaction(publicChain, txHash);
+      }
+      const txAction = txHash ? transactionNoticeAction(publicChain, txHash) : undefined;
+      setNotice({
+        tone: "ok",
+        message: txHash
+          ? "Telegram check-in enabled for this smart account."
+          : "Telegram check-in was already enabled for this smart account.",
+        ...(txAction ? { action: txAction } : {}),
+      });
+      await refreshTelegramCheckInStatus(smartAccount.address);
+      await loadData();
+    } catch (error) {
+      setNotice({ tone: "bad", message: errorMessage(error) });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleTelegramCheckInDisable() {
+    const validatorAddress = publicChain?.contracts.riskGuardCheckInValidatorModule;
+    const smartAccountAddress = activeInheritanceSmartAccount;
+    if (!validatorAddress || !smartAccountAddress) {
+      setNotice({
+        tone: "warn",
+        message: "Select a smart account before disabling Telegram check-in.",
+      });
+      return;
+    }
+
+    setActionLoading("telegram-checkin-disable");
+    try {
+      const smartAccount = await getSelectedInheritanceSetupAccount(smartAccountAddress);
+      if (!smartAccount) {
+        throw new Error("Could not connect the selected smart account.");
+      }
+
+      const result = await disableTelegramCheckInValidator({
+        account: smartAccount,
+        validatorAddress,
+      });
+      if (result.txHash) {
+        openTransaction(publicChain, result.txHash);
+      }
+      const txAction = result.txHash ? transactionNoticeAction(publicChain, result.txHash) : undefined;
+      setNotice({
+        tone: "ok",
+        message: result.txHash
+          ? "Telegram check-in disabled for this smart account."
+          : "Telegram check-in was already disabled for this smart account.",
+        ...(txAction ? { action: txAction } : {}),
+      });
+      await refreshTelegramCheckInStatus(smartAccount.address);
+      await loadData();
+    } catch (error) {
+      setNotice({ tone: "bad", message: errorMessage(error) });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   async function handleConfigureRiskPolicy(nextConfig: RiskGuardConfig) {
     if (nextConfig.enabled && !telegramSession?.connected) {
       setNotice({
@@ -1014,6 +1167,7 @@ export function useRiskGuardDashboard() {
       riskGuardModuleReady,
       riskGuardRules,
       telegramSession,
+      telegramCheckInStatus,
       userProfile,
       wallet,
       activeWalletAddress,
@@ -1027,6 +1181,8 @@ export function useRiskGuardDashboard() {
       handleInheritancePlanCancel,
       handleInheritancePlanSubmit,
       handleTelegramConnect,
+      handleTelegramCheckInDisable,
+      handleTelegramCheckInEnable,
       handleTelegramUnlink,
       handleTransferEstimate,
       handleTransferSubmit,

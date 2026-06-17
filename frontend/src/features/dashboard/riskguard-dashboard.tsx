@@ -81,6 +81,9 @@ export function RiskGuardDashboard() {
           {state.activeSection === "profile" ? (
             <ProfilePanel
               actionLoading={state.actionLoading}
+              checkInStatus={state.telegramCheckInStatus}
+              onCheckInDisable={actions.handleTelegramCheckInDisable}
+              onCheckInEnable={actions.handleTelegramCheckInEnable}
               onConnectTelegram={actions.handleTelegramConnect}
               onDisconnectTelegram={actions.handleTelegramUnlink}
               onProfileSubmit={actions.handleProfileSubmit}

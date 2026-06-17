@@ -1,4 +1,4 @@
-import { Activity, Bot, Clock3, Cpu, Link2, Loader2, RadioTower, Send, Shield, Unlink, UserRound } from "lucide-react";
+import { Activity, Bot, Clock3, Cpu, KeyRound, Link2, Loader2, RadioTower, Send, Shield, ShieldCheck, ShieldOff, Unlink, UserRound } from "lucide-react";
 import { useState, type SyntheticEvent } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import type {
   TelegramConnectSession,
   UserRecord
 } from "@/lib/agent-api";
+import type { TelegramCheckInValidatorStatus } from "@/lib/riskguard-module";
 import type { BrowserWalletState } from "@/lib/wallet";
 
 function formatTelegramIdentity(session: TelegramConnectSession | null) {
@@ -31,6 +32,9 @@ function formatTelegramIdentity(session: TelegramConnectSession | null) {
 
 export function ProfilePanel({
   actionLoading,
+  checkInStatus,
+  onCheckInDisable,
+  onCheckInEnable,
   onConnectTelegram,
   onDisconnectTelegram,
   onProfileSubmit,
@@ -39,6 +43,9 @@ export function ProfilePanel({
   wallet
 }: {
   actionLoading: string | null;
+  checkInStatus: TelegramCheckInValidatorStatus | null;
+  onCheckInDisable: () => void;
+  onCheckInEnable: () => void;
   onConnectTelegram: () => void;
   onDisconnectTelegram: () => void;
   onProfileSubmit: (event: SyntheticEvent<HTMLFormElement, SubmitEvent>) => void;
@@ -61,6 +68,10 @@ export function ProfilePanel({
   }
 
   const telegramConnecting = telegramSession?.status === "waiting";
+  const checkInEnabled = Boolean(checkInStatus?.enabled);
+  const checkInBusy =
+    actionLoading === "telegram-checkin" ||
+    actionLoading === "telegram-checkin-disable";
 
   return (
     <section className="profile-screen">
@@ -158,6 +169,43 @@ export function ProfilePanel({
               : telegramConnecting ? "Connecting Telegram" : "Connect Telegram"}
           </Button>
         )}
+      </section>
+
+      <section className="profile-card profile-action-card profile-security-card">
+        <div>
+          <h2>Security</h2>
+          <p className="muted">
+            {checkInEnabled
+              ? "Telegram check-in is enabled for the selected smart account."
+              : "Telegram cannot check in until you authorize the smart account validator."}
+          </p>
+        </div>
+        <div className={checkInEnabled ? "profile-security-status enabled" : "profile-security-status disabled"}>
+          <span className="profile-telegram-icon" aria-hidden="true">
+            {checkInEnabled ? <ShieldCheck size={18} /> : <ShieldOff size={18} />}
+          </span>
+          <span className="profile-telegram-identity">
+            {checkInEnabled ? "Check-in enabled" : "Check-in disabled"}
+          </span>
+          <Button
+            className={checkInEnabled ? "profile-security-button danger" : "profile-security-button"}
+            disabled={checkInBusy}
+            onClick={checkInEnabled ? onCheckInDisable : onCheckInEnable}
+            type="button"
+            variant={checkInEnabled ? "ghost" : "secondary"}
+          >
+            {checkInBusy ? (
+              <Loader2 className="spin" size={16} />
+            ) : checkInEnabled ? (
+              <ShieldOff size={16} />
+            ) : (
+              <KeyRound size={16} />
+            )}
+            {checkInBusy
+              ? checkInEnabled ? "Disabling" : "Enabling"
+              : checkInEnabled ? "Disable check-in" : "Enable check-in"}
+          </Button>
+        </div>
       </section>
     </section>
   );
