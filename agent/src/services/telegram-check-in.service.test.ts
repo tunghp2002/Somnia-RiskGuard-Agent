@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatCheckInError,
   isPaymasterServerError,
+  withPaymasterServerFallback,
 } from "./telegram-check-in.service.js";
 
 describe("formatCheckInError", () => {
@@ -51,5 +52,65 @@ describe("isPaymasterServerError", () => {
 
   it("does not treat unrelated errors as paymaster server failures", () => {
     expect(isPaymasterServerError(new Error("NoActivePlan()"))).toBe(false);
+  });
+});
+
+describe("withPaymasterServerFallback", () => {
+  it("retries with the user-paid path when the sponsored path hits a paymaster 500", async () => {
+    let sponsoredCalls = 0;
+    let userPaidCalls = 0;
+
+    await expect(
+      withPaymasterServerFallback({
+        runSponsored: async () => {
+          sponsoredCalls += 1;
+          throw new Error(
+            'Paymaster error: 500 - {"error":"Internal server error","code":500}',
+          );
+        },
+        runUserPaid: async () => {
+          userPaidCalls += 1;
+          return "ok";
+        },
+      }),
+    ).resolves.toBe("ok");
+
+    expect(sponsoredCalls).toBe(1);
+    expect(userPaidCalls).toBe(1);
+  });
+
+  it("does not retry non-paymaster errors", async () => {
+    let userPaidCalls = 0;
+
+    await expect(
+      withPaymasterServerFallback({
+        runSponsored: async () => {
+          throw new Error("NoActivePlan()");
+        },
+        runUserPaid: async () => {
+          userPaidCalls += 1;
+          return "ok";
+        },
+      }),
+    ).rejects.toThrow("NoActivePlan()");
+
+    expect(userPaidCalls).toBe(0);
+  });
+
+  it("explains when the user-paid fallback also fails", async () => {
+    await expect(
+      withPaymasterServerFallback({
+        runSponsored: async () => {
+          throw new Error(
+            'Paymaster error: 500 - {"error":"Internal server error","code":500}',
+          );
+        },
+        runUserPaid: async () => {
+          throw new Error("insufficient funds for intrinsic transaction cost");
+        },
+      }),
+    ).rejects.toThrow(
+      "Sponsored check-in failed because the paymaster returned a server error, and the user-paid fallback failed too.",
+    );
   });
 });

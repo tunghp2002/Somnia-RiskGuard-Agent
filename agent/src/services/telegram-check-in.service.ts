@@ -268,13 +268,19 @@ export class TelegramCheckInService {
       });
     };
 
-    let account = await connectAccount(true);
+    const connectExpectedAccount = async (sponsorGas: boolean) => {
+      const account = await connectAccount(sponsorGas);
 
-    if (account.address.toLowerCase() !== smartAccountAddress.toLowerCase()) {
-      throw new Error(
-        `Telegram check-in resolved smart account ${formatWallet(account.address)} but expected ${formatWallet(smartAccountAddress)}. Re-authorize Telegram check-in from the selected smart account.`,
-      );
-    }
+      if (
+        account.address.toLowerCase() !== smartAccountAddress.toLowerCase()
+      ) {
+        throw new Error(
+          `Telegram check-in resolved smart account ${formatWallet(account.address)} but expected ${formatWallet(smartAccountAddress)}. Re-authorize Telegram check-in from the selected smart account.`,
+        );
+      }
+
+      return account;
+    };
 
     const registry = getContract({
       address: registryAddress,
@@ -288,21 +294,47 @@ export class TelegramCheckInService {
       params: [],
     });
 
-    try {
-      return await sendAndConfirmTransaction({
-        account,
-        transaction,
-      });
-    } catch (error) {
-      if (!isPaymasterServerError(error)) {
-        throw error;
-      }
+    return withPaymasterServerFallback({
+      runSponsored: async () => {
+        const account = await connectExpectedAccount(true);
+        return sendAndConfirmTransaction({
+          account,
+          transaction,
+        });
+      },
+      runUserPaid: async () => {
+        const account = await connectExpectedAccount(false);
+        return sendAndConfirmTransaction({
+          account,
+          transaction,
+        });
+      },
+    });
+  }
+}
 
-      account = await connectAccount(false);
-      return sendAndConfirmTransaction({
-        account,
-        transaction,
-      });
+export async function withPaymasterServerFallback<T>(input: {
+  runSponsored: () => Promise<T>;
+  runUserPaid: () => Promise<T>;
+}) {
+  try {
+    return await input.runSponsored();
+  } catch (error) {
+    if (!isPaymasterServerError(error)) {
+      throw error;
+    }
+
+    try {
+      return await input.runUserPaid();
+    } catch (fallbackError) {
+      throw new Error(
+        [
+          "Sponsored check-in failed because the paymaster returned a server error, and the user-paid fallback failed too.",
+          "Fund the smart account with native gas token or re-authorize Telegram check-in, then retry.",
+          `Fallback error: ${formatCheckInError(fallbackError)}`,
+        ].join(" "),
+        { cause: fallbackError },
+      );
     }
   }
 }
